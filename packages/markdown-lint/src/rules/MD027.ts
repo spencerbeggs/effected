@@ -19,6 +19,7 @@ import {
 	containersAt,
 	contentInContainers,
 	flowNodes,
+	flowNodesWithAncestors,
 	lastContentLine,
 } from "../internal/containers.js";
 import { addRange, errorContext, firstContentLine } from "../internal/lines.js";
@@ -70,9 +71,12 @@ export const MD027: Lint.LintRule = LintRule.make({
 		// A blank quoted line after a list item's content is the item's blank continuation to micromark, its
 		// whitespace no `linePrefix`, until a line with content ends the run.
 		const itemBlanks = new Set<number>();
-		for (const item of flowNodes(context, new Set(["listItem"]))) {
+		for (const { node: item, ancestors } of flowNodesWithAncestors(context, new Set(["listItem"]))) {
+			// Only inside the item's own blockquote: a line past it is a new quote's, or none's.
+			const quote = ancestors.findLast((node) => node.type === "blockquote");
+			if (quote === undefined) continue;
 			let line = lastContentLine(item, context.lines) + 1;
-			while (line <= context.lines.length && /^[ \t>]*$/.test(context.lines[line - 1] ?? "")) itemBlanks.add(line++);
+			while (line <= quote.position.end.line && /^[ \t>]*$/.test(context.lines[line - 1] ?? "")) itemBlanks.add(line++);
 		}
 		// micromark places a continuation line's prefix tokens inside every block still open from the lines before,
 		// so a list that started earlier and spans the line is an ancestor of its `linePrefix`.

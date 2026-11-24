@@ -15,6 +15,7 @@ import {
 	runRule,
 	settingsDifferential,
 } from "../helpers/differential.js";
+import { quotedBlankGrid } from "../helpers/list-container-grid.js";
 
 const extra = [
 	{ name: "paragraph", source: ">  a\n>  b\n> c\n>   d\n" },
@@ -46,6 +47,10 @@ const extra = [
 	{ name: "blank after a nested-quote list", source: "> > - a\n> >    \n" },
 	{ name: "blank after a sublist", source: "> - a\n>   - b\n>      \n" },
 	{ name: "blank after text after a list", source: "> - a\n>\n> text\n>   \n> more\n" },
+	// But only within the item's own blockquote: past an unquoted blank line or a top-level list it is a new quote's.
+	{ name: "quoted list, blank, new quote", source: "> - a\n\n>   \n> b\n" },
+	{ name: "list, blank, new quote", source: "- a\n\n>   \n> b\n" },
+	{ name: "list, then a new quote", source: "- a\n>   \n> b\n" },
 ];
 
 const run = runRule(MD027);
@@ -93,6 +98,18 @@ describe("MD027 no-multiple-space-blockquote", () => {
 		DIFFERENTIAL_TIMEOUT,
 	);
 
+	// How micromark reads a quoted line of spaces after a list, pinned as a whole grid of container stacks, list
+	// shapes, separators and following lines (see `quotedBlankGrid`), under both `list_items` readings.
+	it(
+		"agrees with markdownlint over the quoted-blank grid",
+		() => {
+			const result = settingsDifferential(MD027, [{}, { list_items: false }], quotedBlankGrid);
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_GRID);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
 	// Not a divergence of the port: after a tab right behind `>`, markdownlint reports a range over the partly
 	// consumed tab and throws on its own `range`. The kit reports nothing there.
 	it(
@@ -134,4 +151,6 @@ describe("MD027 no-multiple-space-blockquote", () => {
 });
 
 // markdownlint's MD027 findings over the corpus (LF and CRLF) and the extras.
-const ORACLE_FINDINGS_DEFAULT = 152;
+const ORACLE_FINDINGS_DEFAULT = 155;
+// markdownlint's MD027 findings over the quoted-blank grid, under both settings cases.
+const ORACLE_FINDINGS_GRID = 543;
