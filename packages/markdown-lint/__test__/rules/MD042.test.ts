@@ -55,6 +55,23 @@ describe("MD042 no-empty-links", () => {
 		DIFFERENTIAL_TIMEOUT,
 	);
 
+	// The same upstream failure for a non-empty label ending in a line break, its destination `#`.
+	it(
+		"pins markdownlint's throw on a label ending in a line break",
+		() => {
+			const result = differential(MD042, { extra: [{ name: "label ending in a line break", source: "[x\n](#)\n" }] });
+			assert.deepStrictEqual(
+				result.divergences.map((divergence) => divergence.fixture),
+				["label ending in a line break"],
+			);
+			assert.match(
+				result.divergences[0]?.reason ?? "",
+				/^markdownlint throws: Value of 'range' passed to onError by 'MD042' is incorrect for 'input'\.; kit: 1 findings$/,
+			);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
 	it("reports an empty link with the link as its context and range, and no fix", () => {
 		const findings = run("See [text]() here.\n");
 		assert.lengthOf(findings, 1);
