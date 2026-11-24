@@ -88,12 +88,13 @@ describe("LintContext", () => {
 		assert.strictEqual(capture("x\n").name, "<input>");
 	});
 
-	it("reports the frontmatter block's node, line count and lines", () => {
+	it("reports the frontmatter block's node, and markdownlint's line count and lines", () => {
+		// markdownlint's closing fence swallows the blank line after it.
 		const context = capture("---\ntitle: x\nn: 1\n---\n\nBody\n");
 		const frontmatter = Option.getOrThrow(context.frontmatter);
-		assert.strictEqual(frontmatter.node.format, "yaml");
-		assert.strictEqual(frontmatter.lineCount, 4);
-		assert.deepStrictEqual(frontmatter.lines, ["---", "title: x", "n: 1", "---"]);
+		assert.strictEqual(Option.getOrThrow(frontmatter.node).format, "yaml");
+		assert.strictEqual(frontmatter.lineCount, 5);
+		assert.deepStrictEqual(frontmatter.lines, ["---", "title: x", "n: 1", "---", ""]);
 		assert.strictEqual(context.root.children[0]?.type, "frontmatter");
 	});
 
@@ -116,6 +117,7 @@ describe("LintContext", () => {
 					ruleNames: ["capture"],
 					lineNumber: 3,
 					column: 1,
+					severity: "error",
 					detail: Option.some("bad"),
 					context: Option.none(),
 					range: Option.none(),
@@ -266,16 +268,26 @@ describe("MarkdownLint", () => {
 		assert.lengthOf(findings, 2);
 	});
 
-	it("lintDocument keeps a BOM the document carries, where lint drops it", () => {
+	it("lintDocument reads a BOM-prefixed document as lint does, edits addressing its source", () => {
 		const text = "\uFEFF# a\n";
 		const document = Result.getOrThrow(MarkdownDocument.parseResult(text));
-		// Through lintDocument the mark is part of the first line, so the line
-		// is no heading; through lint it is dropped and the line is a heading.
-		assert.lengthOf(MarkdownLint.lintDocument(document, [everyHeading("h")]), 0);
-		assert.lengthOf(MarkdownLint.lint(text, [everyHeading("h")]), 1);
-		// Stripping the mark before parsing gives lint's reading.
-		const stripped = Result.getOrThrow(MarkdownDocument.parseResult(text.slice(1)));
-		assert.lengthOf(MarkdownLint.lintDocument(stripped, [everyHeading("h")]), 1);
+		const fixing = ruleNamed(["fixing"], (context, report) => {
+			for (const heading of context.document.findAll("heading")) {
+				report(
+					context.diagnostic({ at: heading, fix: { offset: heading.position.start.offset, length: 1, content: "##" } }),
+				);
+			}
+		});
+		const findings = MarkdownLint.lintDocument(document, [fixing]);
+		assert.lengthOf(findings, 1);
+		assert.deepStrictEqual(findings, MarkdownLint.lint(text, [fixing]));
+		assert.strictEqual(
+			MarkdownEdit.applyAll(
+				text,
+				findings.flatMap((finding) => Option.toArray(finding.edit)),
+			),
+			"\uFEFF## a\n",
+		);
 	});
 
 	it.effect("lintEffect yields exactly lint's findings", () =>

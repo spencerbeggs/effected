@@ -487,7 +487,8 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	 * `**\/a/**\/*{a,b}{a,b}…*`, ten groups and 1,024 alternatives, against a
 	 * `braceExpandMax` of 100) into a compile-time `ExpansionBudgetExceeded`
 	 * failure. A numeric range of 100 or more values (`{0..999}`) is not
-	 * expanded, so the budget does not apply to it. A deadline, where one is
+	 * expanded, so the budget does not apply to it, except inside a
+	 * `!(...)`, `*(...)` or `+(...)` extglob, where it expands. A deadline, where one is
 	 * enforced off the calling thread: a worker that is terminated when it
 	 * expires, a subprocess, or the host's own request deadline.
 	 */
@@ -505,7 +506,8 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	/**
 	 * Whether the pattern contains any magic (wildcards, classes, extglobs, or
 	 * a numeric brace range of 100 or more values, which is matched as one
-	 * portion rather than expanded, as minimatch 11 does).
+	 * portion rather than expanded, as minimatch 11 does, outside a repeating
+	 * or negating extglob).
 	 */
 	get hasMagic(): boolean {
 		return this.#engineOf().hasMagic();
@@ -730,7 +732,8 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	 * without compiling it: the distinct results of its brace expansion, after
 	 * a leading `!` is read, so `{a,b}/{c,d}` is 4 and `{a,b}{c,d}{e,f}{g,h}{i,j}`
 	 * is 32. A numeric range of 100 or more values is matched as one portion,
-	 * not expanded, so `{0..999}` is 1, while `{1..99}{a,b}` is 198. A comment or
+	 * not expanded, so `{0..999}` is 1, while `{1..99}{a,b}` is 198; inside a
+	 * `!(...)`, `*(...)` or `+(...)` extglob it expands, so `*({1..100})` is 100. A comment or
 	 * an empty pattern is 0. It runs the compile's own expansion and stops
 	 * before any portion is built, so a count it answers is exact.
 	 *

@@ -7,10 +7,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-13T06:27:13Z
+  at: 2026-11-24T04:25:23Z
 integrity:
   generated:
-    body: 990519423e2f5cc8
+    body: 73fc0cb8a64eda03
 ---
 
 # effected
@@ -56,7 +56,7 @@ The repository holds **libraries, their companions, and one tool**. Standalone t
 | `mcp-kit` | boundary | invention; the MCP boundary (stdio wiring, tool-failure shaping, strict-input walkers) over `effect/ai`, plus `./testing` clients |
 | `lsp` | boundary | invention; LSP base-protocol framing (byte-counted `Content-Length` encode, an incremental decoder and a `Stream` transform) as pure functions, plus `LspProbe`, the packed-install boot proof for a Language Server bin, behind `./testing` |
 | `markdown` | pure | invention; CommonMark + GFM as pure schemas |
-| `markdown-lint` | pure | invention; a markdownlint-compatible `LintRule` defined once over `markdown` trees, run by `MarkdownLint`, a pure programmatic host, or by `MarkdownlintAdapter` as a markdownlint custom rule, with no markdownlint import; one regular dependency, `markdown` |
+| `markdown-lint` | boundary | invention; a markdownlint-compatible `LintRule` defined once over `markdown` trees, run by `MarkdownLint`, a pure programmatic host, or by `MarkdownlintAdapter` as a markdownlint custom rule, with no markdownlint import; markdownlint's built-in rules ported on `./rules`, and a `./config` reader of markdownlint config files that requires `FileSystem` and `Path`; regular dependencies `markdown`, and `jsonc` and `yaml` for `./config` only |
 | `shell` | pure | invention; a tolerant shell-syntax lexer and segmenter (`ShellSyntax.parse`, `ShellCommand.fromSegment`) that reports which simple commands an untrusted command string would run, never failing and never evaluating; `effect` is its only peer and it has no dependency at all |
 | `commands` | boundary | part-port of `@savvy-web/silk-effects`' `ToolDiscovery` plus invention |
 | `templates` | boundary | port of `@savvy-web/silk-effects`' `ManagedSection` |

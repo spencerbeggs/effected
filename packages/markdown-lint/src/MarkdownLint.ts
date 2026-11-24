@@ -5,7 +5,10 @@
 import type { MarkdownDialect, MarkdownDocument } from "@effected/markdown";
 import { MarkdownEdit } from "@effected/markdown";
 import { Effect, Option, Result } from "effect";
-import { parseDocument, parseSettings, refusalDiagnostic, runRule } from "./internal/host.js";
+import { applyFixes as applyFixesPolicy } from "./internal/apply-fixes.js";
+import { alignedReading, lintReading, parseSettings, readSource } from "./internal/host.js";
+import { frontMatterLineCount, maskContent, splitLines } from "./internal/reading.js";
+import type { LintConfigRecord } from "./LintConfig.js";
 import { LintDiagnostic } from "./LintDiagnostic.js";
 import type { LintRule } from "./LintRule.js";
 
@@ -35,11 +38,25 @@ export interface MarkdownLintOptions {
 	/** The dialect to parse with; defaults to `"gfm"`. */
 	readonly dialect?: MarkdownDialect;
 	/**
-	 * Capture a leading frontmatter block as a `frontmatter` node rather than
-	 * parsing its fences as markdown; defaults to `true`, as markdownlint
-	 * always strips front matter before its rules run.
+	 * Read markdownlint's front matter block as front matter rather than
+	 * parsing its lines as markdown; defaults to `true`, as markdownlint
+	 * always strips front matter before its rules run. Off, the rules see no
+	 * `frontmatter` and the fences parse as markdown; the comment mask still
+	 * skips those lines, as it skips markdownlint's front matter, so a comment
+	 * there reaches the rules unmasked.
 	 */
 	readonly frontmatter?: boolean;
+	/**
+	 * The markdownlint configuration object: which rules run, at what
+	 * severity, with what settings; defaults to `{ default: true }`.
+	 */
+	readonly config?: LintConfigRecord;
+	/**
+	 * Ignore markdownlint's inline comments (`<!-- markdownlint-disable -->`
+	 * and friends), as markdownlint's `noInlineConfig` does; defaults to
+	 * `false`.
+	 */
+	readonly noInlineConfig?: boolean;
 }
 
 /**
@@ -50,7 +67,32 @@ export interface MarkdownLintOptions {
 export interface MarkdownLintDocumentOptions {
 	/** The name rules see as `LintContext.name`; defaults to `"<input>"`. */
 	readonly name?: string;
+	/**
+	 * The markdownlint configuration object: which rules run, at what
+	 * severity, with what settings; defaults to `{ default: true }`.
+	 */
+	readonly config?: LintConfigRecord;
+	/**
+	 * Ignore markdownlint's inline comments (`<!-- markdownlint-disable -->`
+	 * and friends), as markdownlint's `noInlineConfig` does; defaults to
+	 * `false`.
+	 */
+	readonly noInlineConfig?: boolean;
+	/**
+	 * The dialect to re-read the source with when the given parse is not
+	 * already markdownlint's reading (see {@link MarkdownLint.lintDocument});
+	 * defaults to `"gfm"`, as {@link MarkdownLint.lint} does. A document does
+	 * not record the dialect it was parsed with, so a caller who parsed as
+	 * commonmark passes `dialect: "commonmark"`.
+	 */
+	readonly dialect?: MarkdownDialect;
 }
+
+const runOf = (options: MarkdownLintDocumentOptions | undefined) => ({
+	name: options?.name ?? "<input>",
+	config: options?.config ?? { default: true },
+	noInlineConfig: options?.noInlineConfig ?? false,
+});
 
 const requireDistinctNames = (rules: ReadonlyArray<LintRule>): void => {
 	const seen = new Map<string, string>();
@@ -115,6 +157,13 @@ export class MarkdownLint {
 	 * `lineNumber`, `column`, `range` and `fixInfo` stay in markdownlint's own
 	 * coordinates, which count from the text after the mark.
 	 *
+	 * The file is read as markdownlint reads it: HTML comment bodies after
+	 * the front matter are masked before the parse, and the front matter is
+	 * markdownlint's own block (see `LintFrontmatter`). `options.config` and
+	 * markdownlint's inline comments decide which rules run, on which lines,
+	 * at what severity and with what `LintContext.config`, as in markdownlint;
+	 * the comments are read from the unmasked text, front matter included.
+	 *
 	 * Findings come in rule order, then in the order each rule reported them;
 	 * markdownlint instead sorts by rule name, then line. Line numbers count
 	 * the whole source, frontmatter included.
@@ -124,7 +173,7 @@ export class MarkdownLint {
 	 *
 	 * @param source - The markdown text, frontmatter included.
 	 * @param rules - The rules to run, in order.
-	 * @param options - The name, dialect and frontmatter capture.
+	 * @param options - The name, dialect, frontmatter capture, configuration and inline-comment switch.
 	 * @returns Every finding.
 	 */
 	static lint(
@@ -133,13 +182,15 @@ export class MarkdownLint {
 		options?: MarkdownLintOptions,
 	): ReadonlyArray<LintDiagnostic> {
 		requireDistinctNames(rules);
-		const name = options?.name ?? "<input>";
 		// markdownlint drops a leading byte order mark before its rules run
 		// (and before it numbers lines), so the programmatic host does too.
 		const shift = source.charCodeAt(0) === 0xfeff ? 1 : 0;
-		const parsed = parseDocument(source.slice(shift), parseSettings(options));
-		if (Result.isFailure(parsed)) return rules.map((rule) => refusalDiagnostic(parsed.failure, rule));
-		const findings = rules.flatMap((rule) => runRule(parsed.success, rule, name));
+		const text = source.slice(shift);
+		// Counted on the source as given: the count drops one mark itself, as markdownlint does, so a second
+		// mark is text and no front matter follows it.
+		const frontMatterLines = frontMatterLineCount(source);
+		const reading = readSource(maskContent(text, frontMatterLines), frontMatterLines, parseSettings(options), text);
+		const findings = lintReading(reading, splitLines(text), rules, runOf(options));
 		return shift === 0 ? findings : findings.map((finding) => shiftEdit(finding, shift));
 	}
 
@@ -148,19 +199,23 @@ export class MarkdownLint {
 	 *
 	 * @remarks
 	 * For a caller that holds a `MarkdownDocument` already — an editor
-	 * re-linting the document it just parsed. The rules see exactly this
-	 * document, so its parse options (dialect, frontmatter capture) are the
-	 * ones that hold. A byte order mark is not dropped on this path: a
-	 * BOM-prefixed document keeps it in its first line (so `\uFEFF# T` is not a
-	 * heading) and edit offsets address `document.source`. A caller who wants
-	 * {@link MarkdownLint.lint}'s reading strips a leading U+FEFF before parsing,
-	 * or calls `lint`. Same ordering, naming check and throws as
-	 * {@link MarkdownLint.lint}, and no refusal case: the parse already
-	 * happened.
+	 * re-linting the document it just parsed. A rule sees exactly what
+	 * {@link MarkdownLint.lint} would show it for `document.source`, and the
+	 * findings equal `lint`'s. The given parse is reused when it already is
+	 * that reading: no leading byte order mark, no HTML comment for
+	 * markdownlint to mask, and a front matter capture exactly where
+	 * markdownlint reads a block the kit's grammar takes. Otherwise the
+	 * source is re-read as `lint` reads it, with `options.dialect` — the
+	 * document cannot say which dialect it was parsed with, so a caller who
+	 * parsed as commonmark passes `dialect: "commonmark"`. Same ordering,
+	 * naming check and throws as {@link MarkdownLint.lint}, and the same
+	 * refusal reporting on a re-read. A re-read always captures front matter,
+	 * as `lint` does by default: there is no option to re-read a document
+	 * parsed with `frontmatter: false` the same way.
 	 *
 	 * @param document - The parsed document.
 	 * @param rules - The rules to run, in order.
-	 * @param options - The name rules see.
+	 * @param options - The name, configuration, inline-comment switch and re-read dialect.
 	 * @returns Every finding.
 	 */
 	static lintDocument(
@@ -168,9 +223,48 @@ export class MarkdownLint {
 		rules: ReadonlyArray<LintRule>,
 		options?: MarkdownLintDocumentOptions,
 	): ReadonlyArray<LintDiagnostic> {
+		const aligned = alignedReading(document);
+		if (Option.isNone(aligned)) return MarkdownLint.lint(document.source, rules, options);
 		requireDistinctNames(rules);
-		const name = options?.name ?? "<input>";
-		return rules.flatMap((rule) => runRule(document, rule, name));
+		return lintReading(Result.succeed(aligned.value), splitLines(document.source), rules, runOf(options));
+	}
+
+	/**
+	 * Apply findings' fixes to `source` as markdownlint's `applyFixes` does —
+	 * the fix that `markdownlint-cli2 --fix` would make.
+	 *
+	 * @remarks
+	 * Several findings can ask for fixes that meet: two headings each asking
+	 * for the blank line between them, an insert and a delete at one column.
+	 * `MarkdownEdit.applyAll` would apply them all (and refuse an overlap);
+	 * this applies them under markdownlint's policy, ported from its
+	 * `applyFixes`: fixes ordered bottom to top, whole-line deletes last on a
+	 * line, right to left, longer inserts first; a fix identical to another
+	 * applied once; an insert and a delete at one line and column made one
+	 * replace; at most one fix applied where fixes run into each other on a
+	 * line; and a whole-line delete taking every other fix on its line with
+	 * it.
+	 *
+	 * Like markdownlint, it returns the text with one line ending throughout:
+	 * every line break (CRLF, LF or a lone CR) becomes the one the original
+	 * text uses most, LF winning a tie, then CRLF, whether or not a fix
+	 * applied. A text with no line break keeps none; an inserted line break
+	 * there stays `\n`, where markdownlint writes the platform's.
+	 *
+	 * It works on the findings' kit `edit`s, not on markdownlint's line fixes,
+	 * so it differs where those differ: each fix is ordered and matched by its
+	 * finding's `fixInfo`, and an edit with no `fixInfo` (one crossing a line
+	 * break, which markdownlint cannot say) by its own start line and column.
+	 * Findings without a fix are ignored. Edits address `source` as given, as
+	 * {@link MarkdownLint.lint} reports them, byte order mark included, which
+	 * is kept. Pure and synchronous.
+	 *
+	 * @param source - The text the findings were reported on.
+	 * @param findings - The findings, from any number of rules, in any order.
+	 * @returns The fixed text.
+	 */
+	static applyFixes(source: string, findings: ReadonlyArray<LintDiagnostic>): string {
+		return applyFixesPolicy(source, findings);
 	}
 
 	/**
@@ -183,7 +277,7 @@ export class MarkdownLint {
 	 *
 	 * @param source - The markdown text, frontmatter included.
 	 * @param rules - The rules to run, in order.
-	 * @param options - The name, dialect and frontmatter capture.
+	 * @param options - The name, dialect, frontmatter capture, configuration and inline-comment switch.
 	 * @returns An `Effect` succeeding with every finding.
 	 */
 	static readonly lintEffect: (

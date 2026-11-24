@@ -196,6 +196,11 @@ export interface FootnoteData {
 	readonly identifier: string;
 	/** mdast's `label`: the raw label text, as written. */
 	readonly label: string;
+	/**
+	 * The offset just past the `[^label]:` marker and the spaces or tabs after
+	 * it: where a definition with no children ends.
+	 */
+	readonly markerEnd: number;
 }
 
 /** A list marker's parsed shape, upstream's `_listData`. */

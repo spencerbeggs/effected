@@ -13,7 +13,7 @@
 // are registered here under the `gfm` dialect only, which is what that option
 // flag amounts to in this port.
 //
-// Port notes, three deltas from upstream:
+// Port notes, four deltas from upstream:
 //
 // 1. POSITION. cmark-gfm opens the node AFTER the marker
 //    (`add_child(parser, *container, CMARK_NODE_FOOTNOTE_DEFINITION,
@@ -33,6 +33,11 @@
 //    to `cmark_footnote_create`. Here the fold happens once, at the start, so
 //    the label map the inline pass consults and the node's `identifier` can
 //    never disagree.
+//
+// 4. POSITION END. cmark-gfm ends the node on the line before the one that
+//    closed it, which for a definition is usually a blank line it continued
+//    through. mdast ends it at its last content line, so `finalize` moves the
+//    end back to the last child, or to the end of the marker when it has none.
 
 import { FootnoteDefinition } from "../../MarkdownNode.js";
 import type { BlockConstruct, BlockStart } from "../blockTypes.js";
@@ -81,6 +86,23 @@ export const footnoteDefinitionConstruct: BlockConstruct = {
 		// Upstream tests `input->data[0] == '\n'` — the RAW line, before any
 		// indent is skipped, so a line of spaces is not blank enough.
 		return scanner.currentLine.length === 0 ? 0 : 1;
+	},
+	// Delta 4: end at the last child, the way a list item does, rather than on
+	// the trailing blank line upstream's `sourcepos` lands on.
+	finalize: (_scanner, block) => {
+		const last = block.children[block.children.length - 1];
+		if (last !== undefined) {
+			block.endOffset = last.endOffset;
+			block.endLine = last.endLine;
+			return;
+		}
+		// An empty definition ends where its marker, and the spaces after it,
+		// do.
+		const markerEnd = block.data.footnote?.markerEnd;
+		if (markerEnd !== undefined) {
+			block.endOffset = markerEnd;
+			block.endLine = block.startLine;
+		}
 	},
 	materialize: (block, children, context) => {
 		const footnote = block.data.footnote;
@@ -137,7 +159,12 @@ export const footnoteDefinitionStart: BlockStart = {
 		scanner.advanceOffset(found[0].length, false);
 
 		const block = scanner.addChild("footnoteDefinition", start);
-		block.data.footnote = { key, identifier: key.toLowerCase(), label: rawLabel };
+		block.data.footnote = {
+			key,
+			identifier: key.toLowerCase(),
+			label: rawLabel,
+			markerEnd: block.startOffset + found[0].length,
+		};
 		return 1;
 	},
 };

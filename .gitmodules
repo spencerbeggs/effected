@@ -38,3 +38,7 @@
 	path = .repos/pnpm
 	url = https://github.com/pnpm/pnpm.git
 	shallow = true
+[submodule ".repos/markdownlint"]
+	path = .repos/markdownlint
+	url = https://github.com/DavidAnson/markdownlint.git
+	shallow = true

@@ -1,16 +1,26 @@
-// The machinery both hosts share: parse a source the one way, build a rule's
-// context, run its check, and turn a parse refusal into findings. Keeping it
-// in one module is what makes "the two hosts agree" a property of the code
-// rather than of two copies of it.
+// The machinery both hosts share: read a source the way markdownlint reads it,
+// build a rule's context, run its check, and turn a parse refusal into
+// findings. Keeping it in one module is what makes "the two hosts agree" a
+// property of the code rather than of two copies of it.
 
-import type { MarkdownDialect, MarkdownNode, MarkdownParseError, MarkdownRangeLike } from "@effected/markdown";
-import { MarkdownDocument, MarkdownParseOptions } from "@effected/markdown";
-import type { Result } from "effect";
-import { Option } from "effect";
+import type {
+	Frontmatter,
+	MarkdownDialect,
+	MarkdownNode,
+	MarkdownParseError,
+	MarkdownRangeLike,
+} from "@effected/markdown";
+import { FrontmatterSource, MarkdownDocument, MarkdownParseOptions } from "@effected/markdown";
+import { Option, Result } from "effect";
+import { InlineDirectives } from "../InlineDirectives.js";
+import type { LintConfigRecord, LintSeverity } from "../LintConfig.js";
+import { LintConfig } from "../LintConfig.js";
 import type { LintContext, LintFrontmatter, LintReport } from "../LintContext.js";
 import { LintDiagnostic } from "../LintDiagnostic.js";
 import type { LintRule } from "../LintRule.js";
 import { PositionMapping } from "../PositionMapping.js";
+import { registerUnmaskedSource } from "./memo.js";
+import { frontMatterLineCount, maskContent, offsetAfterLines } from "./reading.js";
 
 /** How a host parses the text it lints. @internal */
 export interface ParseSettings {
@@ -24,15 +34,120 @@ export const parseSettings = (options?: {
 	readonly frontmatter?: boolean;
 }): ParseSettings => ({ dialect: options?.dialect ?? "gfm", frontmatter: options?.frontmatter ?? true });
 
-/** Parse `source` with `settings`. @internal */
-export const parseDocument = (
-	source: string,
-	settings: ParseSettings,
-): Result.Result<MarkdownDocument, MarkdownParseError> =>
+const parseDocument = (source: string, settings: ParseSettings): Result.Result<MarkdownDocument, MarkdownParseError> =>
 	MarkdownDocument.parseResult(
 		source,
 		MarkdownParseOptions.make({ dialect: settings.dialect, frontmatter: settings.frontmatter }),
 	);
+
+/**
+ * What a rule reads: the source it sees, the tree, the mapping over that
+ * source and the front matter facts. `source` and `document.source` differ
+ * only when the front matter is a block the kit does not capture, whose
+ * lines the parse saw as spaces. @internal
+ */
+export interface Reading {
+	readonly source: string;
+	/** `source` before comment masking: the same offsets, comment bodies as written. */
+	readonly unmaskedSource: string;
+	readonly document: MarkdownDocument;
+	readonly mapping: PositionMapping;
+	readonly frontmatter: Option.Option<LintFrontmatter>;
+}
+
+const frontmatterFacts = (
+	node: Option.Option<Frontmatter>,
+	lineCount: number,
+	mapping: PositionMapping,
+): LintFrontmatter => {
+	const lines: Array<string> = [];
+	for (let line = 1; line <= lineCount; line++) lines.push(mapping.lineText(line));
+	return { node, lineCount, lines };
+};
+
+// The reading of `document` over `source`: front matter facts when markdownlint reads `frontMatterLines` lines
+// of it, `node` the kit's capture of them, if any.
+const readingOf = (
+	source: string,
+	unmaskedSource: string,
+	document: MarkdownDocument,
+	mapping: PositionMapping,
+	frontMatterLines: number,
+	node: Option.Option<Frontmatter>,
+): Reading => {
+	registerUnmaskedSource(mapping, unmaskedSource);
+	return {
+		source,
+		unmaskedSource,
+		document,
+		mapping,
+		frontmatter:
+			frontMatterLines === 0 ? Option.none() : Option.some(frontmatterFacts(node, frontMatterLines, mapping)),
+	};
+};
+
+// Whether the kit's capture grammar takes a block that ends inside
+// markdownlint's `frontMatterLines`-line front matter. `FrontmatterSource`
+// runs the parser's own offset-0 pre-scan, so this decides the capture
+// without parsing.
+const captureFits = (source: string, frontMatterLines: number): boolean => {
+	const split = FrontmatterSource.split(source);
+	return split.frontmatter !== undefined && split.bodyOffset <= offsetAfterLines(source, frontMatterLines);
+};
+
+/**
+ * Read `source` — markdownlint's text, comment bodies already masked after
+ * its front matter, with `unmaskedSource` the same text before masking —
+ * given markdownlint's front matter line count, in one
+ * parse. The kit's capture is kept when it lies inside those lines;
+ * otherwise the parse sees them as spaces of equal length, so no tree node
+ * lies inside them and no offset moves. With capture off, front matter is
+ * not read at all. @internal
+ */
+export const readSource = (
+	source: string,
+	frontMatterLines: number,
+	settings: ParseSettings,
+	unmaskedSource: string = source,
+): Result.Result<Reading, MarkdownParseError> => {
+	const count = settings.frontmatter ? frontMatterLines : 0;
+	if (count > 0 && captureFits(source, count)) {
+		return Result.map(parseDocument(source, settings), (document) =>
+			readingOf(source, unmaskedSource, document, PositionMapping.fromDocument(document), count, document.frontmatter),
+		);
+	}
+	if (count > 0) {
+		const end = offsetAfterLines(source, count);
+		const blanked = source.slice(0, end).replace(/[^\r\n]/g, " ") + source.slice(end);
+		return Result.map(parseDocument(blanked, { ...settings, frontmatter: false }), (document) =>
+			readingOf(source, unmaskedSource, document, PositionMapping.of(source), count, Option.none()),
+		);
+	}
+	// No front matter for markdownlint: a kit capture (a `---json` block) would
+	// be content to markdownlint, so the parse does not capture one.
+	return Result.map(parseDocument(source, { ...settings, frontmatter: false }), (document) =>
+		readingOf(source, unmaskedSource, document, PositionMapping.fromDocument(document), 0, Option.none()),
+	);
+};
+
+/**
+ * `document` as the aligned reading, when it already is one: no leading
+ * byte order mark, nothing for markdownlint to mask, and a front matter
+ * capture exactly when markdownlint reads a block the kit's grammar takes
+ * (so no `{…}` block to blank and no `---json` capture). Otherwise
+ * `Option.none()`, and the caller re-reads the source. @internal
+ */
+export const alignedReading = (document: MarkdownDocument): Option.Option<Reading> => {
+	const source = document.source;
+	if (source.charCodeAt(0) === 0xfeff) return Option.none();
+	const count = frontMatterLineCount(source);
+	if (maskContent(source, count) !== source) return Option.none();
+	const captured = Option.isSome(document.frontmatter);
+	if (count === 0 ? captured : !captured || !captureFits(source, count)) return Option.none();
+	return Option.some(
+		readingOf(source, source, document, PositionMapping.fromDocument(document), count, document.frontmatter),
+	);
+};
 
 const isNode = (at: MarkdownNode | MarkdownRangeLike): at is MarkdownNode => "type" in at && "position" in at;
 
@@ -41,28 +156,25 @@ const spanOf = (at: MarkdownNode | MarkdownRangeLike): MarkdownRangeLike =>
 		? { offset: at.position.start.offset, length: Math.max(0, at.position.end.offset - at.position.start.offset) }
 		: at;
 
-const frontmatterOf = (document: MarkdownDocument, mapping: PositionMapping): Option.Option<LintFrontmatter> =>
-	Option.map(document.frontmatter, (node) => {
-		// The block's last character's line, whether or not its span includes
-		// the closing fence's terminator.
-		const lastOffset = Math.max(node.position.start.offset, node.position.end.offset - 1);
-		const lineCount = mapping.lineNumber(lastOffset);
-		const lines: Array<string> = [];
-		for (let line = 1; line <= lineCount; line++) lines.push(mapping.lineText(line));
-		return { node, lineCount, lines };
-	});
+/** How the host runs one rule: its context's name, settings and severity. @internal */
+export interface RuleRun {
+	readonly name: string;
+	readonly config: Readonly<Record<string, unknown>>;
+	readonly severity: LintSeverity;
+}
 
-/** Build the context `rule` runs in over `document`. @internal */
-export const makeContext = (document: MarkdownDocument, rule: LintRule, name: string): LintContext => {
-	const mapping = PositionMapping.fromDocument(document);
+/** Build the context `rule` runs in over `reading`. @internal */
+export const makeContext = (reading: Reading, rule: LintRule, run: RuleRun): LintContext => {
+	const { mapping } = reading;
 	return {
-		name,
-		document,
-		root: document.root,
-		source: document.source,
+		name: run.name,
+		document: reading.document,
+		root: reading.document.root,
+		source: reading.source,
 		lines: mapping.lines(),
-		frontmatter: frontmatterOf(document, mapping),
+		frontmatter: reading.frontmatter,
 		mapping,
+		config: run.config,
 		diagnostic: (report: LintReport) => {
 			const span = spanOf(report.at);
 			const lineNumber = mapping.lineNumber(span.offset);
@@ -75,6 +187,7 @@ export const makeContext = (document: MarkdownDocument, rule: LintRule, name: st
 				ruleNames: rule.names,
 				lineNumber,
 				column: mapping.column(span.offset),
+				severity: run.severity,
 				detail: report.detail === undefined || report.detail === "" ? Option.none() : Option.some(report.detail),
 				context: report.context === undefined || report.context === "" ? Option.none() : Option.some(report.context),
 				range,
@@ -85,11 +198,18 @@ export const makeContext = (document: MarkdownDocument, rule: LintRule, name: st
 	};
 };
 
-/** Run `rule` over `document`, collecting its findings in report order. @internal */
-export const runRule = (document: MarkdownDocument, rule: LintRule, name: string): Array<LintDiagnostic> => {
+/**
+ * Run `rule` over `reading`, collecting its findings in report order, each
+ * stamped with the run's severity whatever the rule built. @internal
+ */
+export const runRule = (reading: Reading, rule: LintRule, run: RuleRun): Array<LintDiagnostic> => {
 	const findings: Array<LintDiagnostic> = [];
-	rule.check(makeContext(document, rule, name), (diagnostic) => {
-		findings.push(diagnostic);
+	rule.check(makeContext(reading, rule, run), (diagnostic) => {
+		findings.push(
+			diagnostic.severity === run.severity
+				? diagnostic
+				: LintDiagnostic.make({ ...diagnostic, severity: run.severity }),
+		);
 	});
 	return findings;
 };
@@ -98,16 +218,54 @@ export const runRule = (document: MarkdownDocument, rule: LintRule, name: string
  * The finding a rule reports when the source could not be parsed at all —
  * only a hardening guard refuses a markdown document, so this is a document
  * nested past the cap. Positioned at the refusal, attributed to the rule,
- * because both hosts report per rule. @internal
+ * because both hosts report per rule; always an error. @internal
  */
 export const refusalDiagnostic = (error: MarkdownParseError, rule: LintRule): LintDiagnostic =>
 	LintDiagnostic.make({
 		ruleNames: rule.names,
 		lineNumber: error.diagnostic.line + 1,
 		column: error.diagnostic.character + 1,
+		severity: "error",
 		detail: Option.some(error.message),
 		context: Option.none(),
 		range: Option.none(),
 		fixInfo: Option.none(),
 		edit: Option.none(),
 	});
+
+/** What the programmatic host lints with. @internal */
+export interface LintRun {
+	readonly name: string;
+	readonly config: LintConfigRecord;
+	readonly noInlineConfig: boolean;
+}
+
+/**
+ * The programmatic host's loop, as markdownlint's `lintContent` runs it:
+ * inline comments resolved over `directiveLines` (the whole unmasked text,
+ * front matter included, so its numbering is the findings' own), only rules
+ * enabled on some line run, each with its settings and severity, and a
+ * finding on a line where its rule is disabled is dropped. @internal
+ */
+export const lintReading = (
+	reading: Result.Result<Reading, MarkdownParseError>,
+	directiveLines: ReadonlyArray<string>,
+	rules: ReadonlyArray<LintRule>,
+	run: LintRun,
+): Array<LintDiagnostic> => {
+	const { effective, enabledPerLine } = InlineDirectives.resolve(directiveLines, run.config, rules, {
+		noInlineConfig: run.noInlineConfig,
+	});
+	return rules.flatMap((rule) => {
+		const key = LintConfig.key(rule);
+		if (!enabledPerLine.some((enabled) => enabled.get(key) === true)) return [];
+		const findings = Result.isFailure(reading)
+			? [refusalDiagnostic(reading.failure, rule)]
+			: runRule(reading.success, rule, {
+					name: run.name,
+					config: effective.settings.get(key) ?? {},
+					severity: effective.severity.get(key) ?? "error",
+				});
+		return findings.filter((finding) => enabledPerLine[finding.lineNumber]?.get(key) === true);
+	});
+};

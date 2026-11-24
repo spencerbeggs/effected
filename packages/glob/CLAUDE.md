@@ -6,7 +6,7 @@ Seventh migration. 14 `src/` files (11 engine + 3 facade), 9 test files.
 
 **Tier: pure.** Peer-depends on `effect` only. Zero runtime deps, no IO, no
 services. The `minimatch` devDependency is the **test oracle only** — pinned
-exactly to 11.0.8, the version whose behaviour the engine follows, and imported
+exactly to 11.0.9, the version whose behaviour the engine follows, and imported
 only under `__test__/`. Never add it to `dependencies`; never move it without
 reconciling the engine against the new version first.
 
@@ -18,7 +18,7 @@ changing the public API, the dialect, the error set, or the hardening story.
 `src/internal/` is a **vendored engine** ported with attribution: minimatch
 (BlueOak-1.0.0, Isaac Z. Schlueter), brace-expansion 5.0.13 and balanced-match
 4.0.4 (MIT, Julian Gruber). The minimatch files keep 10.2.5's regexp-and-`AST`
-shape and take minimatch 11.0.8's behaviour (listed below), so their headers
+shape and take minimatch 11's behaviour up to 11.0.9 (listed below), so their headers
 still say 10.2.5 and their port notes name each change taken; brace-expansion's
 `expand_` follows 5.0.13's iterative scan (one loop over a string's groups,
 which also decides once whether empty results drop), and `parseCommaParts`
@@ -168,9 +168,9 @@ that opens an extglob, as picomatch does. It is parity at that one point only.
 Plus the workspaces-inherited mandate: **`**` is real** — `packages/**`
 matches `packages/a/b` (glob-core's issue-#62 rewrite is not carried forward).
 
-## What the engine takes from minimatch 11.0.8
+## What the engine takes from minimatch 11
 
-The engine answers as the 11.0.8 oracle does, except the divergences below:
+The engine answers as the 11.0.9 oracle does, except the divergences below:
 
 - **`**` matching** (`#matchGlobstar`, `#matchGlobStarBodySections`): a
   section's last start comes from the portions it and the later sections need;
@@ -213,8 +213,10 @@ The engine answers as the 11.0.8 oracle does, except the divergences below:
   class turns on rejects (`[[:alpha:]]-*` failed `InvalidRegExp`, #1279).
 - **Numeric ranges** (#1278): a `{lo..hi}` of 100 or more values, unescaped,
   not after `$`, with safe-integer ends, is not expanded but marked
-  (`expandMarked`, 11's `#expandBraces`, including its fall-back to expanding
-  all when a `[` precedes a mark in its portion); the marked portion is
+  (`expandMarked`, 11's `#expandBraces`, including its fall-backs to expanding
+  all when a `[` precedes a mark in its portion and, from 11.0.9, when a mark
+  sits inside a `!(...)`, `*(...)` or `+(...)` extglob, which repeat or negate
+  each value: `*({1..100})` does not match `510`); the marked portion is
   answered by 11's matcher with its `rangeMark` (`rangePortion`,
   `internal/numericRange.ts`). So `hasMagic` is true, `enumerationRoots` and
   `enumerationPrefix` stop at it, and no budget applies to it. `GlobSet`
@@ -337,7 +339,7 @@ range copied into thousands of alternatives, which 11 refuses as too long;
 or a `GlobSet` whose members together pass it, where each alone compiles. Those are
 typed failures, never wrong answers.
 
-- **The oracle's brace merge** (an 11 defect, still in 11.0.8). minimatch 11 joins a
+- **The oracle's brace merge** (an 11 defect, still in 11.0.9). minimatch 11 joins a
   pattern's brace alternatives into one Matcher with `|`, so a `[` in one
   alternative and a `]` in a later one become a class, and the alternatives
   between them are lost: `b**{Z..a}` (alternatives `b**[`, `b**`, `b**]`, …)

@@ -1,0 +1,108 @@
+// MD010 `no-hard-tabs`: a port of markdownlint's lib/md010.mjs over the kit
+// tree. markdownlint skips a tab that overlaps a code token's span — a fenced
+// block's lines between its fences, an indented block's span, a code span's
+// span — and this module takes those spans from kit node positions.
+
+import type * as Lint from "@effected/markdown-lint";
+import { codeNodes, fencedInterior } from "../internal/code-blocks.js";
+import { firstContentLine } from "../internal/lines.js";
+import { REPEAT_CAP, coercedNumber, flagSettingOn, stringListSetting } from "../internal/settings.js";
+import { LintRule } from "../LintRule.js";
+
+// A token's extent by 1-based line and column, as markdownlint's micromark tokens carry it.
+interface TokenBox {
+	readonly startLine: number;
+	readonly startColumn: number;
+	readonly endLine: number;
+	readonly endColumn: number;
+}
+
+const lessOrEqual = (lineA: number, columnA: number, lineB: number, columnB: number): boolean =>
+	lineA < lineB || (lineA === lineB && columnA <= columnB);
+
+// markdownlint's `hasOverlap`, which reads a token's exclusive end column as
+// inclusive: a tab right after a code span overlaps it.
+const overlaps = (a: TokenBox, b: TokenBox): boolean => {
+	const [first, second] = lessOrEqual(a.startLine, a.startColumn, b.startLine, b.startColumn) ? [a, b] : [b, a];
+	return lessOrEqual(second.startLine, second.startColumn, first.endLine, first.endColumn);
+};
+
+const boxOf = (node: {
+	readonly position: {
+		readonly start: { line: number; column: number };
+		readonly end: { line: number; column: number };
+	};
+}): TokenBox => ({
+	startLine: node.position.start.line,
+	startColumn: node.position.start.column,
+	endLine: node.position.end.line,
+	endColumn: node.position.end.column,
+});
+
+/**
+ * MD010 `no-hard-tabs`: no hard tab characters.
+ *
+ * @remarks
+ * markdownlint's settings: `code_blocks` (default `true`),
+ * `ignore_code_languages` (default `[]`) and `spaces_per_tab` (default `1`;
+ * capped at 1,000, where markdownlint throws on a width past V8's string limit).
+ * Settings are coerced as markdownlint coerces them
+ * (`"50"` reads as `50`, `0` as `false`).
+ *
+ * @public
+ */
+export const MD010: Lint.LintRule = LintRule.make({
+	names: ["MD010", "no-hard-tabs"],
+	description: "Hard tabs",
+	tags: ["whitespace", "hard_tab"],
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md010.md",
+	check: (context, report) => {
+		const includeCode = flagSettingOn(context.config, "code_blocks");
+		const ignored = new Set(
+			stringListSetting(context.config.ignore_code_languages).map((language) => language.toLowerCase()),
+		);
+		const spacesPerTab = context.config.spaces_per_tab;
+		// Capped (see REPEAT_CAP): markdownlint throws past V8's string limit.
+		const multiplier = spacesPerTab === undefined ? 1 : Math.min(REPEAT_CAP, Math.max(0, coercedNumber(spacesPerTab)));
+		const boxes: Array<TokenBox> = [];
+		for (const node of codeNodes(context)) {
+			if (node.fenceChar !== undefined) {
+				// Under an ignore list, a fence is excluded only when its language is listed (or it has none), even
+				// with `code_blocks: false`, as markdownlint's filter does.
+				const listed = node.lang === undefined || ignored.has(node.lang.toLowerCase());
+				if (includeCode ? ignored.size === 0 || !listed : ignored.size > 0 && !listed) continue;
+				const interior = fencedInterior(context, node);
+				boxes.push({
+					startLine: interior.start,
+					startColumn: 0,
+					endLine: interior.end,
+					endColumn: Number.MAX_SAFE_INTEGER,
+				});
+			} else if (!includeCode) boxes.push(boxOf(node));
+		}
+		if (!includeCode) for (const node of context.document.findAll("inlineCode")) boxes.push(boxOf(node));
+		for (let lineNumber = firstContentLine(context); lineNumber <= context.lines.length; lineNumber++) {
+			const line = context.lines[lineNumber - 1] as string;
+			for (const match of line.matchAll(/\t+/g)) {
+				const column = match.index + 1;
+				const length = match[0].length;
+				const tab: TokenBox = {
+					startLine: lineNumber,
+					startColumn: column,
+					endLine: lineNumber,
+					endColumn: column + length - 1,
+				};
+				if (boxes.some((box) => overlaps(box, tab))) continue;
+				const offset = context.mapping.lineStart(lineNumber) + match.index;
+				report(
+					context.diagnostic({
+						at: { offset, length },
+						detail: `Column: ${column}`,
+						range: true,
+						fix: { offset, length, content: "".padEnd(length * multiplier) },
+					}),
+				);
+			}
+		}
+	},
+});

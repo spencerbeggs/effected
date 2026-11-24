@@ -1,0 +1,17 @@
+#:schema https://raw.githubusercontent.com/spencerbeggs/effected/main/schemas/1.0/config.json
+
+# ./rules, ./rules/all and ./config name the root's types through the package's own name; keep that import external
+# in the declarations so each subpath refers to the root's types (LintRule, LintConfigRecord) instead of carrying a
+# copy (the @effected/cli-kit ./ui precedent). Values stay relative imports, which the unbundled output keeps as the
+# root's own modules.
+[package.build]
+dtsExternals = ["@effected/markdown-lint"]
+
+[package.build.meta.tsdoc]
+suppressWarnings = [
+  { messageId = "ae-forgotten-export", pattern = "_base" },
+  # The second API Extractor pass resolves the self-referencing "@effected/markdown-lint" import to the built root
+  # declarations, but still reports the root types it reaches as forgotten. Scoped to the three subpath entries only;
+  # what it would hide (a subpath-local declaration left unexported) is pinned by __test__/subpaths.test.ts.
+  { messageId = "ae-forgotten-export", pattern = 'entry point (?:rules(?:-all)?|config)\.d\.ts$' },
+]

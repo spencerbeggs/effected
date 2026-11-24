@@ -32,10 +32,10 @@ sources:
     title: "The bundler research report and the owner's rulings"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-13T09:10:21Z
+  at: 2026-11-24T05:55:52Z
 integrity:
   generated:
-    body: 5b3940453d2bcded
+    body: 125bf0093a42e10c
 ---
 
 # @effected/changesets
@@ -99,6 +99,8 @@ The oracle is pnpm's applied runs on throwaway copies of `__test__/fixtures/pnpm
 - `CF004`: only when the workspace's names are given, each named package exists.
 
 `ChangesetLint.defaults` is the first three. A caller adds its own style's rules, or replaces the defaults, through `ChangesetLint.lint`'s options or `MarkdownlintAdapter.rules`.
+
+A changeset file's own inline comment (`<!-- markdownlint-disable-file -->`, anywhere in the file, a YAML comment in the front matter included) silences a changeset rule under both hosts: `ChangesetLint.lint` honours inline comments by default, as markdownlint-cli2 does for the same rules adapted as custom rules, by the owner's choice of alignment with markdownlint. A caller using the rules as a gate over submitted files passes `noInlineConfig: true`, which `ChangesetLintOptions` forwards to `MarkdownLint.lint`.
 
 The defaults are held to `@changesets/parse`. A file it parses fails none of them, and a file it refuses fails one, checked in both hosts. Its reading is looser than a stricter linter's:
 

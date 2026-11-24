@@ -5,23 +5,56 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
+| `EffectiveLintConfig` | Interface | A configuration resolved against a rule list. | |
+| `InlineDirectives` | Class | Resolves markdownlint inline comments into per-line rule state. | honour markdownlint-disable comments, per-line rule state, configure-file inline config |
+| `InlineDirectivesResult` | Interface | The outcome of resolving inline comments over a document. | |
 | `LintCheck` | TypeAlias | A rule's check: read the context, report each finding through `report`. | |
+| `LintConfig` | Class | Resolves markdownlint configuration objects against a rule list. | resolve a markdownlint config object, enable rules by name alias or tag, extends merge |
+| `LintConfigRecord` | TypeAlias | A markdownlint configuration object. Keys match case-insensitively. | |
 | `LintContext` | Interface | Everything a lint rule's check reads, and the builder it reports through. | |
 | `LintDiagnostic` | Class | One finding a lint rule reports: markdownlint's `onError` fields, derived from kit positions, plus the reporting rule's names and the column. | read a lint finding, line column detail range and autofix edit |
 | `LintEditLike` | TypeAlias | A kit text edit as `PositionMapping.fixInfo` and `LintReport.fix` take it: a `MarkdownEdit` instance or a plain `{ offset, length, content }` literal — only those three fields are read. | |
 | `LintFixInfo` | Class | A markdownlint `fixInfo`: a one-line edit, 1-based, in markdownlint's own field names. Every field is optional, exactly as markdownlint's `RuleOnErrorFixInfo` is. | one-line autofix in markdownlint's shape, edit column delete count insert text |
-| `LintFrontmatter` | Interface | The frontmatter block a lint context saw at the head of the source. | |
+| `LintFrontmatter` | Interface | The front matter block a lint context saw at the head of the source, read as markdownlint reads it. | |
 | `LintRange` | TypeAlias | A markdownlint `range`: the 1-based column and the length, in UTF-16 code units, of the reported span on the diagnostic's line. Both are at least 1. | |
 | `LintReport` | Interface | What a rule reports: where, what, and optionally a range and a fix — every position as a kit node or offset span. `LintContext` turns it into a `LintDiagnostic`. | |
 | `LintRule` | Class | A lint rule: markdownlint-style metadata plus one `check` over a parsed kit document. | write a markdownlint custom rule over an mdast tree, define a rule once |
+| `LintSeverity` | TypeAlias | A rule's severity. | |
+| `MD001` | Variable | MD001 `heading-increment`: heading levels increment by one level at a time. | from `@effected/markdown-lint/rules` — heading-increment, heading levels increment by one, no skipped heading level |
+| `MD003` | Variable | MD003 `heading-style`: headings share one style. | from `@effected/markdown-lint/rules` — heading-style, consistent heading style, atx closed-atx or setext |
+| `MD004` | Variable | MD004 `ul-style`: unordered list markers follow one style. | from `@effected/markdown-lint/rules` — ul-style, consistent unordered list style, dash asterisk or plus marker |
+| `MD009` | Variable | MD009 `no-trailing-spaces`: lines end with no unexpected whitespace. | from `@effected/markdown-lint/rules` — no-trailing-spaces, trailing spaces and whitespace at line end, hard break |
+| `MD010` | Variable | MD010 `no-hard-tabs`: no hard tab characters. | from `@effected/markdown-lint/rules` — no-hard-tabs, hard tabs, tab characters, spaces per tab fix |
+| `MD012` | Variable | MD012 `no-multiple-blanks`: no more than `maximum` consecutive blank lines. | from `@effected/markdown-lint/rules` — no-multiple-blanks, multiple consecutive blank lines over a maximum |
+| `MD013` | Variable | MD013 `line-length`: lines are no longer than a limit. | from `@effected/markdown-lint/rules` — line-length, line length limit, long lines in headings tables code |
+| `MD018` | Variable | MD018 `no-missing-space-atx`: a space follows the hashes of an ATX heading. | from `@effected/markdown-lint/rules` — no-missing-space-atx, missing space after hash in an atx heading |
+| `MD019` | Variable | MD019 `no-multiple-space-atx`: one space follows the hashes of an ATX heading that has no closing sequence. | from `@effected/markdown-lint/rules` — no-multiple-space-atx, multiple spaces after hash in an atx heading |
+| `MD022` | Variable | MD022 `blanks-around-headings`: headings are surrounded by blank lines. | from `@effected/markdown-lint/rules` — blanks-around-headings, blank lines above and below headings |
+| `MD023` | Variable | MD023 `heading-start-left`: headings start at the beginning of their line. | from `@effected/markdown-lint/rules` — heading-start-left, indented heading not at line start |
+| `MD024` | Variable | MD024 `no-duplicate-heading`: no two headings have the same content. | from `@effected/markdown-lint/rules` — no-duplicate-heading, duplicate headings with the same text, siblings only |
+| `MD025` | Variable | MD025 `single-title`: a document has one top-level heading. | from `@effected/markdown-lint/rules` — single-title, single-h1, single title, multiple top-level h1 headings |
+| `MD026` | Variable | MD026 `no-trailing-punctuation`: headings do not end in punctuation. | from `@effected/markdown-lint/rules` — no-trailing-punctuation, heading ends in punctuation |
+| `MD031` | Variable | MD031 `blanks-around-fences`: fenced code blocks are surrounded by blank lines. | from `@effected/markdown-lint/rules` — blanks-around-fences, blank lines around fenced code blocks |
+| `MD032` | Variable | MD032 `blanks-around-lists`: lists are surrounded by blank lines. | from `@effected/markdown-lint/rules` — blanks-around-lists, blank lines around lists |
+| `MD033` | Variable | MD033 `no-inline-html`: no raw HTML. | from `@effected/markdown-lint/rules` — no-inline-html, inline html, raw html elements, allowed elements |
+| `MD040` | Variable | MD040 `fenced-code-language`: fenced code blocks name a language. | from `@effected/markdown-lint/rules` — fenced-code-language, fenced code block without a language, allowed languages |
+| `MD041` | Variable | MD041 `first-line-heading`: a document starts with a top-level heading. | from `@effected/markdown-lint/rules` — first-line-heading, first-line-h1, first line heading, document starts with h1 |
+| `MD045` | Variable | MD045 `no-alt-text`: images have alternate text. | from `@effected/markdown-lint/rules` — no-alt-text, image without alternate text, accessibility |
+| `MD047` | Variable | MD047 `single-trailing-newline`: the file ends with a line break. | from `@effected/markdown-lint/rules` — single-trailing-newline, trailing newline, file ends with one line break |
+| `MD060` | Variable | MD060 `table-column-style`: table pipes are used consistently. | from `@effected/markdown-lint/rules` — table-column-style, table column style, pipe alignment, aligned compact tight |
 | `MarkdownLint` | Class | The programmatic lint host: run `LintRule`s over markdown and collect their `LintDiagnostic`s. Not instantiable. | lint markdown programmatically without markdownlint, run rules over a string or parsed document |
 | `MarkdownLintDocumentOptions` | Interface | Options for `MarkdownLint.lintDocument`. | |
 | `MarkdownLintOptions` | Interface | Options for `MarkdownLint.lint`. | |
 | `MarkdownlintAdapter` | Class | Run `LintRule`s inside markdownlint. Not instantiable. | run a kit lint rule inside markdownlint-cli2 or vs code as a custom rule |
 | `MarkdownlintAdapterOptions` | Interface | Options for `MarkdownlintAdapter.rule`. | |
+| `MarkdownlintConfigError` | Class | A markdownlint configuration file could not be read or resolved. | from `@effected/markdown-lint/config` — markdownlint config read failure, unreadable parse extends-cycle too-large unsupported |
+| `MarkdownlintConfigFile` | Class | Reads markdownlint configuration files and resolves the configuration that applies to a markdown file. | from `@effected/markdown-lint/config` — read .markdownlint.jsonc or yaml, follow extends, find nearest config like markdownlint-cli2 |
 | `MarkdownlintErrorInfo` | Interface | markdownlint's `RuleOnErrorInfo`: what one `onError` call reports. | |
 | `MarkdownlintFixInfo` | Interface | markdownlint's `RuleOnErrorFixInfo`: a one-line fix, 1-based. | |
 | `MarkdownlintOnError` | TypeAlias | markdownlint's `RuleOnError` callback. | |
 | `MarkdownlintRule` | Interface | An object satisfying markdownlint's custom-rule contract (`Rule`): pass it in `customRules`, to `markdownlint`'s `lint` or to markdownlint-cli2. | |
 | `MarkdownlintRuleParams` | Interface | The part of markdownlint's `RuleParams` the adapter reads. | |
 | `PositionMapping` | Class | Translates kit source offsets into markdownlint's coordinates: 1-based line numbers, 1-based columns, `range` tuples and one-line `fixInfo` edits. | convert offsets to markdownlint line numbers, columns, ranges and one-line fixes |
+| `ResolvedLintConfig` | Interface | The configuration that applies to one markdown file. | from `@effected/markdown-lint/config` |
+| `rules` | Variable | Every ported markdownlint rule, in markdownlint's own order. | from `@effected/markdown-lint/rules/all` — run every ported markdownlint built-in rule, the full rule set |
+| `uncovered` | Variable | The first names of markdownlint's built-in rules that have no port yet, in markdownlint's order. | from `@effected/markdown-lint/rules/all` — markdownlint rules not ported, report what was not checked |

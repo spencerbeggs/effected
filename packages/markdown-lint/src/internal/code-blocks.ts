@@ -1,0 +1,78 @@
+// Code-block extents as micromark's `codeFenced` and `codeIndented` tokens
+// give them, derived from the kit tree.
+
+import type { Code } from "@effected/markdown";
+import type { LintContext } from "../LintContext.js";
+import { containerNodes } from "./containers.js";
+import type { LineRange } from "./lines.js";
+import { addRange } from "./lines.js";
+import { perReading } from "./memo.js";
+
+// A closed fence ends on its closing fence line: only container markers,
+// indentation and at least the opener's run of its character.
+const isClosingFence = (line: string, node: Code): boolean => {
+	const match = /^(?:[ \t]*>)*[ \t]*(([`~])\2*)[ \t]*$/.exec(line);
+	return match !== null && match[2] === node.fenceChar && (match[1] as string).length >= (node.fenceLength ?? 3);
+};
+
+// The lines a container (a blockquote, list item or footnote definition) starts on.
+const containerStartLines: (context: LintContext) => ReadonlySet<number> = perReading(
+	(context) => new Set(containerNodes(context).map((container) => container.position.start.line)),
+);
+
+/**
+ * The 1-based line micromark's `codeFenced` token ends on. A closed fence
+ * ends on its closing fence line. An unclosed fence ends where the kit's
+ * node ends, except that micromark's token takes the next line break too,
+ * ending at the start of the following line, when that line starts a new
+ * container (a list item, blockquote or footnote definition), or when it is
+ * the document's empty last line and no blockquote holds the fence (a list
+ * item or footnote continues onto an empty line; a blockquote does not).
+ * @internal
+ */
+export const fencedEndLine = (context: LintContext, node: Code): number => {
+	const start = node.position.start.line;
+	const end = node.position.end.line;
+	const closed = end > start && isClosingFence(context.lines[end - 1] ?? "", node);
+	if (closed || end >= context.lines.length) return end;
+	const next = end + 1;
+	if (containerStartLines(context).has(next)) return next;
+	const emptyLast = next === context.lines.length && context.lines[next - 1] === "";
+	if (!emptyLast) return end;
+	const quoted = containerNodes(context).some(
+		(container) =>
+			container.type === "blockquote" &&
+			container.position.start.offset <= node.position.start.offset &&
+			node.position.end.offset <= container.position.end.offset,
+	);
+	return quoted ? end : next;
+};
+
+/**
+ * The lines between a fenced code block's fences, as micromark's
+ * `codeFenced` token gives them: `startLine + 1` to `endLine - 1`.
+ * @internal
+ */
+export const fencedInterior = (context: LintContext, node: Code): LineRange => ({
+	start: node.position.start.line + 1,
+	end: fencedEndLine(context, node) - 1,
+});
+
+/** Every kit code node, fenced or indented. @internal */
+export const codeNodes = (context: LintContext): ReadonlyArray<Code> =>
+	context.document.findAll("code") as ReadonlyArray<Code>;
+
+/**
+ * Every line of every code block, fences included, as micromark's
+ * `codeFenced` and `codeIndented` tokens span them. Computed once per
+ * reading and shared: copy it before adding to it.
+ * @internal
+ */
+export const codeBlockLines: (context: LintContext) => ReadonlySet<number> = perReading((context) => {
+	const lines = new Set<number>();
+	for (const node of codeNodes(context)) {
+		const end = node.fenceChar === undefined ? node.position.end.line : fencedEndLine(context, node);
+		addRange(lines, node.position.start.line, end);
+	}
+	return lines;
+});

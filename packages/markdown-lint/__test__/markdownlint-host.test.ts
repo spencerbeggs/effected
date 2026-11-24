@@ -1,14 +1,15 @@
 // The adapter under a REAL markdownlint, pinned as this package's one
-// differential-oracle devDependency (the same copy the workspace root's
-// markdownlint-cli2 resolves). It is the differential host: markdownlint
+// differential-oracle devDependency (0.42.2, as the vendored source and the
+// copy the workspace root's markdownlint-cli2 resolves). It is the differential host: markdownlint
 // validates every onError call (line bounds, range bounds, fixInfo bounds) and
 // throws on a bad one, applies fixInfo with its own applyFixes, and honours
 // inline disable comments, so a mapping bug shows up as markdownlint's
 // behaviour, not as our own opinion.
 //
-// The specifier goes through a variable so that no `src/` type ever resolves
-// against markdownlint's declarations: the adapter's local types must stay a
-// structural subset checked by this file alone. Only this file imports it.
+// markdownlint is loaded by helpers/markdownlint-oracle.ts, through variable
+// specifiers so that no `src/` type ever resolves against markdownlint's
+// declarations: the adapter's local types stay a structural subset, checked
+// here at runtime by markdownlint's own validation.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -18,40 +19,12 @@ import { Option } from "effect";
 import type { LintDiagnostic } from "../src/LintDiagnostic.js";
 import { LintRule } from "../src/LintRule.js";
 import { MarkdownLint } from "../src/MarkdownLint.js";
-import type { MarkdownlintRule } from "../src/MarkdownlintAdapter.js";
 import { MarkdownlintAdapter } from "../src/MarkdownlintAdapter.js";
+import { MD025 } from "../src/rules/MD025.js";
+import { MD041 } from "../src/rules/MD041.js";
+import type { MarkdownlintResult } from "./helpers/markdownlint-oracle.js";
+import { markdownlintLint, oracleApplyFixes, oracleVersion } from "./helpers/markdownlint-oracle.js";
 import { changesetRules } from "./rules/index.js";
-
-interface MarkdownlintResult {
-	readonly lineNumber: number;
-	readonly ruleNames: ReadonlyArray<string>;
-	readonly ruleDescription: string;
-	readonly ruleInformation: string | null;
-	readonly errorDetail: string | null;
-	readonly errorContext: string | null;
-	readonly errorRange: ReadonlyArray<number> | null;
-	readonly fixInfo: unknown;
-	readonly severity?: string;
-}
-
-interface MarkdownlintApi {
-	readonly lint: (options: {
-		readonly strings: Readonly<Record<string, string>>;
-		readonly customRules: ReadonlyArray<MarkdownlintRule>;
-		readonly config: Readonly<Record<string, unknown>>;
-		readonly handleRuleFailures?: boolean;
-	}) => Promise<Record<string, ReadonlyArray<MarkdownlintResult>>>;
-}
-
-interface MarkdownlintHelpers {
-	readonly applyFixes: (input: string, errors: ReadonlyArray<MarkdownlintResult>) => string;
-	readonly getVersion: () => string;
-}
-
-const promiseSpecifier = "markdownlint/promise";
-const helpersSpecifier = "markdownlint";
-const markdownlint: MarkdownlintApi = await import(promiseSpecifier);
-const helpers: MarkdownlintHelpers = await import(helpersSpecifier);
 
 interface GoldenCase {
 	readonly id: number;
@@ -71,7 +44,7 @@ const lintWith = async (
 ): Promise<ReadonlyArray<MarkdownlintResult>> => {
 	const config: Record<string, unknown> = { default: false, ...enabled };
 	for (const rule of rules) if (!(rule.name in config)) config[rule.name] = true;
-	const results = await markdownlint.lint({
+	const results = markdownlintLint({
 		strings: { input: text },
 		customRules: MarkdownlintAdapter.rules(rules),
 		config,
@@ -83,7 +56,7 @@ const fromMarkdownlint = ({ lineNumber, errorDetail, errorContext, errorRange }:
 	lineNumber,
 	errorDetail,
 	errorContext,
-	errorRange,
+	errorRange: errorRange === null ? null : [...errorRange],
 });
 
 const asResult = (finding: LintDiagnostic) => ({
@@ -141,12 +114,11 @@ const frontmatterRule = LintRule.make({
 
 describe("MarkdownlintAdapter under markdownlint", () => {
 	it("loads a real markdownlint", () => {
-		// No minor pin: the copy is whatever the root's markdownlint-cli2
-		// resolves, so a pin here would turn red on a toolchain bump that
-		// changes nothing in this package. The support window is stated in
+		// No version pin here: the devDependency's exact pin is the one
+		// place the oracle's version is set, and the corpus is captured
+		// from the vendored source of that version. The support window is stated in
 		// the README; this asserts only that the oracle is present.
-		assert.match(helpers.getVersion(), /^\d+\.\d+\.\d+/);
-		assert.strictEqual(typeof markdownlint.lint, "function");
+		assert.match(oracleVersion(), /^\d+\.\d+\.\d+/);
 	});
 
 	describe("is byte-identical to systems' markdownlint rules on the golden corpus", () => {
@@ -172,15 +144,7 @@ describe("MarkdownlintAdapter under markdownlint", () => {
 		const results = await lintWith(text, [promoteH1]);
 		const programmatic = MarkdownLint.lint(text, [promoteH1]);
 		assert.lengthOf(results, 2);
-		assert.deepStrictEqual(
-			results.map(({ lineNumber, errorDetail, errorContext, errorRange }) => ({
-				lineNumber,
-				errorDetail,
-				errorContext,
-				errorRange,
-			})),
-			programmatic.map(asResult),
-		);
+		assert.deepStrictEqual(results.map(fromMarkdownlint), programmatic.map(asResult));
 		assert.deepStrictEqual(
 			results.map((result) => result.lineNumber),
 			[5, 9],
@@ -199,7 +163,7 @@ describe("MarkdownlintAdapter under markdownlint", () => {
 			const results = await lintWith(text, [promoteH1]);
 			const edits = MarkdownLint.lint(text, [promoteH1]).flatMap((finding) => Option.toArray(finding.edit));
 			assert.isAbove(results.length, 0, JSON.stringify(text));
-			assert.strictEqual(helpers.applyFixes(text, results), MarkdownEdit.applyAll(text, edits), JSON.stringify(text));
+			assert.strictEqual(oracleApplyFixes(text, results), MarkdownEdit.applyAll(text, edits), JSON.stringify(text));
 		}
 	});
 
@@ -208,10 +172,11 @@ describe("MarkdownlintAdapter under markdownlint", () => {
 		const results = await lintWith(text, [frontmatterRule]);
 		assert.lengthOf(results, 1);
 		assert.strictEqual(results[0]?.lineNumber, 2);
-		assert.strictEqual(results[0]?.errorDetail, "frontmatter of 4 lines");
+		// markdownlint's own count: its closing fence swallows the blank line after it.
+		assert.strictEqual(results[0]?.errorDetail, "frontmatter of 5 lines");
 		assert.deepStrictEqual(results[0]?.errorRange, [1, 8]);
 		assert.deepStrictEqual(results[0]?.fixInfo, { deleteCount: -1 });
-		assert.strictEqual(helpers.applyFixes(text, results), "---\nlayout: y\n---\n\n## Features\n");
+		assert.strictEqual(oracleApplyFixes(text, results), "---\nlayout: y\n---\n\n## Features\n");
 	});
 
 	it("honours markdownlint's inline disable comments", async () => {
@@ -297,7 +262,7 @@ describe("MarkdownlintAdapter under markdownlint", () => {
 			const bare = text.slice(1);
 			assert.strictEqual(
 				MarkdownEdit.applyAll(text, edits),
-				`﻿${helpers.applyFixes(bare, results)}`,
+				`﻿${oracleApplyFixes(bare, results)}`,
 				JSON.stringify(text),
 			);
 		}
@@ -334,7 +299,7 @@ describe("MarkdownlintAdapter under markdownlint", () => {
 				const bare = text.slice(lead);
 				assert.strictEqual(
 					MarkdownEdit.applyAll(text, edits),
-					text.slice(0, lead) + helpers.applyFixes(bare, results),
+					text.slice(0, lead) + oracleApplyFixes(bare, results),
 					JSON.stringify(text),
 				);
 			}
@@ -342,11 +307,30 @@ describe("MarkdownlintAdapter under markdownlint", () => {
 	});
 
 	it("accepts every adapted rule's metadata through markdownlint's own custom-rule validation", async () => {
-		const results = await markdownlint.lint({
+		const results = markdownlintLint({
 			strings: { input: "# x\n" },
 			customRules: MarkdownlintAdapter.rules([...changesetRules, promoteH1, frontmatterRule]),
 			config: { default: true },
 		});
 		assert.isDefined(results.input);
+	});
+
+	// Recorded divergence "the adapter reads the masked comment": markdownlint hands a custom rule the masked
+	// text, so a comment that is not one to markdownlint (its body ends in `-`) reads as a comment to an adapted
+	// rule. The ported rules are adapted under other names, as a custom rule may not reuse a built-in's.
+	it("reads a comment whose body ends in a dash as a comment, where markdownlint's MD025 and MD041 do not", async () => {
+		const adapted = (rule: LintRule, name: string) =>
+			LintRule.make({ names: [name], description: rule.description, tags: ["test"], check: rule.check });
+		const rules = [adapted(MD025, "X025"), adapted(MD041, "X041")];
+		const found = async (text: string) =>
+			(await lintWith(text, rules, { MD025: true, MD041: true })).map(
+				(result) => `${result.ruleNames[0]}:${result.lineNumber}`,
+			);
+		assert.deepStrictEqual(await found("<!-- a --->\n\n# Title\n"), ["MD041:1"]);
+		assert.deepStrictEqual(await found("<!-- a --->\n\n# One\n\n# Two\n"), ["MD041:1", "X025:5"]);
+		// Controls: a well-formed comment reads as one to both, so neither host reports; and the adapted rules do
+		// report, beside markdownlint's, where the document opens with text.
+		assert.deepStrictEqual(await found("<!-- a -->\n\n# Title\n"), []);
+		assert.deepStrictEqual(await found("text\n\n# One\n\n# Two\n"), ["MD041:1", "X041:1"]);
 	});
 });

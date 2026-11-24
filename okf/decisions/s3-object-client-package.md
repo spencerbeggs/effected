@@ -32,11 +32,13 @@ integrity:
     body: 10c4b8a96defcb5e
   verified:
     by: human:spencer
-    at: 2026-11-08T18:25:54Z
-    content: bbfbc4911e7cd54f
+    at: 2026-11-24T06:19:30Z
+    content: 211b8657af111299
 verified:
   - by: human:spencer
     at: 2026-11-08T18:25:54Z
+  - by: human:spencer
+    at: 2026-11-24T06:19:30Z
 ---
 
 # Raw S3 objects get their own boundary package, with a ListObjectsV2 reader that fails a wrong root

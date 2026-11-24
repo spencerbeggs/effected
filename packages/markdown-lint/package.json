@@ -23,20 +23,26 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
-		"./package.json": "./package.json"
+		"./package.json": "./package.json",
+		"./rules": "./src/rules/index.ts",
+		"./rules/all": "./src/rules/all.ts",
+		"./config": "./src/config/index.ts"
 	},
 	"scripts": {
 		"build": "effected package build",
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@effected/markdown": "workspace:^"
+		"@effected/jsonc": "workspace:^",
+		"@effected/markdown": "workspace:^",
+		"@effected/yaml": "workspace:^"
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
+		"@effected/memfs": "workspace:*",
 		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
-		"markdownlint": "0.42.1",
+		"markdownlint": "0.42.2",
 		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {

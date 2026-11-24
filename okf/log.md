@@ -1,5 +1,25 @@
 # Log
 
+## 2026-11-24
+
+* Updated @effected/markdown-lint
+* Updated @effected/markdown
+* Updated The vitest suite splits into a fast tier with coverage and a slow tier run beside it
+* Updated Every package carries the same manifest shape and file set
+* Added The kit's markdown lint reads markdownlint's own configuration model, not markdownlint-cli2's, and stays in @effected/markdown-lint for now
+* Updated The markdownlint-compatible lint shape is its own pure package; @effected/markdown gains only the callback visitor
+* Updated effected
+* Updated workspace
+* Updated @effected/changesets
+* Updated Keyed operations come from core Mac, payload digests from core Digest, both required in R
+* Updated Raw S3 objects get their own boundary package, with a ListObjectsV2 reader that fails a wrong root
+* Updated actions-storage
+* Updated glob
+
+## 2026-11-23
+
+* Updated @effected/markdown-lint
+
 ## 2026-11-22
 
 * Updated @effected/workspaces/testing: the repo-shape checks

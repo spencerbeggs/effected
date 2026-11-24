@@ -10,10 +10,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-21T19:43:06Z
+  at: 2026-11-24T04:25:23Z
 integrity:
   generated:
-    body: 6b7a58c0d45bd823
+    body: cbc3dd708321d744
 ---
 
 # workspace
@@ -36,7 +36,7 @@ Build tooling is `@effected/bundler`, run by the `effected` tool from source, wi
 
 ## Build pipeline
 
-`pnpm build` runs `turbo run build`, leaving out the frozen `docs` site. Each package's `build` script is `effected package build`, and there is one target: `dist/prod/<group>/{pkg,meta}`, `dist/prod/targets.json` and `dist/prod/issues.json`. `build` depends on the package's `types:check`, which chains over `^types:check`, and it has no `^build`, because workspace links resolve to each sibling's source. See [one build target](../decisions/one-build-target-from-source-links.md). Config is `effected.toml`, which only six packages need; each build appends to `.cache/effected/build.jsonl` and `issues.jsonl` at the workspace root. `@effected/plugin` is a root devDependency, never a package's dependency, and `effected` runs from source as [the bootstrap decision](../decisions/bundler-bootstraps-from-source.md) describes. Build through `pnpm build --filter <pkg>`: a direct `effected package build` is allowed but skips the typecheck gate and the cache.
+`pnpm build` runs `turbo run build`, leaving out the frozen `docs` site. Each package's `build` script is `effected package build`, and there is one target: `dist/prod/<group>/{pkg,meta}`, `dist/prod/targets.json` and `dist/prod/issues.json`. `build` depends on the package's `types:check`, which chains over `^types:check`, and it has no `^build`, because workspace links resolve to each sibling's source. See [one build target](../decisions/one-build-target-from-source-links.md). Config is `effected.toml`, which only ten packages need (`cli-kit`, `config-file`, `images`, `jsonl`, `jwt`, `markdown-lint`, `npm`, `plugin`, `pnpm`, `pnpm-plugin-effected`); each build appends to `.cache/effected/build.jsonl` and `issues.jsonl` at the workspace root. `@effected/plugin` is a root devDependency, never a package's dependency, and `effected` runs from source as [the bootstrap decision](../decisions/bundler-bootstraps-from-source.md) describes. Build through `pnpm build --filter <pkg>`: a direct `effected package build` is allowed but skips the typecheck gate and the cache.
 
 The root `package.json` declares its kit devDependencies (`@effected/plugin`, `@effected/changesets`, `@effected/workspaces`) as `link:packages/<name>`, never `workspace:*`: turbo folds the root's internal dependencies into the global hash, so at `workspace:*` an edit anywhere in their closure missed every task's cache ([the root devDependency hash gotcha](../gotchas/root-workspace-devdeps-hash.md)). `build` hashes the `CI` and `GITHUB_ACTIONS` variables and not `.changeset/**`, since pending changesets only feed optimistic next versions, which CI turns off ([the build task's hash inputs](../decisions/build-task-hash-inputs.md)).
 

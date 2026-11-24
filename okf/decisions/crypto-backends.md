@@ -26,8 +26,8 @@ integrity:
     body: 41b63d2de5545ffe
   verified:
     by: human:spencer
-    at: 2026-10-31T19:39:48Z
-    content: 2597ee89125a7d6f
+    at: 2026-11-24T06:19:30Z
+    content: 6f3220834e2bc019
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -39,6 +39,8 @@ verified:
     at: 2026-10-28T14:29:17Z
   - by: human:spencer
     at: 2026-10-31T19:39:48Z
+  - by: human:spencer
+    at: 2026-11-24T06:19:30Z
 ---
 
 # Keyed operations come from core Mac, payload digests from core Digest, both required in R

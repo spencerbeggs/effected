@@ -11,6 +11,7 @@
 import type { MarkdownDocument, MarkdownNode, MarkdownRangeLike, SourceIndex } from "@effected/markdown";
 import { LineIndex, MarkdownEdit } from "@effected/markdown";
 import { Option } from "effect";
+import { LINE_BREAK } from "./internal/line-endings.js";
 import type { LintRange } from "./LintDiagnostic.js";
 import { LintFixInfo } from "./LintDiagnostic.js";
 
@@ -107,6 +108,17 @@ export class PositionMapping {
 	}
 
 	/**
+	 * The offset a 1-based line starts at; a line past either end reads as
+	 * the nearest line.
+	 *
+	 * @param lineNumber - The 1-based line.
+	 * @returns The UTF-16 offset of the line's first character.
+	 */
+	lineStart(lineNumber: number): number {
+		return this.index.lineStart(lineNumber - 1);
+	}
+
+	/**
 	 * The 1-based line containing `offset`.
 	 *
 	 * @param offset - A UTF-16 offset, clamped to the source; an offset at a
@@ -181,19 +193,39 @@ export class PositionMapping {
 	 * - stays within one line's text — `editColumn`, then `deleteCount` when
 	 *   it deletes and `insertText` when it inserts; or
 	 * - deletes exactly one whole line with its terminator and inserts nothing
-	 *   — `deleteCount: -1`, markdownlint's whole-line delete.
+	 *   — `deleteCount: -1`, markdownlint's whole-line delete. The
+	 *   diagnostic's own line may be deleted in either spelling: from its
+	 *   start through the next line's start, or from the previous line's end
+	 *   through its own end — the only spelling a last line, which has no
+	 *   terminator, has. Both leave the text markdownlint's delete leaves.
+	 *   The one line of an empty source has no text to delete at all: an
+	 *   empty edit at its start is that line's whole-line delete.
 	 *
 	 * Anything else — an edit crossing a line break, one starting inside a
 	 * `\r\n`, or one that changes nothing — is `Option.none()`. The fix is not
-	 * lost: the diagnostic keeps it as a kit edit for `MarkdownEdit.applyAll`.
+	 * lost: the diagnostic keeps it as a kit edit, which `MarkdownLint.applyFixes`
+	 * applies.
 	 * `fixInfo.lineNumber` is set only when the edit's line differs from
-	 * `lineNumber`, as markdownlint's built-in rules do.
+	 * `lineNumber`, as markdownlint's built-in rules do. A line break the
+	 * edit inserts is written `\n` in `insertText`, whatever the document's
+	 * ending, because markdownlint's `applyFix` writes each `\n` as that
+	 * ending; the kit edit keeps the document's own text.
 	 *
 	 * @param edit - The kit edit, in UTF-16 offsets.
 	 * @param lineNumber - The 1-based line of the diagnostic carrying the fix.
 	 * @returns The `fixInfo`, or `Option.none()`.
 	 */
 	fixInfo(edit: LintEditLike, lineNumber: number): Option.Option<LintFixInfo> {
+		const own = lineNumber - 1;
+		if (edit.content === "" && edit.length === 0 && edit.offset === 0 && this.index.lineCount === 1) {
+			if (lineNumber === 1 && this.index.lineEnd(0) === 0) return Option.some(LintFixInfo.make({ deleteCount: -1 }));
+		}
+		if (edit.content === "" && edit.length > 0 && own > 0 && own < this.index.lineCount) {
+			const fromPreviousEnd = this.index.lineEnd(own - 1);
+			if (edit.offset === fromPreviousEnd && edit.offset + edit.length === this.index.lineEnd(own)) {
+				return Option.some(LintFixInfo.make({ deleteCount: -1 }));
+			}
+		}
 		const line = this.index.lineAt(edit.offset);
 		const start = this.index.lineStart(line);
 		const end = this.index.lineEnd(line);
@@ -216,7 +248,9 @@ export class PositionMapping {
 				...onLine,
 				editColumn: edit.offset - start + 1,
 				...(edit.length > 0 ? { deleteCount: edit.length } : {}),
-				...(edit.content !== "" ? { insertText: edit.content } : {}),
+				// markdownlint spells a line break `\n` and its applyFix writes the document's ending, so the kit
+				// edit's real ending is written back as `\n` here.
+				...(edit.content !== "" ? { insertText: edit.content.replace(LINE_BREAK, "\n") } : {}),
 			}),
 		);
 	}

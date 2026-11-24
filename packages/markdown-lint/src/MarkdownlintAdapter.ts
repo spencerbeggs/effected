@@ -9,9 +9,10 @@
 // checked against markdownlint 0.42, the copy markdownlint-cli2 0.24 —
 // this repository's own markdown linter — runs.
 
-import type { MarkdownDialect, MarkdownDocument, MarkdownParseError } from "@effected/markdown";
+import type { MarkdownDialect, MarkdownParseError } from "@effected/markdown";
 import { Option, Result } from "effect";
-import { parseDocument, parseSettings, refusalDiagnostic, runRule } from "./internal/host.js";
+import type { Reading } from "./internal/host.js";
+import { parseSettings, readSource, refusalDiagnostic, runRule } from "./internal/host.js";
 import type { LintDiagnostic } from "./LintDiagnostic.js";
 import type { LintRule } from "./LintRule.js";
 
@@ -22,7 +23,8 @@ import type { LintRule } from "./LintRule.js";
  * markdownlint's own params object satisfies it; so does a hand-built
  * `{ name, lines, frontMatterLines }` in a test. `lines` is the content after
  * markdownlint removed the front matter, `\n`-split with HTML comment bodies
- * masked; `frontMatterLines` is the removed block, possibly empty.
+ * masked; `frontMatterLines` is the removed block, possibly empty; `config`
+ * is the rule's settings.
  *
  * @public
  */
@@ -33,6 +35,11 @@ export interface MarkdownlintRuleParams {
 	readonly lines: ReadonlyArray<string>;
 	/** The front matter lines, fences included; empty when there is none. */
 	readonly frontMatterLines: ReadonlyArray<string>;
+	/**
+	 * The rule's settings, as markdownlint resolved them; an object is handed
+	 * to the rule as `LintContext.config`, anything else as `{}`.
+	 */
+	readonly config?: unknown;
 }
 
 /**
@@ -124,7 +131,7 @@ export interface MarkdownlintAdapterOptions {
 interface CachedParse {
 	readonly frontMatterLines: ReadonlyArray<string>;
 	readonly key: string;
-	readonly result: Result.Result<MarkdownDocument, MarkdownParseError>;
+	readonly result: Result.Result<Reading, MarkdownParseError>;
 }
 
 // One parse per linted file, shared by every adapted rule markdownlint runs
@@ -140,7 +147,7 @@ const sourceOf = (params: MarkdownlintRuleParams): string =>
 const documentFor = (
 	params: MarkdownlintRuleParams,
 	options: MarkdownlintAdapterOptions | undefined,
-): Result.Result<MarkdownDocument, MarkdownParseError> => {
+): Result.Result<Reading, MarkdownParseError> => {
 	const settings = parseSettings(options);
 	const key = `${settings.dialect}|${settings.frontmatter}`;
 	let entries = parses.get(params.lines);
@@ -150,10 +157,21 @@ const documentFor = (
 	}
 	const hit = entries.find((entry) => entry.key === key && entry.frontMatterLines === params.frontMatterLines);
 	if (hit !== undefined) return hit.result;
-	const result = parseDocument(sourceOf(params), settings);
+	const result = readSource(sourceOf(params), params.frontMatterLines.length, settings);
 	entries.push({ frontMatterLines: params.frontMatterLines, key, result });
 	return result;
 };
+
+const noSettings: Readonly<Record<string, unknown>> = Object.freeze({});
+
+// markdownlint has already removed `enabled` and `severity`; a hand-built
+// params object may not have.
+const settingsOf = (config: unknown): Readonly<Record<string, unknown>> =>
+	typeof config === "object" && config !== null && !Array.isArray(config)
+		? Object.freeze(
+				Object.fromEntries(Object.entries(config).filter(([key]) => key !== "enabled" && key !== "severity")),
+			)
+		: noSettings;
 
 /**
  * Translate one finding into markdownlint's numbering and forward it.
@@ -228,6 +246,13 @@ export class MarkdownlintAdapter {
 	 * front matter back when it reports, so its `lineNumber`s equal the
 	 * programmatic host's.
 	 *
+	 * The check reads markdownlint's own front matter count and the text it
+	 * hands rules, comment bodies masked, so it sees what it would see under
+	 * `MarkdownLint.lint`. Its `context.config` is `params.config`. Every
+	 * finding is forwarded with severity `"error"` on the kit side;
+	 * markdownlint applies the configured severity, and its inline comments,
+	 * itself.
+	 *
 	 * A document nested past the kit's hardening cap is reported, not
 	 * thrown: one finding at the refusal, as `MarkdownLint.lint` reports it.
 	 * A rule's own `throw` propagates to markdownlint, which reports or
@@ -251,7 +276,7 @@ export class MarkdownlintAdapter {
 				const parsed = documentFor(params, options);
 				const findings = Result.isFailure(parsed)
 					? [refusalDiagnostic(parsed.failure, rule)]
-					: runRule(parsed.success, rule, params.name);
+					: runRule(parsed.success, rule, { name: params.name, config: settingsOf(params.config), severity: "error" });
 				for (const finding of findings) forward(finding, params.frontMatterLines.length, onError);
 			},
 		};

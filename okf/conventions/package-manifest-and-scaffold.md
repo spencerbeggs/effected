@@ -12,10 +12,10 @@ sources:
     resource: ../../packages/semver/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-09T00:05:23Z
+  at: 2026-11-24T04:25:23Z
 integrity:
   generated:
-    body: 261ede98fab8c06f
+    body: 3e708b25cacd8704
 ---
 
 # Every package carries the same manifest shape and file set
@@ -33,7 +33,7 @@ A package `packages/X` (npm name `@effected/X`) carries these files:
 - `package.json` — see [the package.json shape](#packagejson-shape).
 - `tsconfig.json` — `{ "$schema": "https://json.schemastore.org/tsconfig.json", "extends": "@effected/plugin/tsconfig/ecma.json" }`, identical across every package.
 - `tsdoc.json` — copied verbatim from a sibling; the standard `supportForTags` allow-list, identical across packages.
-- `effected.toml` — only when a package has something to say. Most have nothing: the bundler's defaults include the narrow `_base` suppression, and only six packages carry a file.
+- `effected.toml` — only when a package has something to say. Most have nothing: the bundler's defaults include the narrow `_base` suppression, and only ten packages carry a file (`cli-kit`, `config-file`, `images`, `jsonl`, `jwt`, `markdown-lint`, `npm`, `plugin`, `pnpm`, `pnpm-plugin-effected`).
 - `LICENSE`, `CLAUDE.md`, `README.md` — copied or authored per-package; `CLAUDE.md` is where the package documents itself, and the root `CLAUDE.md` deliberately does not duplicate it.
 - `src/index.ts` — the public entrypoint, re-exports only.
 - `__test__/` — tests live here, never co-located in `src/`.

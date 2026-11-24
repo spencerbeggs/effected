@@ -73,7 +73,7 @@ Mechanics → `okf/modules/workspace.md`, `okf/conventions/build-through-turbo-o
 
 **Workspace links resolve to `src/`.** There is no dev build and no `prepare`, so a sibling never needs building before a typecheck or a test. Only tests that read their own `dist` build first, through `vitest.setup.ts`.
 
-**The config is `effected.toml`, and only nine packages need one** (`cli-kit`, `config-file`, `images`, `jsonl`, `jwt`, `npm`, `plugin`, `pnpm`, `pnpm-plugin-effected`). Within a tier the first file found is the only one read: root `.config/effected.toml`, then `effected.toml`; package `.config/effected.toml`, then `effected.toml`, then `lib/configs/effected.toml`. The package tier merges over the root: objects per key, arrays and scalars replace.
+**The config is `effected.toml`, and only ten packages need one** (`cli-kit`, `config-file`, `images`, `jsonl`, `jwt`, `markdown-lint`, `npm`, `plugin`, `pnpm`, `pnpm-plugin-effected`). Within a tier the first file found is the only one read: root `.config/effected.toml`, then `effected.toml`; package `.config/effected.toml`, then `effected.toml`, then `lib/configs/effected.toml`. The package tier merges over the root: objects per key, arrays and scalars replace.
 
 **The `effected` bin runs from source.** In a pnpm script or turbo task, `nodeOptions` in `pnpm-workspace.yaml` loads tsx. A direct run of `node_modules/.bin/effected` or `effected-mcp` registers tsx itself. Why → `okf/decisions/bundler-bootstraps-from-source.md`.
 
