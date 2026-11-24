@@ -479,13 +479,17 @@ const linkifyRun = (pieces: ReadonlyArray<RunPiece>): void => {
 	 * which is every node the text fallback produced. A node whose value was
 	 * DECODED — an entity, a backslash escape — is shorter than the source it
 	 * spans, so an index inside it clamps to that node's own range rather than
-	 * running past its end. An email address holds neither, so this is a
-	 * bound, not a rounding.
+	 * running past its end, and the boundary right after it is its source end.
+	 * An email address holds neither, so this is a bound, not a rounding.
 	 */
 	const localAt = (index: number): number => {
 		for (const piece of pieces) {
 			const within = index - piece.valueStart;
-			if (within <= piece.node.value.length) {
+			// The boundary past a node is its source end, which a decoded node's value length falls short of.
+			if (within === piece.node.value.length) {
+				return piece.node.end;
+			}
+			if (within < piece.node.value.length) {
 				return piece.node.start + Math.min(within, piece.node.end - piece.node.start);
 			}
 		}

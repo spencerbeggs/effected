@@ -262,6 +262,31 @@ describe("gfm autolink literals", () => {
 		it("requires a dot in the domain", () => {
 			assert.strictEqual(shape("foo@bar"), '"foo@bar"');
 		});
+
+		// A decoded node (an escape, an entity) is shorter than the source it spans: an address that starts right after
+		// one starts at the node's source end, not at its start plus its value's length.
+		it("positions an address right after an escape at the escape's end", () => {
+			const nodes = inlinesOf("\\[a@b.co]");
+			assert.deepStrictEqual(
+				nodes.map((node) => [node.type, node.position.start.offset, node.position.end.offset]),
+				[
+					["text", 0, 2],
+					["link", 2, 8],
+					["text", 8, 9],
+				],
+			);
+		});
+
+		it("positions an address right after an entity at the entity's end", () => {
+			const nodes = inlinesOf("&amp;a@b.co");
+			assert.deepStrictEqual(
+				nodes.map((node) => [node.type, node.position.start.offset, node.position.end.offset]),
+				[
+					["text", 0, 5],
+					["link", 5, 11],
+				],
+			);
+		});
 	});
 
 	describe("interaction with the rest of the inline pass", () => {
