@@ -118,47 +118,33 @@ describe("applyFixes over several rules' fixes", () => {
 		assert.strictEqual(fixed, "- a\r\n- b\r\n");
 	});
 
-	const cases: ReadonlyArray<readonly [string, ReadonlyArray<string>, number, number]> = [
+	// A case's own inputs, beside the shared extras: for pairs whose fixes the corpus never puts on one line.
+	const cases: ReadonlyArray<
+		readonly [string, ReadonlyArray<string>, number, number, ReadonlyArray<{ name: string; source: string }>?]
+	> = [
 		["every ported rule", rules.map((rule) => rule.name), ORACLE_FIXES_ALL, MEETING_ALL],
 		["MD004 and MD032", ["MD004", "MD032"], ORACLE_FIXES_MD004_MD032, MEETING_MD004_MD032],
 		["MD022 and MD009", ["MD022", "MD009"], ORACLE_FIXES_MD022_MD009, MEETING_MD022_MD009],
 		["MD031 and MD032", ["MD031", "MD032"], ORACLE_FIXES_MD031_MD032, MEETING_MD031_MD032],
 		["MD012 and MD047", ["MD012", "MD047"], ORACLE_FIXES_MD012_MD047, MEETING_MD012_MD047],
 		["MD009 and MD010", ["MD009", "MD010"], ORACLE_FIXES_MD009_MD010, MEETING_MD009_MD010],
-	];
-	for (const [label, names, oracleFixes, meeting] of cases) {
-		it(
-			`agrees with markdownlint on ${label} together`,
-			() => {
-				const result = fixesDifferential(byName(...names), { extra });
-				assert.deepStrictEqual(result.divergences, []);
-				assert.strictEqual(result.compared, corpus.length * 3 + extra.length);
-				assert.strictEqual(result.oracleFixes, oracleFixes);
-				assert.strictEqual(result.meeting, meeting);
-			},
-			DIFFERENTIAL_TIMEOUT,
-		);
-	}
-
-	// Pairs whose fixes the corpus never puts on one line, each with inputs of its own where they do.
-	const ownInputCases: ReadonlyArray<
-		readonly [string, ReadonlyArray<string>, ReadonlyArray<{ name: string; source: string }>, number, number]
-	> = [
 		// MD020 rewrites a closed heading's whole line, trailing whitespace included, where MD009 trims it.
 		[
 			"MD020 and MD009",
 			["MD020", "MD009"],
+			ORACLE_FIXES_MD020_MD009,
+			MEETING_MD020_MD009,
 			[
 				{ name: "closed heading and trailing spaces, LF", source: "#Heading#  \n\n## Heading##   \n" },
 				{ name: "closed heading and trailing spaces, CRLF", source: "#Heading#  \r\n\r\n## Heading##   \r\n" },
 			],
-			ORACLE_FIXES_MD020_MD009,
-			MEETING_MD020_MD009,
 		],
 		// MD021 deletes spaces inside the hashes and MD009 the spaces after them.
 		[
 			"MD021 and MD009",
 			["MD021", "MD009"],
+			ORACLE_FIXES_MD021_MD009,
+			MEETING_MD021_MD009,
 			[
 				{ name: "spaced closed heading and trailing spaces, LF", source: "#  Heading  #  \n\n##   Heading ##   \n" },
 				{
@@ -166,11 +152,9 @@ describe("applyFixes over several rules' fixes", () => {
 					source: "#  Heading  #  \r\n\r\n## Heading   ##   \r\n",
 				},
 			],
-			ORACLE_FIXES_MD021_MD009,
-			MEETING_MD021_MD009,
 		],
 	];
-	for (const [label, names, own, oracleFixes, meeting] of ownInputCases) {
+	for (const [label, names, oracleFixes, meeting, own = []] of cases) {
 		it(
 			`agrees with markdownlint on ${label} together`,
 			() => {
