@@ -31,7 +31,7 @@ export const MD026: Lint.LintRule = LintRule.make({
 	names: ["MD026", "no-trailing-punctuation"],
 	description: "Trailing punctuation in heading",
 	tags: ["headings"],
-	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md026.md",
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md026.md",
 	check: (context, report) => {
 		const punctuation = stringSettingUnlessAbsent(context.config, "punctuation", allPunctuationNoQuestion);
 		const trailing = new RegExp(`\\s*[${escapeForRegExp(punctuation)}]+$`);

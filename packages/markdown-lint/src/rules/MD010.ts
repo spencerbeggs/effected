@@ -55,7 +55,7 @@ export const MD010: Lint.LintRule = LintRule.make({
 	names: ["MD010", "no-hard-tabs"],
 	description: "Hard tabs",
 	tags: ["whitespace", "hard_tab"],
-	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md010.md",
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md010.md",
 	check: (context, report) => {
 		const includeCode = flagSettingOn(context.config, "code_blocks");
 		const ignored = new Set(

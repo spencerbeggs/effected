@@ -28,7 +28,7 @@ export const MD045: Lint.LintRule = LintRule.make({
 	names: ["MD045", "no-alt-text"],
 	description: "Images should have alternate text (alt text)",
 	tags: ["accessibility", "images"],
-	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md045.md",
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md045.md",
 	check: (context, report) => {
 		const math = mathFlowLines(context);
 		const mathText = mathTextSpans(context.document, context.source);

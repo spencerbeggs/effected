@@ -30,7 +30,7 @@ export const MD040: Lint.LintRule = LintRule.make({
 	names: ["MD040", "fenced-code-language"],
 	description: "Fenced code blocks should have a language specified",
 	tags: ["code", "language"],
-	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md040.md",
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md040.md",
 	check: (context, report) => {
 		const allowed = Array.isArray(context.config.allowed_languages)
 			? (context.config.allowed_languages as ReadonlyArray<unknown>)

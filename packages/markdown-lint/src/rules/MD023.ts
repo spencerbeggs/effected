@@ -24,7 +24,7 @@ export const MD023: Lint.LintRule = LintRule.make({
 	names: ["MD023", "heading-start-left"],
 	description: "Headings must start at the beginning of the line",
 	tags: ["headings", "spaces"],
-	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md023.md",
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md023.md",
 	check: (context, report) => {
 		const seen = new Set<MarkdownNode>(headingNodes(context));
 		for (const { node, ancestors } of flowNodesWithAncestors(context, new Set(["heading"]))) {

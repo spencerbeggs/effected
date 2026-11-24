@@ -26,7 +26,7 @@ export const MD025: Lint.LintRule = LintRule.make({
 	names: ["MD025", "single-title", "single-h1"],
 	description: "Multiple top-level headings in the same document",
 	tags: ["headings"],
-	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md025.md",
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md025.md",
 	check: (context, report) => {
 		const level = numberSetting(context.config, "level", 1);
 		const matching = headingNodes(context).filter((heading) => {

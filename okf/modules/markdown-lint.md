@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T05:55:52Z
+  at: 2026-11-24T06:42:20Z
 integrity:
   generated:
-    body: 87ac339dbd7d8a04
+    body: 538171983c2b8dc6
 ---
 
 # `@effected/markdown-lint`
@@ -452,6 +452,13 @@ plain synchronous function; no logging, no metrics.
   `>   \t$$` the reverse. A probe across containers found 92 such readings,
   all in blockquotes, in MD033, MD045 and MD060. Pinned by a test (MD060 1
   input, MD033 1).
+- **HTML inside an undefined reference is reported twice by markdownlint.**
+  From 0.42.2 markdownlint's micromark-parse copies a bracket's `htmlText`
+  events into the artificial `undefinedReference` token it builds for MD052,
+  so its MD033 reports an element in `[<b>x</b>]`, `[<b>x</b>][]` or
+  `[x][<i>y</i>]` twice, at the same column. The kit reports it once, as
+  0.42.1 did; a defined reference is reported once by both. Pinned by a test
+  (MD033 3 inputs).
 
 - `./config` loads no JavaScript config (`.markdownlint.cjs`, `.mjs`) and
   none of cli2's own options files (`.markdownlint-cli2.*`). A directory

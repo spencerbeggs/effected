@@ -87,7 +87,7 @@ export const MD060: Lint.LintRule = LintRule.make({
 	names: ["MD060", "table-column-style"],
 	description: "Table column style",
 	tags: ["table"],
-	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md060.md",
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md060.md",
 	check: (context, report) => {
 		const style = String(context.config.style || "any");
 		const alignedAllowed = style === "any" || style === "aligned";

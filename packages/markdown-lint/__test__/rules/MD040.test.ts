@@ -55,11 +55,11 @@ describe("MD040 fenced-code-language", () => {
 
 	// markdownlint reads `allowed_languages` as the array or nothing, and `language_only` as `!!language_only`.
 	for (const [settings, expected] of [
-		[{ allowed_languages: ["js", "text"] }, 150],
-		[{ allowed_languages: ["JS"] }, 347],
+		[{ allowed_languages: ["js", "text"] }, 152],
+		[{ allowed_languages: ["JS"] }, 349],
 		[{ language_only: true }, 39],
 		[{ language_only: "yes" }, 39],
-		[{ allowed_languages: ["js"], language_only: true }, 306],
+		[{ allowed_languages: ["js"], language_only: true }, 308],
 		[{ allowed_languages: [] }, 28],
 		[{ allowed_languages: "js" }, 28],
 		[{ language_only: false }, 28],

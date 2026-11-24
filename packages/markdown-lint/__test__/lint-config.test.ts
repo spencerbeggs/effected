@@ -61,6 +61,16 @@ describe("LintConfig.effective", () => {
 		});
 	});
 
+	it("reads a null-prototype object as settings, as markdownlint does", () => {
+		const value: Record<string, unknown> = Object.create(null);
+		value["severity"] = "warning";
+		value["style"] = "dash";
+		assert.deepStrictEqual(resolve({ default: false, AAA001: value }), {
+			a: { enabled: true, severity: "warning", settings: { style: "dash" } },
+			b: off,
+		});
+	});
+
 	it("reads a string value as severity and a falsy value as disabled", () => {
 		assert.deepStrictEqual(resolve({ aaa001: "warning" }).a, {
 			enabled: true,

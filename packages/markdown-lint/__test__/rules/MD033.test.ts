@@ -283,7 +283,7 @@ describe("MD033 no-inline-html", () => {
 
 	it("reads a math opener line's meta as math, as markdownlint does, and the same text off one as markup", () => {
 		// `$$$` closes the block but no inline math, so only the block-level exclusion can drop the opener's meta;
-		// markdownlint 0.42.1 reports nothing for the first input. The second, with no opener, is still reported.
+		// markdownlint 0.42.2 reports nothing for the first input. The second, with no opener, is still reported.
 		assert.deepStrictEqual(run("$$ <b>x</b>\nx\n$$$\n"), []);
 		assert.strictEqual(run("x <b>x</b>\nx\n$$$\n").length, 1);
 	});
@@ -323,6 +323,34 @@ describe("MD033 no-inline-html", () => {
 			);
 			assert.strictEqual(result.divergences.length, 1);
 			assert.match(result.divergences[0]?.reason ?? "", /^missing finding 1: markdownlint/);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
+	// Recorded divergence "HTML inside an undefined reference is reported twice": markdownlint's micromark-parse copies
+	// a bracket's htmlText events into the artificial undefinedReference token it builds, so its MD033 finds the
+	// same element twice; the kit reports it once. A defined reference holds one copy in both.
+	it(
+		"reports HTML inside an undefined reference once, where markdownlint reports it twice",
+		() => {
+			const result = settingsDifferential(
+				MD033,
+				[{}],
+				[
+					{ name: "shortcut", source: "[<b>x</b>]\n" },
+					{ name: "collapsed", source: "[<b>x</b>][]\n" },
+					{ name: "full", source: "[x][<i>y</i>]\n" },
+					{ name: "defined", source: "[<b>x</b>]\n\n[<b>x</b>]: /u\n" },
+				],
+			);
+			assert.deepStrictEqual(
+				result.divergences.map((divergence) => divergence.fixture),
+				["shortcut", "collapsed", "full"],
+			);
+			for (const divergence of result.divergences) {
+				assert.match(divergence.reason, /^missing finding 2: markdownlint .*"detail":"Element: [bi]"/);
+			}
+			assert.strictEqual(result.oracleFindings, 7);
 		},
 		DIFFERENTIAL_TIMEOUT,
 	);

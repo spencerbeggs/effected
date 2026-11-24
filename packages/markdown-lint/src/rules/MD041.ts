@@ -29,7 +29,7 @@ export const MD041: Lint.LintRule = LintRule.make({
 	names: ["MD041", "first-line-heading", "first-line-h1"],
 	description: "First line in a file should be a top-level heading",
 	tags: ["headings"],
-	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md041.md",
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md041.md",
 	check: (context, report) => {
 		const allowPreamble = flagSetting(context.config, "allow_preamble");
 		const level = numberSetting(context.config, "level", 1);

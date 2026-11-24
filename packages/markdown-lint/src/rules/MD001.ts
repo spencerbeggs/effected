@@ -20,7 +20,7 @@ export const MD001: Lint.LintRule = LintRule.make({
 	names: ["MD001", "heading-increment"],
 	description: "Heading levels should only increment by one level at a time",
 	tags: ["headings"],
-	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md001.md",
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md001.md",
 	check: (context, report) => {
 		let previous = frontMatterHasTitle(context) ? 1 : Number.MAX_SAFE_INTEGER;
 		for (const heading of headingNodes(context)) {

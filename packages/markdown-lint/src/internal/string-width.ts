@@ -1,5 +1,5 @@
 // The display width markdownlint's MD060 measures a table row's text with: a
-// port of string-width 8.3.0 (the version markdownlint 0.42.1 installs), its
+// port of string-width 8.3.0 (the version markdownlint 0.42.2 installs), its
 // width rules over grapheme clusters, with get-east-asian-width 1.7.0's Wide
 // and Fullwidth code point ranges (Unicode's EastAsianWidth W and F) as data.
 // ANSI escape sequences are not stripped first, as string-width does: a

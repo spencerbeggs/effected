@@ -64,7 +64,7 @@ const md047 = (lineShift: number) =>
 // A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
 describe("the differential harness", { timeout: 60_000 }, () => {
 	it("compares every corpus file, LF and CRLF", () => {
-		assert.lengthOf(corpus, 436);
+		assert.lengthOf(corpus, 437);
 	});
 
 	it("finds no divergence for a faithful port over the whole corpus", () => {
@@ -75,7 +75,7 @@ describe("the differential harness", { timeout: 60_000 }, () => {
 				{ name: "a comment-only last line", source: "# H\n\n<!-- c -->" },
 			],
 		});
-		assert.strictEqual(result.compared, 436 * 2 + 3);
+		assert.strictEqual(result.compared, 437 * 2 + 3);
 		// Not vacuous: markdownlint reports MD047 on 7 corpus files, LF and CRLF, and on "no trailing newline"; an
 		// unterminated block of front matter alone leaves an empty content line, which is blank.
 		assert.strictEqual(result.oracleFindings, 15);

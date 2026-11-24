@@ -70,7 +70,7 @@ export const MD022: Lint.LintRule = LintRule.make({
 	names: ["MD022", "blanks-around-headings"],
 	description: "Headings should be surrounded by blank lines",
 	tags: ["headings", "blank_lines"],
-	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md022.md",
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md022.md",
 	check: (context, report) => {
 		const above = linesFunction(context.config, "lines_above");
 		const below = linesFunction(context.config, "lines_below");

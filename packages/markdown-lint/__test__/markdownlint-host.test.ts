@@ -1,6 +1,6 @@
 // The adapter under a REAL markdownlint, pinned as this package's one
-// differential-oracle devDependency (0.42.1, as the vendored source; the
-// workspace root's markdownlint-cli2 resolves its own 0.42.2). It is the differential host: markdownlint
+// differential-oracle devDependency (0.42.2, as the vendored source and the
+// copy the workspace root's markdownlint-cli2 resolves). It is the differential host: markdownlint
 // validates every onError call (line bounds, range bounds, fixInfo bounds) and
 // throws on a bad one, applies fixInfo with its own applyFixes, and honours
 // inline disable comments, so a mapping bug shows up as markdownlint's

@@ -76,7 +76,7 @@ export const MD032: Lint.LintRule = LintRule.make({
 	names: ["MD032", "blanks-around-lists"],
 	description: "Lists should be surrounded by blank lines",
 	tags: ["bullet", "ul", "ol", "blank_lines"],
-	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md032.md",
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md032.md",
 	check: (context, report) => {
 		const lineEnding = preferredLineEnding(context.source);
 		const math = mathFlowBlocks(context);

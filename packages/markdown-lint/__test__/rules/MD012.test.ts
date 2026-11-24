@@ -93,7 +93,7 @@ describe("MD012 no-multiple-blanks", () => {
 		"agrees with markdownlint under { maximum: 0 } wherever markdownlint does not throw",
 		() => {
 			const result = differential(MD012, { config: { maximum: 0 }, extra });
-			// Not a divergence of the port: markdownlint 0.42.1 throws on a file that is all front matter with no final
+			// Not a divergence of the port: markdownlint 0.42.2 throws on a file that is all front matter with no final
 			// line break. Its content is one empty line, numbered one past its per-line enabled state, and MD012 with
 			// `maximum: 0` is the one rule here that reports that line. The kit reads no content line and reports nothing.
 			const throws = ["front-matter-no-crlf.md", "front-matter-no-crlf.md (CRLF)"];

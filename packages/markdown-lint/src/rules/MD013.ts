@@ -95,7 +95,7 @@ export const MD013: Lint.LintRule = LintRule.make({
 	names: ["MD013", "line-length"],
 	description: "Line length",
 	tags: ["line_length"],
-	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md013.md",
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md013.md",
 	check: (context, report) => {
 		const lineLength = numberSetting(context.config, "line_length", 80);
 		const headingLineLength = numberSetting(context.config, "heading_line_length", lineLength);

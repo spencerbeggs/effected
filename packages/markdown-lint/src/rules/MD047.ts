@@ -19,7 +19,7 @@ export const MD047: Lint.LintRule = LintRule.make({
 	names: ["MD047", "single-trailing-newline"],
 	description: "Files should end with a single newline character",
 	tags: ["blank_lines"],
-	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md047.md",
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md047.md",
 	check: (context, report) => {
 		const lastLineNumber = context.lines.length;
 		if (lastLineNumber < firstContentLine(context)) return;

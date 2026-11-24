@@ -1,7 +1,7 @@
 // The real markdownlint, as the differential oracle every built-in rule port
 // is held to. The one place a test loads it: the exact-pinned `markdownlint`
-// devDependency, 0.42.1 like the vendored source (not the copy the workspace
-// root's markdownlint-cli2 resolves, which is 0.42.2),
+// devDependency, 0.42.2 like the vendored source and the copy the workspace
+// root's markdownlint-cli2 resolves,
 // through variable specifiers so that no `src/` type ever resolves against its
 // declarations. Its rule list is read from `lib/rules.mjs` by file URL, since
 // the package exports no subpath for it.

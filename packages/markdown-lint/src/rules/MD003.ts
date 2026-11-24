@@ -22,7 +22,7 @@ export const MD003: Lint.LintRule = LintRule.make({
 	names: ["MD003", "heading-style"],
 	description: "Heading style",
 	tags: ["headings"],
-	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md003.md",
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md003.md",
 	check: (context, report) => {
 		let style = stringSetting(context.config, "style", "consistent");
 		for (const heading of headingNodes(context)) {

@@ -22,7 +22,7 @@ export const MD024: Lint.LintRule = LintRule.make({
 	names: ["MD024", "no-duplicate-heading"],
 	description: "Multiple headings with the same content",
 	tags: ["headings"],
-	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md024.md",
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md024.md",
 	check: (context, report) => {
 		const siblingsOnly = flagSetting(context.config, "siblings_only");
 		const known: Array<Array<string>> = [[], []];

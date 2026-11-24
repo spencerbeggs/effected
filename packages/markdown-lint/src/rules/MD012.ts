@@ -25,7 +25,7 @@ export const MD012: Lint.LintRule = LintRule.make({
 	names: ["MD012", "no-multiple-blanks"],
 	description: "Multiple consecutive blank lines",
 	tags: ["whitespace", "blank_lines"],
-	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md012.md",
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md012.md",
 	check: (context, report) => {
 		const maximum = numberSetting(context.config, "maximum", 1);
 		const code = codeBlockLines(context);

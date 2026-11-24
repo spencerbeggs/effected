@@ -77,7 +77,8 @@ export class LintConfig {
 			let ruleSeverity: LintSeverity = "error";
 			let ruleSettings: Record<string, unknown> = {};
 			if (value) {
-				if (value instanceof Object) {
+				// A null-prototype object (`Object.create(null)`) is an object too, as markdownlint reads it.
+				if (value instanceof Object || Object.getPrototypeOf(value) === null) {
 					const object = value as { enabled?: unknown; severity?: unknown };
 					ruleEnabled = object.enabled === undefined || !!object.enabled;
 					ruleSeverity = object.severity === "warning" ? "warning" : "error";

@@ -261,7 +261,7 @@
 		},
 		"markdownlint": {
 			"url": "https://github.com/DavidAnson/markdownlint.git",
-			"ref": "v0.42.1",
+			"ref": "v0.42.2",
 			"purpose": "Rule-source and fixture authority for @effected/markdown-lint: the built-in rules (lib/mdNNN.mjs), their docs, and the test/*.md fixture corpus.",
 			"sparse": [
 				"lib",

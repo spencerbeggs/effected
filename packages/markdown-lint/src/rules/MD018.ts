@@ -22,7 +22,7 @@ export const MD018: Lint.LintRule = LintRule.make({
 	names: ["MD018", "no-missing-space-atx"],
 	description: "No space after hash on atx style heading",
 	tags: ["headings", "atx", "spaces"],
-	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md018.md",
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md018.md",
 	check: (context, report) => {
 		const ignored = new Set(codeBlockLines(context));
 		for (const line of nodeLines(flowNodes(context, new Set(["html"])))) ignored.add(line);

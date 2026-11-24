@@ -26,7 +26,7 @@ export const MD033: Lint.LintRule = LintRule.make({
 	names: ["MD033", "no-inline-html"],
 	description: "Inline HTML",
 	tags: ["html"],
-	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md033.md",
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md033.md",
 	check: (context, report) => {
 		const allowed = lowerCaseList(context.config.allowed_elements);
 		const tableAllowed = lowerCaseList(context.config.table_allowed_elements || context.config.allowed_elements);

@@ -7,7 +7,7 @@ import { MarkdownLint } from "../src/MarkdownLint.js";
 import { rules } from "../src/rules/all.js";
 import { MD004 } from "../src/rules/MD004.js";
 import { MD032 } from "../src/rules/MD032.js";
-import { DIFFERENTIAL_TIMEOUT, fixesDifferential } from "./helpers/differential.js";
+import { DIFFERENTIAL_TIMEOUT, corpus, fixesDifferential } from "./helpers/differential.js";
 
 const byName = (...names: ReadonlyArray<string>) => rules.filter((rule) => names.includes(rule.name));
 
@@ -55,7 +55,7 @@ describe("applyFixes over several rules' fixes", () => {
 			() => {
 				const result = fixesDifferential(byName(...names), { extra });
 				assert.deepStrictEqual(result.divergences, []);
-				assert.strictEqual(result.compared, 1308 + extra.length);
+				assert.strictEqual(result.compared, corpus.length * 3 + extra.length);
 				assert.strictEqual(result.oracleFixes, oracleFixes);
 			},
 			DIFFERENTIAL_TIMEOUT,

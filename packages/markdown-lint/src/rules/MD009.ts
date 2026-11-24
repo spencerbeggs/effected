@@ -76,7 +76,7 @@ export const MD009: Lint.LintRule = LintRule.make({
 	names: ["MD009", "no-trailing-spaces"],
 	description: "Trailing spaces",
 	tags: ["whitespace"],
-	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md009.md",
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md009.md",
 	check: (context, report) => {
 		const brSpaces = numberSetting(context.config, "br_spaces", 2);
 		const includeCode = flagSetting(context.config, "code_blocks");

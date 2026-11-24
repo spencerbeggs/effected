@@ -21,7 +21,7 @@ export const MD019: Lint.LintRule = LintRule.make({
 	names: ["MD019", "no-multiple-space-atx"],
 	description: "Multiple spaces after hash on atx style heading",
 	tags: ["headings", "atx", "spaces"],
-	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md019.md",
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md019.md",
 	check: (context, report) => {
 		for (const heading of headingNodes(context)) {
 			if (headingStyle(context, heading) !== "atx") continue;

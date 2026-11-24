@@ -31,7 +31,7 @@ export const MD031: Lint.LintRule = LintRule.make({
 	names: ["MD031", "blanks-around-fences"],
 	description: "Fenced code blocks should be surrounded by blank lines",
 	tags: ["code", "blank_lines"],
-	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md031.md",
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md031.md",
 	check: (context, report) => {
 		// markdownlint's `(list_items === undefined) || !!list_items`.
 		const listItems = context.config.list_items;

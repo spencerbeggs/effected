@@ -42,7 +42,7 @@
 		"@effected/memfs": "workspace:*",
 		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
-		"markdownlint": "0.42.1",
+		"markdownlint": "0.42.2",
 		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {

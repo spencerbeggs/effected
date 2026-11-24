@@ -46,7 +46,7 @@ export const MD004: Lint.LintRule = LintRule.make({
 	names: ["MD004", "ul-style"],
 	description: "Unordered list style",
 	tags: ["bullet", "ul"],
-	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md004.md",
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md004.md",
 	check: (context, report) => {
 		// markdownlint's `String(params.config.style || "consistent")`, an unknown name read as `dash`.
 		const style = String(context.config.style || "consistent");
