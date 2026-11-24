@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T07:02:12Z
+  at: 2026-11-24T07:06:59Z
 integrity:
   generated:
-    body: e9533caca7cb19ef
+    body: a184e6141e7dde6d
 ---
 
 # `@effected/markdown-lint`
@@ -469,6 +469,16 @@ plain synchronous function; no logging, no metrics.
   `[x][<i>y</i>]` twice, at the same column. The kit reports it once, as
   0.42.1 did; a defined reference is reported once by both. Pinned by a test
   (MD033 3 inputs).
+- **Findings come in rule order.** `MarkdownLint.lint` returns findings in
+  the order of the rules it was given, each rule's in the order it reported
+  them; markdownlint sorts its results by rule name, then line. With the
+  rules in name order (`./rules/all`'s order) the two agree except where one
+  rule reports lines out of order: over the corpus in LF and CRLF, 2 of 874
+  inputs, `lists-in-blockquote.md`, where MD004 walks a nested list in a
+  blockquote and reports lines 68 and 69 before 65. With the rule list
+  reversed, 64 differ. `MarkdownLint.applyFixes` sorts its findings into
+  markdownlint's order itself, so the fixed text does not depend on either.
+  Pinned by a test (`multi-rule-fixes.test.ts`).
 
 - `./config` loads no JavaScript config (`.markdownlint.cjs`, `.mjs`) and
   none of cli2's own options files (`.markdownlint-cli2.*`). A directory

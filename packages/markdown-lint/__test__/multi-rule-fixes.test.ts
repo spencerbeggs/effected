@@ -61,6 +61,32 @@ const MEETING_MD009_MD010 = 3;
 const MEETING_SAMPLE = 8;
 
 describe("applyFixes over several rules' fixes", () => {
+	// Recorded divergence "findings come in rule order": lint returns the rules' findings in the order of the rules it
+	// was given, each in the order it reported them, where markdownlint sorts by rule name, then line. applyFixes
+	// sorts for itself, so the fixed text does not depend on it.
+	it("returns findings in rule order, where markdownlint sorts them by rule name, then line", () => {
+		const key = (finding: { readonly ruleNames: ReadonlyArray<string>; readonly lineNumber: number }) =>
+			`${finding.ruleNames[0]}:${finding.lineNumber}`;
+		const config = { default: false, MD004: true, MD032: true };
+		const source = "- a\n+ b\n";
+		assert.deepStrictEqual(MarkdownLint.lint(source, [MD032, MD004], { config }).map(key), [
+			"MD032:1",
+			"MD032:2",
+			"MD004:2",
+		]);
+		assert.deepStrictEqual(oracleLint(source, config).map(key), ["MD004:2", "MD032:1", "MD032:2"]);
+		// With the rules in name order the two agree, except where one rule reports lines out of order: MD004 walks
+		// a nested list in a blockquote and reports lines 68 and 69 before 65.
+		const fixture = corpus.find((entry) => entry.name === "lists-in-blockquote.md");
+		assert.isDefined(fixture);
+		const md004 = { default: false, MD004: true };
+		const kit = MarkdownLint.lint(fixture?.source ?? "", [MD004], { config: md004 }).map(key);
+		const oracle = oracleLint(fixture?.source ?? "", md004).map(key);
+		assert.notDeepEqual(kit, oracle);
+		assert.deepStrictEqual([...kit].sort(), [...oracle].sort());
+		assert.deepStrictEqual(kit.slice(2, 6), ["MD004:64", "MD004:68", "MD004:69", "MD004:65"]);
+	});
+
 	it("applies MD004 and MD032 meeting on a line as markdownlint does, whatever order the rules run in", () => {
 		const config = { default: false, MD004: true, MD032: true };
 		for (const [source, expected] of [
