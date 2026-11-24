@@ -39,8 +39,10 @@ const reLinkTitle = new RegExp(
 // written the way the linter accepts.
 const reLinkDestinationBraces = /^(?:<(?:[^<>\n\\\0]|\\.)*>)/;
 const reEscapable = new RegExp(`^${ESCAPABLE}`);
-const reSpnl = /^ *(?:\n *)?/;
-const reSpaceAtEndOfLine = /^ *(?:\n|$)/;
+// Spaces or tabs, as CommonMark §4.7 and §6.3 allow around a destination and title: commonmark.js matches spaces
+// only (` *`), where cmark and micromark take tabs too.
+const reSpnl = /^[ \t]*(?:\n[ \t]*)?/;
+const reSpaceAtEndOfLine = /^[ \t]*(?:\n|$)/;
 const reLinkLabel = /^\[(?:[^\\[\]]|\\.){0,1000}\]/s;
 
 /**
