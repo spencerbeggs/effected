@@ -3,7 +3,9 @@
 // width rules over grapheme clusters, with get-east-asian-width 1.7.0's Wide
 // and Fullwidth code point ranges (Unicode's EastAsianWidth W and F) as data.
 // ANSI escape sequences are not stripped first, as string-width does: a
-// Markdown table row holds none.
+// Markdown table row holds none. Deliberately separate from cli-kit's
+// internal `displayWidth` (a shorter table checked against string-width):
+// this one is the exact port markdownlint parity needs.
 
 // get-east-asian-width 1.7.0's `wideRanges` and `fullwidthRanges`: inclusive start, end pairs, sorted.
 const WIDE: ReadonlyArray<number> = [
@@ -113,26 +115,49 @@ const trailingWidth = (visible: string): number => {
 	return extra;
 };
 
+// The columns one grapheme cluster takes, by string-width's rules.
+const segmentWidth = (segment: string): number => {
+	const index = segment.search(visibleCharacter);
+	if (index === -1) return 0;
+	const visible = segment.slice(index);
+	if (rgiEmoji.test(segment) || isDoubleWidthNonRgiEmojiSequence(segment)) return 2;
+	const hangul = hangulClusterWidth(visible);
+	if (hangul !== undefined) return hangul;
+	return eastAsianWidth(visible.codePointAt(0) as number) + trailingWidth(visible);
+};
+
+const printableAscii = /^[\u0020-\u007E]*$/;
+
 /** string-width's `stringWidth(text)`: the columns `text` takes in a terminal. @internal */
 export const stringWidth = (text: string): number => {
 	if (text.length === 0) return 0;
-	if (/^[\u0020-\u007E]*$/.test(text)) return text.length;
+	if (printableAscii.test(text)) return text.length;
 	segmenter ??= new Intl.Segmenter();
 	let width = 0;
-	for (const { segment } of segmenter.segment(text)) {
-		const index = segment.search(visibleCharacter);
-		if (index === -1) continue;
-		const visible = segment.slice(index);
-		if (rgiEmoji.test(segment) || isDoubleWidthNonRgiEmojiSequence(segment)) {
-			width += 2;
-			continue;
-		}
-		const hangul = hangulClusterWidth(visible);
-		if (hangul !== undefined) {
-			width += hangul;
-			continue;
-		}
-		width += eastAsianWidth(visible.codePointAt(0) as number) + trailingWidth(visible);
-	}
+	for (const { segment } of segmenter.segment(text)) width += segmentWidth(segment);
 	return width;
+};
+
+/**
+ * `stringWidth(text.slice(0, offset))` for each of `offsets`, with `text`
+ * segmented once rather than once per prefix. A prefix ending on a grapheme
+ * boundary of `text` segments as `text` does up to there (a boundary depends
+ * only on the characters around it), so its width is the running sum at that
+ * boundary; a prefix of printable ASCII is its length, as `stringWidth`'s own
+ * fast path reads it; any other prefix is measured on its own.
+ * @internal
+ */
+export const prefixWidths = (text: string, offsets: ReadonlyArray<number>): Array<number> => {
+	const firstNonAscii = text.search(/[^\u0020-\u007E]/);
+	if (firstNonAscii === -1) return offsets.map((offset) => Math.min(offset, text.length));
+	segmenter ??= new Intl.Segmenter();
+	const atBoundary = new Map<number, number>([[0, 0]]);
+	let width = 0;
+	for (const { segment, index } of segmenter.segment(text)) {
+		width += segmentWidth(segment);
+		atBoundary.set(index + segment.length, width);
+	}
+	return offsets.map((offset) =>
+		offset <= firstNonAscii ? offset : (atBoundary.get(offset) ?? stringWidth(text.slice(0, offset))),
+	);
 };

@@ -10,7 +10,7 @@
 import type * as Lint from "@effected/markdown-lint";
 import { contentInContainers } from "../internal/containers.js";
 import { mathFlowLines } from "../internal/math-flow.js";
-import { stringWidth } from "../internal/string-width.js";
+import { prefixWidths } from "../internal/string-width.js";
 import { LintRule } from "../LintRule.js";
 
 /** One token of a row: its type and its 1-based start and end columns on the line. */
@@ -106,13 +106,14 @@ export const MD060: Lint.LintRule = LintRule.make({
 			errors.push(dropFix ? { lineNumber: error.lineNumber, column: error.column, detail: error.detail } : error);
 		};
 
-		const dividerColumns = (row: Row) =>
-			row.tokens
-				.filter((token) => token.type === "tableCellDivider")
-				.map((divider) => ({
-					actual: divider.startColumn,
-					effective: stringWidth(lineText(row.lineNumber).slice(0, divider.startColumn - 1)),
-				}));
+		const dividerColumns = (row: Row) => {
+			const dividers = row.tokens.filter((token) => token.type === "tableCellDivider");
+			const widths = prefixWidths(
+				lineText(row.lineNumber),
+				dividers.map((divider) => divider.startColumn - 1),
+			);
+			return dividers.map((divider, index) => ({ actual: divider.startColumn, effective: widths[index] as number }));
+		};
 
 		const checkAligned = (rows: ReadonlyArray<Row>, detail: string): Array<ErrorInfo> => {
 			const errors: Array<ErrorInfo> = [];
