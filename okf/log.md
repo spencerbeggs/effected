@@ -4,6 +4,7 @@
 
 * Updated @effected/markdown-lint
 * Updated @effected/markdown
+* Updated The vitest suite splits into a fast tier with coverage and a slow tier run beside it
 
 ## 2026-11-23
 

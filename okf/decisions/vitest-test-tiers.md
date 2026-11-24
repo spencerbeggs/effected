@@ -16,10 +16,10 @@ sources:
     resource: ../../package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-21T22:26:30Z
+  at: 2026-11-24T03:44:35Z
 integrity:
   generated:
-    body: 60c66c15bae56dc1
+    body: 5f7dcdc4db1b41fc
   verified:
     by: human:spencer
     at: 2026-11-21T22:25:48Z
@@ -43,7 +43,7 @@ The Silk workflow's Run Tests step took 21 minutes, and a handful of CPU-heavy f
 
 - **`fast`** — what `pnpm ci:test` runs, with coverage and its thresholds. Each project excludes its slow files from **discovery**, through `test.exclude`.
 - **`slow`** — what `pnpm ci:test:slow` runs first, with `--coverage.enabled=false`. Each project includes only its slow files outside `TIMING_TESTS`, and a project with none is dropped.[^root-package-json]
-- **`timing`** — what `pnpm ci:test:slow` runs after `slow`, coverage off, with `fileParallelism: false`. It includes only `TIMING_TESTS`, the slow files that bound a timing growth ratio (the shell package's hostile and `allCommands` units). Run in parallel with the other slow files, those failed two of four Slow Tests runs, each just past its bound, so they now measure with no other file on the runner (#1387). Every `TIMING_TESTS` entry must also be in `SLOW_TESTS`, or the config refuses to load.
+- **`timing`** — what `pnpm ci:test:slow` runs after `slow`, coverage off, with `fileParallelism: false`. It includes only `TIMING_TESTS`, the slow files that bound a timing growth ratio or a wall-clock ceiling (the shell package's hostile and `allCommands` units, and markdown-lint's hostile-input ceilings). A file that measures time belongs there whatever its own run time. Run in parallel with the other slow files, those failed two of four Slow Tests runs, each just past its bound, so they now measure with no other file on the runner (#1387). Every `TIMING_TESTS` entry must also be in `SLOW_TESTS`, or the config refuses to load.
 - **Unset** — every local run — runs everything.
 
 `.github/workflows/slow-tests.yml` runs the slow tier on every pull request to `main`, on pushes to `main` and on dispatch, as its own job beside the Silk workflow rather than after it, so a pull request waits for the slower of the two rather than their sum.[^slow-tests-yml]

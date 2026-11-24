@@ -13,7 +13,8 @@ import { defineConfig } from "vitest/config";
  * keeps its coverage thresholds. `slow` and then `timing` (what `ci:test:slow` runs in
  * `.github/workflows/slow-tests.yml`, coverage off) run only these: `slow` the files outside `TIMING_TESTS` in
  * parallel, `timing` the rest one file at a time. Unset — every local run — runs everything. A file earns a place by taking about 20 s or
- * more on a CI runner; each one below took that in the Effect 4.1.5 PR's run (#1382). Paths are repo-relative,
+ * more on a CI runner, as the heavy ones below did in the Effect 4.1.5 PR's run (#1382), or by measuring time (see
+ * `TIMING_TESTS`). Paths are repo-relative,
  * and the config refuses to load when one no longer exists, so a rename cannot drop a file from both tiers.
  */
 const SLOW_TESTS: ReadonlyArray<string> = [
@@ -24,6 +25,7 @@ const SLOW_TESTS: ReadonlyArray<string> = [
 	"packages/engine/__test__/schema/ConfigLoader.reload.test.ts",
 	"packages/glob/__test__/hostility.test.ts",
 	"packages/lockfiles/__test__/hostile.test.ts",
+	"packages/markdown-lint/__test__/hostile-inputs.test.ts",
 	"packages/markdown/__test__/e2e/pathological.e2e.test.ts",
 	"packages/mcp/__test__/schema-tools.reload.test.ts",
 	"packages/plugin/__test__/e2e/packed-install.e2e.test.ts",
@@ -34,15 +36,17 @@ const SLOW_TESTS: ReadonlyArray<string> = [
 ];
 
 /**
- * The slow files that assert a timing ratio, run alone rather than beside the rest of the slow tier.
+ * The slow files that assert a timing ratio or a wall-clock ceiling, run alone rather than beside the rest of the slow
+ * tier. A file that measures time belongs here whatever its own run time.
  *
  * @remarks
- * Each times a small and a large input and bounds the growth ratio, so a busy runner can push a linear parse past
- * its bound: run in parallel with the other slow files, the shell units failed two of four Slow Tests runs, each just
+ * Each bounds a growth ratio between a small and a large input, or an absolute time, so a busy runner can push a
+ * linear parse past its bound: run in parallel with the other slow files, the shell units failed two of four Slow Tests runs, each just
  * past it (#1387). `slow` skips these, and `timing` runs only these with `fileParallelism` off, so no other file
  * shares the runner while they measure. Every entry must also be in `SLOW_TESTS`, or the config refuses to load.
  */
 const TIMING_TESTS: ReadonlyArray<string> = [
+	"packages/markdown-lint/__test__/hostile-inputs.test.ts",
 	"packages/shell/__test__/ShellScript.test.ts",
 	"packages/shell/__test__/hostile.test.ts",
 ];
