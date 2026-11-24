@@ -49,7 +49,8 @@
 // - Brace expansion takes minimatch 11.0.8's #expandBraces (expandMarked): a
 //   numeric range of 100 or more values is not expanded but marked, and its
 //   portion is answered by 11's matcher (rangePortion), so it is magic and no
-//   budget applies to it. braceAlternatives, for GlobSet, writes each
+//   budget applies to it. From 11.0.9 a range inside a !(...), *(...) or
+//   +(...) extglob is expanded instead (inRepeatOrNegExt). braceAlternatives, for GlobSet, writes each
 //   alternative back as pattern text (no 11 counterpart).
 // - braceExpand takes minimatch 11.0.8's escape fixes: every escaped backslash
 //   pair is doubled before expansion, so `\\` comes back out still escaped
@@ -157,10 +158,35 @@ interface MarkedExpansion {
 	readonly mark: string | undefined;
 }
 
-// minimatch 11.0.8's #expandBraces: expand braces, except numeric ranges such
+// true if a range mark in this portion is inside a `!(...)`, `*(...)` or
+// `+(...)` extglob, as minimatch 11.0.9 reads it. Those repeat or negate their
+// contents, so one Matcher for the whole range does not match the same strings
+// as the union of one pattern per value: `*({1..100})` would match `510` as `5`
+// then `10`, and `!({1..100})` would not match `5`, where every expanded
+// pattern but `!(5)` does. `@(...)` and `?(...)` pick one value at most.
+const inRepeatOrNegExt = (portion: string, mark: string): boolean => {
+	const stack: Array<string> = [];
+	for (let i = 0; i < portion.length; i++) {
+		const c = portion.charAt(i);
+		if (c === "\\") {
+			i++;
+		} else if (c === mark) {
+			if (stack.some((t) => t !== "@" && t !== "?")) return true;
+		} else if (portion.charAt(i + 1) === "(" && "!?+*@".includes(c)) {
+			stack.push(c);
+			i++;
+		} else if (c === ")") {
+			stack.pop();
+		}
+	}
+	return false;
+};
+
+// minimatch 11.0.9's #expandBraces: expand braces, except numeric ranges such
 // as {0..999} with at least RANGE_MIN values. Each of those stays in its
 // pattern as `<mark>0..999<mark>`, for the Matcher to test. If a range might
-// be inside a [...] class, expand all of them instead.
+// be inside a [...] class, or inside an extglob that repeats or negates it,
+// expand all of them instead.
 const expandMarked = (pattern: string, options: EngineOptions): MarkedExpansion => {
 	const all = (): MarkedExpansion => ({ set: braceExpand(pattern, options), mark: undefined });
 	if (options.nobrace) return all();
@@ -185,6 +211,7 @@ const expandMarked = (pattern: string, options: EngineOptions): MarkedExpansion 
 		for (const portion of p.split("/")) {
 			const c = portion.indexOf("[");
 			if (c !== -1 && c < portion.lastIndexOf(mark)) return all();
+			if (!options.noext && inRepeatOrNegExt(portion, mark)) return all();
 		}
 	}
 	return { set, mark };
@@ -1126,7 +1153,7 @@ export class Minimatch {
 		return braceExpand(this.pattern, this.options);
 	}
 
-	// minimatch 11.0.8: braces expand, except a numeric range of 100 or more
+	// minimatch 11.0.9: braces expand, except a numeric range of 100 or more
 	// values, which stays marked in its portion for the Matcher (expandMarked).
 	#expandBraces(): Array<string> {
 		const { set, mark } = expandMarked(this.pattern, this.options);

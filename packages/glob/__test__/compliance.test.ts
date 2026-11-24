@@ -282,6 +282,21 @@ describe("engine compliance: behavioral table", () => {
 			// a [ before the range in its portion expands it instead
 			["[x]{0..199}", "x150", true],
 			["{0..199}[x]", "150x", true],
+			// inside a !(...), *(...) or +(...) extglob it expands instead, since
+			// those repeat or negate each value: 510 is not one value repeated
+			["*({1..100})", "510", false],
+			["*({1..100})", "5555", true],
+			["+({1..100})", "510", false],
+			["+({1..100})", "1010", true],
+			["!({1..100})", "5", true],
+			["x/!(a{1..100})/y", "x/a5/y", true],
+			// @(...) and ?(...) pick one value at most, so the range stays marked
+			["@({1..100})", "510", false],
+			["@({1..100})", "50", true],
+			["?({1..100})", "5", true],
+			["?({1..100})", "510", false],
+			// an escaped opener is no extglob
+			["\\*({1..100})", "*(50)", true],
 			// past the budget it still matches, as one portion
 			["{0..200000}", "5", true],
 			["{0..9007199254740991}", "9007199254740991", true],

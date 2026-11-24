@@ -34,7 +34,7 @@
 		"@effect/vitest": "catalog:effected",
 		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
-		"minimatch": "11.0.8",
+		"minimatch": "11.0.9",
 		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {
