@@ -114,7 +114,7 @@ const bracketedAddresses = (count: number): string => `# T\n\n${"[a] b@c.de ".re
 // which a forward scan per open tag made quadratic (16,000 took 4.8 s with MD034 alone).
 const unclosedInlineTags = (count: number): string => `# T\n\n${"<b> x ".repeat(count)}\n`;
 
-// MD034 re-parses each text node after a `[` in inline math that can hold a URL: 20,000 of them on one line.
+// MD034 re-reads the rest of a block after a `[` in inline math, once: 20,000 URLs in emphasis after one, on one line.
 const urlsAfterMathBracket = (count: number): string => `# T\n\n$[$ ${"*https://a.b* WWW.c.d ".repeat(count)}\n`;
 
 const inputs: ReadonlyArray<readonly [name: string, source: string]> = [

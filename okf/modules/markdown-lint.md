@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T15:04:56Z
+  at: 2026-11-24T15:12:07Z
 integrity:
   generated:
-    body: 3d240dbf7a8c1a23
+    body: 254c266e90b0e1c8
 ---
 
 # `@effected/markdown-lint`
@@ -381,7 +381,7 @@ plain synchronous function; no logging, no metrics.
   (MD011), 2,000 images holding references beside 2,000 definitions (MD039,
   MD042, MD059), one line of 20,000 bracketed spans and addresses and one
   line of 24,000 unclosed inline HTML tags, and 20,000 URLs in emphasis
-  after a bracket in inline math, each text node re-parsed (MD034),
+  after a bracket in inline math, the block's rest re-read once (MD034),
   `applyFixes` over
   90,000 fixes, and three settings that drive a loop or a repeat
   (`lines_above: 1e999` and `spaces_per_tab: 1e9` in a `configure-file`

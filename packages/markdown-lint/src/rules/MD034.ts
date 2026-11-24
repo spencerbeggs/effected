@@ -57,9 +57,9 @@ const isUrl = (text: string): boolean => /^(?:https?:\/\/|ftp:\/\/|www\.)/i.test
  * The URL and `www.` literal autolinks the GFM reading of `text` finds, in its offsets.
  *
  * @remarks
- * A whole parse of `text`, linear in it but with a parse's fixed cost (about 45 µs for a short text node): called
- * only for a text node holding a `www.` in another case, and for one after a `[` in inline math that holds `://` or
- * `www.`, so a document pays it once per such text node. Email addresses are scanned, never re-parsed.
+ * A whole parse of `text`, linear in it but with a parse's fixed cost (about 45 µs for a short text): called only for
+ * a text node holding a `www.` in another case, and once for the rest of a block after a `[` in inline math when that
+ * rest holds `://` or `www.`. Email addresses are scanned, never re-parsed.
  */
 const urlsIn = (text: string): ReadonlyArray<Literal> => {
 	const parsed = MarkdownDocument.parseResult(text, options);
@@ -348,18 +348,13 @@ const bareUrls = (context: LintContext): ReadonlyArray<Literal> => {
 	const root = context.document.root as MarkdownNode;
 	for (const [index, child] of childrenOf(root).entries()) visit(child, childrenOf(root), index);
 
-	// A text node after a `[` in inline math: the kit's parser took the bracket as open and linked nothing after it.
+	// The rest of a block after a `[` in inline math: the kit's parser took the bracket as open and linked nothing
+	// after it. One re-read per block, its literals kept where they open in a text node the walk reaches.
 	const first = scanBlocks(context, urls);
 	if (first.bracketMath.length > 0) {
 		const known = new Set(urls.map((url) => url.start));
-		const after = first.bracketMath;
-		for (const text of texts) {
-			const start = text.position.start.offset;
-			const end = text.position.end.offset;
-			const index = lowerBound(after, end) - 1;
-			const math = after[index];
-			if (math === undefined || math[1] <= start) continue;
-			const from = Math.max(start, math[0]);
+		const textSpans = texts.map((text) => [text.position.start.offset, text.position.end.offset] as Span);
+		for (const [from, end] of first.bracketMath) {
 			// A URL or `www.` literal needs one of these: text without either is not re-parsed.
 			const raw = source.slice(from, end);
 			if (!raw.includes("://") && !/www\./i.test(raw)) continue;
@@ -367,6 +362,8 @@ const bareUrls = (context: LintContext): ReadonlyArray<Literal> => {
 			let blanked = "";
 			for (let at = from; at < end; at++) blanked += inMath(at) ? " " : source.charAt(at);
 			for (const literal of urlsAt(source, from, blanked)) {
+				const text = textSpans[lowerBound(textSpans, literal.start + 1) - 1];
+				if (text === undefined || literal.start >= text[1]) continue;
 				if (known.has(literal.start) || inMath(literal.start)) continue;
 				const url = micromarkUrl(source, literal.start, literal.end);
 				if (url !== undefined) urls.push({ ...url, wrapped: false });
