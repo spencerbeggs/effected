@@ -44,7 +44,7 @@ const shuffled = <A>(items: ReadonlyArray<A>, seed: string): ReadonlyArray<A> =>
 };
 
 // markdownlint's findings with a fix over every input, per case.
-const ORACLE_FIXES_ALL = 4278;
+const ORACLE_FIXES_ALL = 4329;
 const ORACLE_FIXES_MD004_MD032 = 396;
 const ORACLE_FIXES_MD022_MD009 = 452;
 const ORACLE_FIXES_MD031_MD032 = 368;
@@ -59,6 +59,7 @@ const ORACLE_FIXES_MD029_MD005 = 437;
 const ORACLE_FIXES_MD030_MD004 = 324;
 const ORACLE_FIXES_MD030_MD007 = 479;
 const ORACLE_FIXES_MD030_MD005 = 116;
+const ORACLE_FIXES_MD014_MD010 = 334;
 // The inputs on which fixes from two or more of the case's rules land on one line, the case the file exists for.
 const MEETING_ALL = 41;
 const MEETING_MD004_MD032 = 17;
@@ -76,6 +77,7 @@ const MEETING_MD029_MD005 = 2;
 const MEETING_MD030_MD004 = 8;
 const MEETING_MD030_MD007 = 5;
 const MEETING_MD030_MD005 = 2;
+const MEETING_MD014_MD010 = 2;
 const MEETING_SAMPLE = 11;
 
 describe("applyFixes over several rules' fixes", () => {
@@ -243,6 +245,17 @@ describe("applyFixes over several rules' fixes", () => {
 			[
 				{ name: "respaced and re-indented ordered items, LF", source: "1. a\n 2.  b\n  3.   c\n" },
 				{ name: "respaced and re-indented ordered items, CRLF", source: "1. a\r\n 2.  b\r\n  3.   c\r\n" },
+			],
+		],
+		// MD014 deletes a command's `$` and the whitespace after it, and MD010 rewrites a tab in that whitespace.
+		[
+			"MD014 and MD010",
+			["MD014", "MD010"],
+			ORACLE_FIXES_MD014_MD010,
+			MEETING_MD014_MD010,
+			[
+				{ name: "dollar, tab and command, LF", source: "```\n$\tls\n$ cd\tx\n```\n" },
+				{ name: "dollar, tab and command, CRLF", source: "```\r\n$\tls\r\n$ cd\tx\r\n```\r\n" },
 			],
 		],
 	];

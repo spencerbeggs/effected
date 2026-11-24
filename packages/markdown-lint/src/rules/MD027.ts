@@ -13,11 +13,10 @@
 
 import type { Code, MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
-import { fencedInterior } from "../internal/code-blocks.js";
+import { fenceIndent, fencedInterior } from "../internal/code-blocks.js";
 import {
 	containerStep,
 	containersAt,
-	contentInContainers,
 	flowNodes,
 	flowNodesWithAncestors,
 	lastContentLine,
@@ -39,9 +38,7 @@ const prefixLimits = (context: LintContext): ReadonlyMap<number, number> => {
 		} else if (node.type === "html" || (node as Code).fenceChar === undefined) {
 			for (let line = start.line; line <= end.line; line++) limits.set(line, 0);
 		} else {
-			const opener = context.lines[start.line - 1] ?? "";
-			const content = contentInContainers(context, start.line) ?? opener;
-			const indent = start.column - 1 - (opener.length - content.length);
+			const indent = fenceIndent(context, node as Code);
 			const inner = fencedInterior(context, node as Code);
 			for (let line = inner.start; line <= inner.end; line++) limits.set(line, indent);
 			for (let line = inner.end + 1; line <= end.line; line++) limits.set(line, 0);

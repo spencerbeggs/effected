@@ -3,7 +3,7 @@
 
 import type { Code } from "@effected/markdown";
 import type { LintContext } from "../LintContext.js";
-import { containerNodes } from "./containers.js";
+import { containerNodes, contentInContainers } from "./containers.js";
 import type { LineRange } from "./lines.js";
 import { addRange } from "./lines.js";
 import { perReading } from "./memo.js";
@@ -76,3 +76,65 @@ export const codeBlockLines: (context: LintContext) => ReadonlySet<number> = per
 	}
 	return lines;
 });
+
+/**
+ * A fenced code block's indentation: the columns between its containers'
+ * prefix and its opening fence, which micromark strips from each inner line
+ * as a `linePrefix`.
+ * @internal
+ */
+export const fenceIndent = (context: LintContext, node: Code): number => {
+	const opener = context.lines[node.position.start.line - 1] ?? "";
+	const content = contentInContainers(context, node.position.start.line) ?? opener;
+	return node.position.start.column - 1 - (opener.length - content.length);
+};
+
+/** One `codeFlowValue` token: a code line's text past its prefixes, where it starts and on which line. @internal */
+export interface CodeFlowValue {
+	readonly lineNumber: number;
+	readonly offset: number;
+	readonly text: string;
+}
+
+// The length of the indentation micromark strips from a code line: up to `columns` columns of spaces and tabs.
+const strippedIndent = (text: string, columns: number): number => {
+	let column = 0;
+	let index = 0;
+	while (index < text.length && column < columns) {
+		const char = text.charAt(index);
+		if (char === " ") column++;
+		else if (char === "\t") column += 4 - (column % 4);
+		else break;
+		index++;
+	}
+	return index;
+};
+
+/**
+ * A code block's `codeFlowValue` tokens, as micromark gives them: each inner
+ * line (a fenced block's lines between its fences, an indented block's every
+ * line) past its containers' prefix and the block's own indentation (the
+ * fence's, or four columns), when anything is left, whitespace included.
+ * @internal
+ */
+export const codeFlowValues = (context: LintContext, node: Code): ReadonlyArray<CodeFlowValue> => {
+	const fenced = node.fenceChar !== undefined;
+	const range = fenced
+		? fencedInterior(context, node)
+		: { start: node.position.start.line, end: node.position.end.line };
+	const indent = fenced ? fenceIndent(context, node) : 4;
+	const values: Array<CodeFlowValue> = [];
+	for (let lineNumber = range.start; lineNumber <= range.end; lineNumber++) {
+		const line = context.lines[lineNumber - 1] ?? "";
+		const content = contentInContainers(context, lineNumber) ?? line;
+		const strip = strippedIndent(content, indent);
+		const text = content.slice(strip);
+		if (text.length === 0) continue;
+		values.push({
+			lineNumber,
+			offset: context.mapping.lineStart(lineNumber) + line.length - content.length + strip,
+			text,
+		});
+	}
+	return values;
+};

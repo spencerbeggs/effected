@@ -984,6 +984,7 @@
 		"MD010": "no-hard-tabs, hard tabs, tab characters, spaces per tab fix",
 		"MD012": "no-multiple-blanks, multiple consecutive blank lines over a maximum",
 		"MD013": "line-length, line length limit, long lines in headings tables code",
+		"MD014": "commands-show-output, dollar sign before shell commands in a code block without output",
 		"MD018": "no-missing-space-atx, missing space after hash in an atx heading",
 		"MD019": "no-multiple-space-atx, multiple spaces after hash in an atx heading",
 		"MD020": "no-missing-space-closed-atx, missing space inside hashes of a closed atx heading",
