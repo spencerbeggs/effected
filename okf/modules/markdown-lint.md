@@ -21,14 +21,16 @@ sources:
     resource: ../../packages/markdown-lint/__test__/markdownlint-host.test.ts
   - id: host-config-tests
     resource: ../../packages/markdown-lint/__test__/host-config.test.ts
+  - id: config-file-tests
+    resource: ../../packages/markdown-lint/__test__/config-file.test.ts
   - id: systems-804
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-24T00:23:11Z
+  at: 2026-11-24T00:47:08Z
 integrity:
   generated:
-    body: d3a9a74b66017a91
+    body: 3b250a71ce77dd5b
 ---
 
 # `@effected/markdown-lint`
@@ -164,6 +166,23 @@ adapter markdownlint does all of that itself: `context.config` is
 runs both hosts over the same inputs and configs and requires equal lines,
 details and severities[^host-config-tests].
 
+The `./config` subpath reads that object from disk, and is the package's only
+file-system code: `MarkdownlintConfigFile` needs `FileSystem` and `Path` in
+`R`, parses with `@effected/jsonc` and `@effected/yaml`, and nothing reachable
+from the package root imports it (the root-purity gate in
+`rules-metadata.test.ts`). `read(path)` reads one file and its `extends`
+chain. A reference is a file path, relative to the extending file or absolute.
+Each file is merged over the one it extends with `LintConfig.merge`. The caps
+are 16 links and 1 MiB per file, the size checked before parsing.
+`resolve(filePath, { root })` follows markdownlint-cli2, as a probe of cli2
+0.24.2 established. It walks from the file's directory up to `root`. In each
+directory the first of `.markdownlint.jsonc`, `.json`, `.yaml`, `.yml` is
+that directory's config. The nearest directory holding one decides, with its
+own `extends` chain. A farther directory's config is **replaced**, not merged:
+cli2 inherits an ancestor's config only into a directory with none. Every
+failure is a `MarkdownlintConfigError` with a `reason` and the offending
+`path`[^config-file-tests].
+
 ## Failure posture
 
 A markdown document always parses except one nested past the kit's
@@ -228,6 +247,23 @@ plain synchronous function; no logging, no metrics.
   line break. The kit edits still apply to markdownlint's text. Pinned by a
   test (two and three blank lines, 2 inputs).
 
+- `./config` loads no JavaScript config (`.markdownlint.cjs`, `.mjs`) and
+  none of cli2's own options files (`.markdownlint-cli2.*`). A directory
+  holding only such files goes in `ResolvedLintConfig.skipped` and the walk
+  continues to its parent; cli2 would load the JS config and stop there.
+  Named directly or by `extends`, such a file fails `unsupported`. Beside a
+  supported file it is not reported: cli2 prefers the supported file.
+  cli2's `.markdownlint-cli2.*` layering, its `config` merge across
+  directories and its `overrides` are not modelled. Pinned by a test.
+- `./config` parses content as JSONC (trailing commas allowed) and then as
+  YAML, whatever the extension, as cli2 does, but without the TOML parser
+  cli2 tries between them.
+- `./config` fails `parse` for a parsed value that is not an object (an
+  empty file, an array, a scalar), where markdownlint reads it as `{}`. It
+  fails `parse` for a truthy non-string `extends`, where markdownlint throws
+  a `TypeError` out of its callback. A falsy `extends` is left in place
+  and not followed, as markdownlint does. Pinned by tests.
+
 ## Known limitations
 
 - Fixes from several findings can meet (MD022's two headings asking for the
@@ -281,3 +317,4 @@ plain synchronous function; no logging, no metrics.
 [^golden-readme]: `packages/markdown-lint/__test__/fixtures/changesets/README.md` — producing commit, versions, the capture command and what each field pins.
 [^host-tests]: `packages/markdown-lint/__test__/markdownlint-host.test.ts`.
 [^host-config-tests]: `packages/markdown-lint/__test__/host-config.test.ts`.
+[^config-file-tests]: `packages/markdown-lint/__test__/config-file.test.ts`.

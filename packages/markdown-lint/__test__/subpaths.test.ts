@@ -1,7 +1,8 @@
-// The built rule subpaths reference the root rather than carrying a copy of it.
-// `./rules` and `./rules/all` name the root's types through the package's own
-// name, kept external by `dtsExternals` in effected.toml, and API Extractor's
-// resulting forgotten-export noise is suppressed for those two entries only.
+// The built subpaths reference the root rather than carrying a copy of it.
+// `./rules`, `./rules/all` and `./config` name the root's types through the
+// package's own name, kept external by `dtsExternals` in effected.toml, and API
+// Extractor's resulting forgotten-export noise is suppressed for those three
+// entries only.
 // This file pins what that suppression could hide: an unexported declaration
 // in either rolled-up `.d.ts`. It also pins the runtime half: the subpath
 // modules import the root's modules, never inline a second copy of them.
@@ -21,6 +22,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assert, describe, it } from "@effect/vitest";
+import * as configExports from "../src/config/index.js";
 import * as ruleExports from "../src/rules/index.js";
 
 const PACKAGE = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -28,20 +30,45 @@ const PACKAGE = join(dirname(fileURLToPath(import.meta.url)), "..");
 const BUILT = join(PACKAGE, "dist", "prod", "npm", "pkg");
 const TSC = join(PACKAGE, "node_modules", ".bin", "tsc");
 
-/** Each rule subpath, its built entry, and the names its declarations export. */
+/** Each subpath, its built entry, and the names its declarations export (types included). */
 const SUBPATHS = [
 	{ subpath: "./rules", entry: "rules", exports: Object.keys(ruleExports) as ReadonlyArray<string> },
 	{ subpath: "./rules/all", entry: "rules-all", exports: ["rules", "uncovered"] },
+	{
+		subpath: "./config",
+		entry: "config",
+		exports: [...Object.keys(configExports), "ResolvedLintConfig"] as ReadonlyArray<string>,
+	},
 ] as const;
 
 /** Where built JavaScript declares the LintRule class: the bundler writes `var LintRule = class …`. */
 const DECLARES_LINT_RULE = /\b(?:class LintRule\b|LintRule = class\b)/;
 
+/** Where built JavaScript declares the LintConfig class. */
+const DECLARES_LINT_CONFIG = /\b(?:class LintConfig\b|LintConfig = class\b)/;
+
+/** A trailing export list, `export { a, b };` or `export type { a, b };`: the bundler's form for interfaces and types. */
+const EXPORT_LIST = /^export\s+(?:type\s+)?\{([^}]*)\};?$/gm;
+
+/** The names a rolled-up `.d.ts` exports through export lists. */
+const listedExports = (dts: string): ReadonlySet<string> =>
+	new Set(
+		[...dts.matchAll(EXPORT_LIST)].flatMap((match) =>
+			(match[1] ?? "")
+				.split(",")
+				.map((name) => name.trim())
+				.filter((name) => name !== ""),
+		),
+	);
+
+/** A Schema class's synthesized base: unexported by design, and suppressed by its own `_base` pattern. */
+const isSchemaBase = (name: string | undefined): boolean => name?.endsWith("_base") ?? false;
+
 /** A top-level declaration in a rolled-up `.d.ts`: whether the line exports it, and its name. */
 const TOP_LEVEL_DECLARATION =
 	/^(export\s+)?(?:declare\s+)?(?:abstract\s+)?(?:class|interface|type|const|let|var|function|enum|namespace)\s+([A-Za-z_$][\w$]*)/gm;
 
-describe("the built rule subpaths", () => {
+describe("the built subpaths", () => {
 	const manifest = JSON.parse(readFileSync(join(BUILT, "package.json"), "utf8")) as {
 		readonly exports?: Record<string, unknown>;
 	};
@@ -53,25 +80,37 @@ describe("the built rule subpaths", () => {
 	it("declare only exported names, typed through the root rather than a copy", () => {
 		for (const { entry, exports } of SUBPATHS) {
 			const dts = readFileSync(join(BUILT, `${entry}.d.ts`), "utf8");
+			const listed = listedExports(dts);
 			// Every top-level declaration is exported: an unexported one is what the scoped
 			// ae-forgotten-export suppression in effected.toml would otherwise hide.
 			assert.deepStrictEqual(
-				[...dts.matchAll(TOP_LEVEL_DECLARATION)].map((match) => [match[1] !== undefined, match[2]]).sort(),
+				[...dts.matchAll(TOP_LEVEL_DECLARATION)]
+					.filter((match) => !isSchemaBase(match[2]))
+					.map((match) => [match[1] !== undefined || listed.has(match[2] ?? ""), match[2]])
+					.sort(),
 				exports.map((name) => [true, name]).sort(),
 				entry,
 			);
 			// No root declaration was rolled in: the root's types are only ever imported.
 			assert.notMatch(dts, /declare class LintRule\b/, entry);
+			assert.notMatch(dts, /declare class LintConfig\b/, entry);
 		}
 		const all = readFileSync(join(BUILT, "rules-all.d.ts"), "utf8");
 		assert.include(all, 'import { LintRule } from "@effected/markdown-lint";');
+		const config = readFileSync(join(BUILT, "config.d.ts"), "utf8");
+		assert.include(config, 'import * as Lint from "@effected/markdown-lint";');
+		assert.include(config, "readonly config: Lint.LintConfigRecord;");
 	});
 
 	it("import the root's modules at runtime rather than inlining them", () => {
 		for (const { entry } of SUBPATHS) {
 			const js = readFileSync(join(BUILT, `${entry}.js`), "utf8");
 			assert.notMatch(js, DECLARES_LINT_RULE, entry);
+			assert.notMatch(js, DECLARES_LINT_CONFIG, entry);
 		}
+		const configModule = readFileSync(join(BUILT, "config", "MarkdownlintConfigFile.js"), "utf8");
+		assert.notMatch(configModule, DECLARES_LINT_CONFIG);
+		assert.include(configModule, 'import { LintConfig } from "../LintConfig.js";');
 	});
 
 	it("build rules that are instances of the built root's LintRule", async () => {
@@ -87,18 +126,26 @@ describe("the built rule subpaths", () => {
 		);
 	});
 
-	it("declare LintRule in the root's module alone", () => {
-		const declaring = readdirSync(BUILT, { recursive: true, encoding: "utf8" })
-			.filter((file) => file.endsWith(".js"))
-			.filter((file) => DECLARES_LINT_RULE.test(readFileSync(join(BUILT, file), "utf8")));
-		assert.deepStrictEqual(declaring, ["LintRule.js"]);
+	it("declare LintRule and LintConfig in the root's modules alone", () => {
+		const declaring = (pattern: RegExp) =>
+			readdirSync(BUILT, { recursive: true, encoding: "utf8" })
+				.filter((file) => file.endsWith(".js"))
+				.filter((file) => pattern.test(readFileSync(join(BUILT, file), "utf8")));
+		assert.deepStrictEqual(declaring(DECLARES_LINT_RULE), ["LintRule.js"]);
+		assert.deepStrictEqual(declaring(DECLARES_LINT_CONFIG), ["LintConfig.js"]);
 	});
 
 	it("type-check in a consumer, with rules a real LintRule array rather than an unresolved any", () => {
 		const consumer = `import type { LintRule } from "@effected/markdown-lint";
 import { MarkdownLint } from "@effected/markdown-lint";
 import { rules, uncovered } from "@effected/markdown-lint/rules/all";
+import type { LintConfigRecord } from "@effected/markdown-lint";
+import type { ResolvedLintConfig } from "@effected/markdown-lint/config";
+import { MarkdownlintConfigError, MarkdownlintConfigFile } from "@effected/markdown-lint/config";
 
+export const record = (resolved: ResolvedLintConfig): LintConfigRecord => resolved.config;
+export const read = MarkdownlintConfigFile.read("/repo/.markdownlint.json");
+export const reason = (error: MarkdownlintConfigError): string => error.reason;
 export const typed: ReadonlyArray<LintRule> = rules;
 export const names: ReadonlyArray<string> = uncovered;
 export const findings = MarkdownLint.lint("# H\\n", rules);
@@ -106,6 +153,10 @@ export const findings = MarkdownLint.lint("# H\\n", rules);
 		// The live control: if the subpath's LintRule import failed to resolve, rules would be any and assign.
 		const control = `import { rules } from "@effected/markdown-lint/rules/all";
 export const wrong: number = rules;
+`;
+		// The same for ./config: an unresolved root import would make the config any.
+		const configControl = `import type { ResolvedLintConfig } from "@effected/markdown-lint/config";
+export const wrong = (resolved: ResolvedLintConfig): number => resolved.config;
 `;
 		const fixture = mkdtempSync(join(tmpdir(), "markdown-lint-subpaths-"));
 		try {
@@ -120,6 +171,7 @@ export const wrong: number = rules;
 			}
 			writeFileSync(join(fixture, "consumer.ts"), consumer);
 			writeFileSync(join(fixture, "control.ts"), control);
+			writeFileSync(join(fixture, "config-control.ts"), configControl);
 			writeFileSync(
 				join(fixture, "tsconfig.json"),
 				JSON.stringify({
@@ -133,7 +185,7 @@ export const wrong: number = rules;
 						skipLibCheck: true,
 						types: [],
 					},
-					files: ["consumer.ts", "control.ts"],
+					files: ["consumer.ts", "control.ts", "config-control.ts"],
 				}),
 			);
 			const result = spawnSync(TSC, ["-p", "."], { cwd: fixture, encoding: "utf8" });
@@ -150,6 +202,10 @@ export const wrong: number = rules;
 			assert.isTrue(
 				controlLines.some((line) => line.includes("LintRule")),
 				`the control fails for the rules' type: ${controlLines.join(" | ")}`,
+			);
+			assert.isNotEmpty(
+				lines.filter((line) => line.startsWith("config-control.ts")),
+				"live control: a resolved config assigned to number is reported",
 			);
 		} finally {
 			rmSync(fixture, { recursive: true, force: true });

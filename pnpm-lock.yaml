@@ -1278,13 +1278,22 @@ importers:
 
   packages/markdown-lint:
     dependencies:
+      '@effected/jsonc':
+        specifier: workspace:^
+        version: link:../jsonc
       '@effected/markdown':
         specifier: workspace:^
         version: link:../markdown
+      '@effected/yaml':
+        specifier: workspace:^
+        version: link:../yaml
     devDependencies:
       '@effect/vitest':
         specifier: 4.1.5
         version: 4.1.5(effect@4.1.5)(vitest@5.1.1)
+      '@effected/memfs':
+        specifier: workspace:*
+        version: link:../memfs
       '@types/node':
         specifier: catalog:effected:build
         version: 26.6.6
