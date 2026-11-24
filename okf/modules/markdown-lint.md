@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T19:09:56Z
+  at: 2026-11-24T19:12:08Z
 integrity:
   generated:
-    body: b2ffc51644b03521
+    body: 59d2be501a7f4b12
 ---
 
 # `@effected/markdown-lint`
@@ -673,7 +673,7 @@ plain synchronous function; no logging, no metrics.
   it; the kit's parser, following cmark-gfm (a row must hold a cell to
   continue a table, `matches` in `extensions/table.c`), ends the table
   before it and reads the line as a paragraph. The table rules read the
-  kit's table. Pinned by a test (MD055 and MD056 2 inputs each).
+  kit's table. Pinned by a test (MD055, MD056 and MD058 2 inputs each).
 - **An MD051 `ignored_pattern` that does not compile.** markdownlint
   passes the setting to `new RegExp`, which throws on a pattern that does
   not compile (`(`), and the lint fails. The kit reads it as the default,
