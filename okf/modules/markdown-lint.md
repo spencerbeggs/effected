@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T14:23:44Z
+  at: 2026-11-24T15:04:56Z
 integrity:
   generated:
-    body: a57321fc2a7f29ad
+    body: 3d240dbf7a8c1a23
 ---
 
 # `@effected/markdown-lint`
@@ -272,19 +272,35 @@ to equal it, both lists to be in markdownlint's order, every built-in rule
 to be ported or uncovered exactly once, and `./rules` to export exactly
 `./rules/all`'s rules.
 
-MD034 reads micromark's GFM literal autolinks, which differ from the GFM
-spec the kit's parser follows, so the rule re-reads the kit's literals as
-micromark does: `ftp://` is no literal; after `mailto:` or `xmpp:` only the
-address is; a `www.` in another case (`WWW.`) is one; a URL ends before a
-trailing `]`; an address starts past a character reference before it and is
-none after an escape; and no literal is linked while a `[` or `![` before it
-in the block is unbalanced, a `]` balancing the latest opener whether or not
-it makes a link. These are readings, not divergences: the literal-autolink
-grid (`__test__/helpers/autolink-grid.ts`, 25 shapes in 18 placements)
-agrees finding for finding. Porting it found two kit parser defects, fixed
-in `@effected/markdown`: an address after an escape or entity was
-positioned inside it, and the email postprocess went quadratic on a run of
-many text nodes.
+MD034 reads micromark's GFM literal autolinks. micromark tokenizes a
+literal as it reads the text, before emphasis and brackets resolve, where
+the kit's parser follows cmark-gfm and links in a pass after them, so the
+kit's literals are only a starting point. For a URL or `www.` literal the
+rule re-reads the kit's: `ftp://` is no literal; a `www.` in another case
+(`WWW.`) is one; a URL ends before a trailing `]`; and text after a `[`
+inside inline math, which the kit's parser takes as an open bracket, is
+re-read with the math blanked. An email address is micromark's own scan of
+the source: it starts at a `+-._` or alphanumeric character not preceded by
+one or by `/` (so an `_` before it is its own, an escaped character or a
+scheme's `:` ends what comes before, and `mailto:a@b.co` links `a@b.co`),
+its domain takes `-`, `_` and alphanumerics with a `.` only before an
+alphanumeric, and it needs a dot and a final ASCII letter, so on a second
+`@` micromark keeps the first address where cmark-gfm retries at the later
+one. No literal is linked while a `[` or `![` before it in the block is
+unbalanced, a `]` balancing the latest opener whether or not it makes a
+link; a bracket inside inline math opens and closes nothing. Over the
+literal-autolink grid (`__test__/helpers/autolink-grid.ts`, 25 shapes in
+18 placements) these readings agree finding for finding; over the address
+and math-bracket grids (28 addresses in 12 placements, 5 targets in 14
+math placements) one input diverges, pinned by name: an address that takes
+the `_` that would open emphasis inside an inline HTML element
+(`<b>_a@b.co._</b> _a@b.co._`) leaves a later `_` to open emphasis that
+pairs across the close tag, so markdownlint's walk finds no close for the
+open tag and reports the address inside it, where the kit's emphasis closes
+inside the element and the kit leaves the address out. Porting it found two
+kit parser defects, fixed in `@effected/markdown`: an address after an
+escape or entity was positioned inside it, and the email postprocess went
+quadratic on a run of many text nodes.
 
 ## Failure posture
 
@@ -363,7 +379,9 @@ plain synchronous function; no logging, no metrics.
   20,000 one-item lists, a list nested 40 deep in a blockquote before 20,000
   quoted blank lines), one line of 20,000 reversed links beside code spans
   (MD011), 2,000 images holding references beside 2,000 definitions (MD039,
-  MD042, MD059), one line of 20,000 bracketed spans and addresses (MD034),
+  MD042, MD059), one line of 20,000 bracketed spans and addresses and one
+  line of 24,000 unclosed inline HTML tags, and 20,000 URLs in emphasis
+  after a bracket in inline math, each text node re-parsed (MD034),
   `applyFixes` over
   90,000 fixes, and three settings that drive a loop or a repeat
   (`lines_above: 1e999` and `spaces_per_tab: 1e9` in a `configure-file`
@@ -439,7 +457,15 @@ plain synchronous function; no logging, no metrics.
 - MD042 for an empty link spanning lines: markdownlint's range (the link's
   end column less its start column) runs past the first line, and it throws
   on its own `range`; the kit reports the link, its range cut to the line.
-  Pinned by a test as an upstream failure (1 input).
+  Pinned by a test as an upstream failure (2 inputs: a label across lines,
+  and a label ending in a line break).
+- MD039 for a label ending in a no-break space on the first line:
+  markdownlint's `trimEnd` trims the no-break space but its re2 space
+  pattern, whose `\s` is ASCII, does not match it, so it reports the line
+  before the closing bracket's, line 0, and throws on its own `lineNumber`;
+  the kit reports the label's line, with no range. Pinned by a test as an
+  upstream failure (2 inputs). Off the first line the kit reads the
+  no-break space as markdownlint does.
 - MD027 after a tab right behind a blockquote marker (`>\ttab`):
   markdownlint reports a range over the partly consumed tab and throws on
   its own `range`; the kit reports nothing. Pinned by a test as an upstream
@@ -553,8 +579,8 @@ plain synchronous function; no logging, no metrics.
   column. The kit reports it once, as 0.42.1 did; a defined reference is
   reported once by both. Pinned by a test (MD033 4 inputs). The same copy
   takes `autolink*`, `codeText*`, `attentionSequence` and `mathText*`
-  events, so expect the same double count when MD049 or MD050 is
-  ported. MD034 is spared: micromark links no literal while a label opener
+  events, but MD049 and MD050 were ported without a double count, and
+  MD034 is spared: micromark links no literal while a label opener
   before it is unbalanced, so a bracket holds none to copy. MD038 is spared: the copy takes a code span's `codeTextData` and
   `codeTextPadding` but not its `codeText` token, which MD038 walks, so it
   reports a code span in an undefined reference once (the code-span grid
