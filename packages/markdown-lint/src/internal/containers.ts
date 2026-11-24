@@ -298,7 +298,9 @@ export const listTokenEndLine = (
 	const last = lastContentLine(list, context.lines);
 	if (!ancestors.some((node) => node.type === "blockquote" || node.type === "footnoteDefinition")) return last;
 	const quote = ancestors.findLast((node) => node.type === "blockquote");
-	// The run of blank lines that continue the list's containers.
+	// The run of blank lines that continue the list's containers. In a footnote with no blockquote around the list
+	// the run is bounded only by the next line with content, not the footnote's end: an unquoted blank line extends
+	// the token only on the way to a container (below), otherwise the end falls back to `lastQuoted`.
 	let runEnd = last;
 	let lastQuoted = last;
 	while (runEnd < context.lines.length) {
