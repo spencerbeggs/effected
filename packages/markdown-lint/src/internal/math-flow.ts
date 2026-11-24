@@ -122,7 +122,13 @@ export const mathFlowBlocks: (context: LintContext) => ReadonlyArray<LineRange> 
 	return blocks;
 });
 
-/** Every line of every math block {@link mathFlowBlocks} reads; shared, read-only. @internal */
+/**
+ * Every line of every math block {@link mathFlowBlocks} reads, opener lines
+ * included; shared, read-only. The inclusive test, for what lies inside a
+ * line: inline content on an opener line (`$$ <b>x</b>`) is the fence's meta,
+ * math to micromark. Its counterpart for a container is {@link inMathBlock}.
+ * @internal
+ */
 export const mathFlowLines: (context: LintContext) => ReadonlySet<number> = perReading((context) => {
 	const lines = new Set<number>();
 	for (const block of mathFlowBlocks(context)) addRange(lines, block.start, block.end);
@@ -131,7 +137,11 @@ export const mathFlowLines: (context: LintContext) => ReadonlySet<number> = perR
 
 /**
  * Whether a node the kit reads starting on `line` lies inside a math block:
- * past the block's opening line, which holds the opener itself.
+ * past the block's opening line, which holds the opener itself. The strict
+ * test, for a container or a fence: a list starting on an opener line
+ * (`- $$`) holds the opener rather than lying in the math, and the
+ * differential tests fail if it is read as inside. Inline content uses the
+ * inclusive {@link mathFlowLines}; the two must stay distinct.
  * @internal
  */
 export const inMathBlock = (blocks: ReadonlyArray<LineRange>, line: number) =>

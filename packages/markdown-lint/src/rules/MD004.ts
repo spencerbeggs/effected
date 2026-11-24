@@ -54,6 +54,7 @@ export const MD004: Lint.LintRule = LintRule.make({
 		const nestingStyles: Array<Style> = [];
 		const math = mathFlowBlocks(context);
 		for (const { list, nesting } of listsWithNesting(context.root as MarkdownNode)) {
+			// Strict: a list or fence starting on a math opener line holds the opener (see `inMathBlock`).
 			if (list.ordered === true || inMathBlock(math, list.position.start.line)) continue;
 			for (const item of list.children) {
 				const offset = item.position.start.offset;

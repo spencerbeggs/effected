@@ -61,6 +61,7 @@ export const MD031: Lint.LintRule = LintRule.make({
 		};
 		for (const { node, ancestors } of flowNodesWithAncestors(context, new Set(["code"]))) {
 			const code = node as Code;
+			// Strict: a list or fence starting on a math opener line holds the opener (see `inMathBlock`).
 			if (code.fenceChar === undefined || inMathBlock(math, code.position.start.line)) continue;
 			if (!includeListItems && ancestors.some((ancestor) => ancestor.type === "list")) continue;
 			const startLine = code.position.start.line;

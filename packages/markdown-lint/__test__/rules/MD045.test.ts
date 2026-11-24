@@ -80,6 +80,13 @@ describe("MD045 no-alt-text", () => {
 			],
 		);
 	});
+
+	it("reads a math opener line's meta as math, as markdownlint does, and the same text off one as markup", () => {
+		// `$$$` closes the block but no inline math, so only the block-level exclusion can drop the opener's meta;
+		// markdownlint 0.42.1 reports nothing for the first input. The second, with no opener, is still reported.
+		assert.deepStrictEqual(run("$$ ![](a.png)\nx\n$$$\n"), []);
+		assert.strictEqual(run("x ![](a.png)\nx\n$$$\n").length, 1);
+	});
 });
 
 // markdownlint's MD045 findings over the corpus (LF and CRLF) and the extras.

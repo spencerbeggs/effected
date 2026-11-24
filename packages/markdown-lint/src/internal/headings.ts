@@ -84,6 +84,7 @@ export const headingStyle = (context: LintContext, heading: Heading): "atx" | "a
  */
 export const headingNodes: (context: LintContext) => ReadonlyArray<Heading> = perReading((context) => {
 	const math = mathFlowLines(context);
+	// Inclusive: on a math opener line, this is the fence's meta (see `mathFlowLines`).
 	return (context.document.findAll("heading") as ReadonlyArray<Heading>).filter(
 		(heading) => !math.has(heading.position.start.line),
 	);

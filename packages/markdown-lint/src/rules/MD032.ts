@@ -78,6 +78,7 @@ export const MD032: Lint.LintRule = LintRule.make({
 			const list = node as List;
 			if (ancestors.some((ancestor) => ancestor.type === "list")) continue;
 			const firstLine = list.position.start.line;
+			// Strict: a list or fence starting on a math opener line holds the opener (see `inMathBlock`).
 			if (inMathBlock(math, firstLine)) continue;
 			const firstText = context.lines[firstLine - 1] as string;
 			if (!isBlankLine(contentLine(context, firstLine - 1))) {

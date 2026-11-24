@@ -132,6 +132,7 @@ export const MD060: Lint.LintRule = LintRule.make({
 		};
 
 		for (const table of context.document.findAll("table")) {
+			// Inclusive: on a math opener line, this is the fence's meta (see `mathFlowLines`).
 			if (math.has(table.position.start.line)) continue;
 			const rows: Array<Row> = [];
 			for (let lineNumber = table.position.start.line; lineNumber <= table.position.end.line; lineNumber++) {

@@ -38,6 +38,7 @@ export const MD040: Lint.LintRule = LintRule.make({
 		const languageOnly = !!context.config.language_only;
 		const math = mathFlowBlocks(context);
 		for (const code of codeNodes(context) as ReadonlyArray<Code>) {
+			// Strict: a list or fence starting on a math opener line holds the opener (see `inMathBlock`).
 			if (code.fenceChar === undefined || inMathBlock(math, code.position.start.line)) continue;
 			const offset = code.position.start.offset;
 			const line = code.position.start.line;

@@ -85,6 +85,7 @@ export const htmlTextTokens: (context: LintContext) => ReadonlyArray<HtmlText> =
 	const mathText = mathTextSpans(context.document, context.source);
 	const tokens: Array<HtmlText> = [];
 	for (const { node, inTable } of inlineHtml(context.root as MarkdownNode, false, [])) {
+		// Inclusive: on a math opener line, this is the fence's meta (see `mathFlowLines`).
 		if (math.has(node.position.start.line) || inSpans(mathText, node.position.start.offset)) continue;
 		tokens.push({
 			offset: node.position.start.offset,
@@ -93,6 +94,7 @@ export const htmlTextTokens: (context: LintContext) => ReadonlyArray<HtmlText> =
 		});
 	}
 	for (const block of flowNodes(context, new Set(["html"]))) {
+		// Inclusive: on a math opener line, this is the fence's meta (see `mathFlowLines`).
 		if (math.has(block.position.start.line) || isHtmlFlowComment(context, block)) continue;
 		tokens.push(...blockHtmlText(context, block));
 	}

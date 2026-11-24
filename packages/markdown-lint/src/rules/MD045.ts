@@ -36,6 +36,7 @@ export const MD045: Lint.LintRule = LintRule.make({
 			const node = entry.node;
 			if (node.type !== "image" && !(node.type === "imageReference" && entry.url !== undefined)) continue;
 			const start = node.position.start.offset;
+			// Inclusive: on a math opener line, this is the fence's meta (see `mathFlowLines`).
 			if (math.has(node.position.start.line) || inSpans(mathText, start)) continue;
 			// The label, as written, is empty: `![]`.
 			if (context.source.charAt(start + 2) !== "]") continue;
