@@ -4,6 +4,7 @@
 
 import type { ListItem, MarkdownNode } from "@effected/markdown";
 import type { LintContext } from "../LintContext.js";
+import { perReading } from "./memo.js";
 
 /** The node types a flow-level walk descends into. @internal */
 export const CONTAINERS = new Set(["root", "blockquote", "list", "listItem", "footnoteDefinition"]);
@@ -81,19 +82,25 @@ export const contentOf = (line: string, lineNumber: number, chain: ReadonlyArray
 	containerParts(line, lineNumber, chain).text;
 
 /**
+ * Every blockquote, list item and footnote definition in the document, in
+ * document order. Computed once per reading and shared: read-only.
+ * @internal
+ */
+export const containerNodes: (context: LintContext) => ReadonlyArray<MarkdownNode> = perReading((context) =>
+	context.document.findAll(
+		(node) => node.type === "blockquote" || node.type === "listItem" || node.type === "footnoteDefinition",
+	),
+);
+
+/**
  * The containers (blockquotes, list items, footnote definitions) the kit
  * places line `lineNumber` in, outermost first.
  * @internal
  */
 export const containersAt = (context: LintContext, lineNumber: number): Array<MarkdownNode> =>
-	[
-		...context.document.findAll(
-			(node) =>
-				(node.type === "blockquote" || node.type === "listItem" || node.type === "footnoteDefinition") &&
-				node.position.start.line <= lineNumber &&
-				lineNumber <= node.position.end.line,
-		),
-	].sort((a, b) => a.position.start.offset - b.position.start.offset);
+	containerNodes(context)
+		.filter((node) => node.position.start.line <= lineNumber && lineNumber <= node.position.end.line)
+		.sort((a, b) => a.position.start.offset - b.position.start.offset);
 
 /**
  * markdownlint's `getBlockQuotePrefixText` for one line, from its raw text:

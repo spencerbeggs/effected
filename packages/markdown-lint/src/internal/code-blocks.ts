@@ -3,8 +3,10 @@
 
 import type { Code } from "@effected/markdown";
 import type { LintContext } from "../LintContext.js";
+import { containerNodes } from "./containers.js";
 import type { LineRange } from "./lines.js";
 import { addRange } from "./lines.js";
+import { perReading } from "./memo.js";
 
 // A closed fence ends on its closing fence line: only container markers,
 // indentation and at least the opener's run of its character.
@@ -29,10 +31,7 @@ export const fencedEndLine = (context: LintContext, node: Code): number => {
 	const closed = end > start && isClosingFence(context.lines[end - 1] ?? "", node);
 	if (closed || end >= context.lines.length) return end;
 	const next = end + 1;
-	const containers = context.document.findAll(
-		(candidate) =>
-			candidate.type === "blockquote" || candidate.type === "listItem" || candidate.type === "footnoteDefinition",
-	);
+	const containers = containerNodes(context);
 	if (containers.some((container) => container.position.start.line === next)) return next;
 	const emptyLast = next === context.lines.length && context.lines[next - 1] === "";
 	const quoted = containers.some(
@@ -60,14 +59,15 @@ export const codeNodes = (context: LintContext): ReadonlyArray<Code> =>
 
 /**
  * Every line of every code block, fences included, as micromark's
- * `codeFenced` and `codeIndented` tokens span them.
+ * `codeFenced` and `codeIndented` tokens span them. Computed once per
+ * reading and shared: copy it before adding to it.
  * @internal
  */
-export const codeBlockLines = (context: LintContext): Set<number> => {
+export const codeBlockLines: (context: LintContext) => ReadonlySet<number> = perReading((context) => {
 	const lines = new Set<number>();
 	for (const node of codeNodes(context)) {
 		const end = node.fenceChar === undefined ? node.position.end.line : fencedEndLine(context, node);
 		addRange(lines, node.position.start.line, end);
 	}
 	return lines;
-};
+});

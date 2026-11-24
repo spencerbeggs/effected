@@ -9,6 +9,7 @@ import { codeBlockLines } from "./code-blocks.js";
 import { contentOf, flowNodes } from "./containers.js";
 import type { LineRange } from "./lines.js";
 import { addRange, firstContentLine, nodeLines } from "./lines.js";
+import { perReading } from "./memo.js";
 
 const MATH_CONTAINERS = new Set(["blockquote", "listItem", "footnoteDefinition"]);
 
@@ -34,8 +35,8 @@ const childContainers = (node: MarkdownNode): Array<MarkdownNode> => {
  * container ends, as micromark's token does.
  * @internal
  */
-export const mathFlowBlocks = (context: LintContext): Array<LineRange> => {
-	const excluded = codeBlockLines(context);
+export const mathFlowBlocks: (context: LintContext) => ReadonlyArray<LineRange> = perReading((context) => {
+	const excluded = new Set(codeBlockLines(context));
 	for (const line of nodeLines(flowNodes(context, new Set(["html"])))) excluded.add(line);
 	const math = new Set<number>();
 	const blocks: Array<LineRange> = [];
@@ -88,14 +89,14 @@ export const mathFlowBlocks = (context: LintContext): Array<LineRange> => {
 	};
 	scan(context.document.root as MarkdownNode, []);
 	return blocks;
-};
+});
 
-/** Every line of every math block {@link mathFlowBlocks} reads. @internal */
-export const mathFlowLines = (context: LintContext): Set<number> => {
+/** Every line of every math block {@link mathFlowBlocks} reads; shared, read-only. @internal */
+export const mathFlowLines: (context: LintContext) => ReadonlySet<number> = perReading((context) => {
 	const lines = new Set<number>();
 	for (const block of mathFlowBlocks(context)) addRange(lines, block.start, block.end);
 	return lines;
-};
+});
 
 /**
  * Whether a node the kit reads starting on `line` lies inside a math block:

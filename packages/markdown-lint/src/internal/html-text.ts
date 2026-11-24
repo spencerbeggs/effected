@@ -8,6 +8,7 @@ import { flowNodes } from "./containers.js";
 import { rereadHtmlBlock } from "./html-reread.js";
 import { mathFlowLines } from "./math-flow.js";
 import { inSpans, mathTextSpans } from "./math-text.js";
+import { perReading } from "./memo.js";
 
 /** One `htmlText` token: where its text starts, the text, and whether a table holds it. @internal */
 export interface HtmlText {
@@ -76,10 +77,11 @@ const blockHtmlText = (context: LintContext, block: MarkdownNode) => {
  * inside each HTML block that is not one comment, which markdownlint
  * re-parses as Markdown with HTML blocks and indented code turned off (see
  * {@link rereadHtmlBlock}), mapped back to the block's own lines. The nodes
- * the kit reads inside a math block are dropped.
+ * the kit reads inside a math block are dropped. Computed once per reading
+ * (each HTML block is re-read once, however many rules ask) and shared.
  * @internal
  */
-export const htmlTextTokens = (context: LintContext): Array<HtmlText> => {
+export const htmlTextTokens: (context: LintContext) => ReadonlyArray<HtmlText> = perReading((context) => {
 	const math = mathFlowLines(context);
 	const mathText = mathTextSpans(context.document, context.source);
 	const tokens: Array<HtmlText> = [];
@@ -97,7 +99,7 @@ export const htmlTextTokens = (context: LintContext): Array<HtmlText> => {
 	}
 	tokens.sort((a, b) => a.offset - b.offset);
 	return tokens;
-};
+});
 
 /**
  * An `htmlText` token's range as markdownlint measures it: from its start to

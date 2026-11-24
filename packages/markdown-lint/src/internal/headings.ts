@@ -6,6 +6,7 @@ import type { Heading, MarkdownNode } from "@effected/markdown";
 import { Option } from "effect";
 import type { LintContext } from "../LintContext.js";
 import { mathFlowLines } from "./math-flow.js";
+import { perReading } from "./memo.js";
 import { isString, setting } from "./settings.js";
 
 /**
@@ -77,14 +78,15 @@ export const headingStyle = (context: LintContext, heading: Heading): "atx" | "a
 /**
  * The document's headings as markdownlint sees them: in document order,
  * less any the kit reads inside a math block, which micromark reads as math.
+ * Computed once per reading and shared.
  * @internal
  */
-export const headingNodes = (context: LintContext): ReadonlyArray<Heading> => {
+export const headingNodes: (context: LintContext) => ReadonlyArray<Heading> = perReading((context) => {
 	const math = mathFlowLines(context);
 	return (context.document.findAll("heading") as ReadonlyArray<Heading>).filter(
 		(heading) => !math.has(heading.position.start.line),
 	);
-};
+});
 
 /**
  * markdownlint's `getHeadingText`: the heading's content as written — each

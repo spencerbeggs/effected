@@ -24,7 +24,7 @@ export const MD018: Lint.LintRule = LintRule.make({
 	tags: ["headings", "atx", "spaces"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md018.md",
 	check: (context, report) => {
-		const ignored = codeBlockLines(context);
+		const ignored = new Set(codeBlockLines(context));
 		for (const line of nodeLines(flowNodes(context, new Set(["html"])))) ignored.add(line);
 		for (const line of mathFlowLines(context)) ignored.add(line);
 		for (let lineNumber = firstContentLine(context); lineNumber <= context.lines.length; lineNumber++) {

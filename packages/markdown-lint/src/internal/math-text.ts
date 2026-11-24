@@ -44,6 +44,8 @@ const atomicSpans = (node: MarkdownNode, source: string, found: Array<Span>): Ar
 	return found;
 };
 
+const mathTextCache = new WeakMap<MarkdownDocument, { readonly source: string; readonly spans: ReadonlyArray<Span> }>();
+
 /**
  * The inline math spans of a document: markdownlint's micromark runs the
  * math extension's `mathText`, which the kit tree does not carry. Within each
@@ -52,10 +54,13 @@ const atomicSpans = (node: MarkdownNode, source: string, found: Array<Span>): Ar
  * lies between is math, unparsed), and a code span, inline HTML, an autolink,
  * a footnote call, or a link's or image's destination that starts first is
  * read whole (a label is read inline, as micromark reads it). A
- * backslash escapes the character after it outside math.
+ * backslash escapes the character after it outside math. Computed once per
+ * document and source, and shared: read-only.
  * @internal
  */
-export const mathTextSpans = (document: MarkdownDocument, source: string): Array<Span> => {
+export const mathTextSpans = (document: MarkdownDocument, source: string): ReadonlyArray<Span> => {
+	const cached = mathTextCache.get(document);
+	if (cached !== undefined && cached.source === source) return cached.spans;
 	const spans: Array<Span> = [];
 	const leaves = document.findAll(
 		(node) => node.type === "paragraph" || node.type === "heading" || node.type === "tableCell",
@@ -105,6 +110,7 @@ export const mathTextSpans = (document: MarkdownDocument, source: string): Array
 			at = close;
 		}
 	}
+	mathTextCache.set(document, { source, spans });
 	return spans;
 };
 
