@@ -16,8 +16,16 @@ import { LintRule } from "../LintRule.js";
 // A line that cannot wrap: optional heading or blockquote markers and space, then one run of non-space.
 const notWrappable = /^(?:[#>\s]*\s)?\S*$/;
 
-// markdownlint's `\S*$`, run under re2js, whose `\s` is ASCII: the last run of non-space.
-const lastRun = /[^\t\n\f\r ]*$/;
+// markdownlint's `line.replace(re`\S*$`, "#")`: the last run of non-space becomes `#`. re2js's `\s` is ASCII
+// (tab, line feed, form feed, carriage return, space) and its engine is linear; the leftmost match of `\S*$`
+// starts just after the last whitespace character, so a scan back from the end finds it in linear time where an
+// unanchored V8 regex would retry from every position of a long run.
+const isRe2Space = (code: number): boolean => code === 9 || code === 10 || code === 12 || code === 13 || code === 32;
+const replaceLastRun = (line: string): string => {
+	let start = line.length;
+	while (start > 0 && !isRe2Space(line.charCodeAt(start - 1))) start--;
+	return `${line.slice(0, start)}#`;
+};
 
 // The lines holding a paragraph's own text: its direct text children, less the line breaks between them, the
 // indentation that opens a continuation line, and character escapes and references (micromark's `data` tokens
@@ -102,7 +110,7 @@ export const MD013: Lint.LintRule = LintRule.make({
 			const inTable = tables.has(lineNumber);
 			const maxLength = inCode ? codeLineLength : isHeading ? headingLineLength : lineLength;
 			// Unless strict or stern, the last run of non-space may run past the limit if it starts within it.
-			const text = strict || stern ? line : line.replace(lastRun, "#");
+			const text = strict || stern ? line : replaceLastRun(line);
 			if (
 				maxLength > 0 &&
 				(includeCodeBlocks || !inCode) &&

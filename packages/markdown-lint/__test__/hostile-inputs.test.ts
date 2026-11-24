@@ -11,7 +11,9 @@
 // - an ordinary mixed document of 9,000 blocks (27,900 lines): 11.9 s, 0.29 s;
 // - 3,000 lines in blockquotes 40 deep, inline HTML on each: 21.3 s, 0.09 s;
 // - one paragraph of 60,000 groups of a code span, a link and a lone `$`: 17.2 to 21.3 s with only the
-//   inline-math cursor reverted (three runs), 0.68 to 0.71 s fixed.
+//   inline-math cursor reverted (three runs), 0.68 to 0.71 s fixed;
+// - one 198 KB line holding an inline data-URI image: 15.5 to 15.7 s with MD013's unanchored `\S*$` regex
+//   (three runs), 11 ms with its scan back from the line end.
 //
 // The ceiling is far above the fixed times, so a busy runner does not fail
 // it, and far below the unfixed ones, so a regression to any of them does. It
@@ -63,12 +65,17 @@ const deepQuote = (lines: number, depth: number): string =>
 const atomicDollars = (groups: number): string =>
 	`# T\n\n${Array.from({ length: groups }, (_, index) => `\`c${index}\` [l](u) $`).join(" ")}\n`;
 
+// MD013's last run of non-space, which markdownlint finds under re2: a notebook export's inline image.
+const dataUriLine = (repeats: number): string =>
+	`# T\n\n![chart](data:image/png;base64,${"iVBORw0KGgo".repeat(repeats)}) and a caption\n`;
+
 const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["a 400-column table with CJK cells", wideTable(400, 150)],
 	["2,000 unclosed fences in list items", unclosedFences(2000)],
 	["an ordinary document of 9,000 blocks", ordinary(9000)],
 	["3,000 lines in blockquotes 40 deep with inline HTML", deepQuote(3000, 40)],
 	["a paragraph of 60,000 code spans, links and lone dollar signs", atomicDollars(60000)],
+	["a 198 KB line holding an inline data-URI image", dataUriLine(18000)],
 ];
 
 describe("hostile inputs", () => {
