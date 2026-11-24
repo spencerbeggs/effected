@@ -99,6 +99,9 @@ export default { customRules: MarkdownlintAdapter.rules([NoH1]) };
 - **A parse refusal is a finding, not a throw:** one per rule, always at severity `error` in the programmatic host, at the configured severity under the adapter.
 - **Two rules sharing a name throw**, ignoring case, as a wiring error.
 - **Findings are ordered differently across hosts.** `MarkdownLint.lint` keeps rule order then report order; markdownlint sorts by rule name then line.
+- **No rule can read a comment's text, on either host.** Comment bodies after the front matter are masked before the parse, so `source`, `lines` and the tree's `html` nodes all hold `.` runs, as under markdownlint. A check on what a comment says belongs outside a `LintRule`.
+- **Settings are coerced as markdownlint coerces them**, not type-checked: `"50"` is `50`, `0` is `false`, a number where a string goes is its text. Where markdownlint itself hangs or throws on a setting, the kit stays total instead: a blank-line count past the document's edge stops there (`lines_above: 1e999` hangs markdownlint), a repeat is capped at 1,000 (MD010 `spaces_per_tab`, MD022's inserted lines), an invalid `front_matter_title` reads as the default and a non-list `ignore_code_languages` as none. A fractional MD013 limit reports its finding with no `range`, and an MD022 fix that inserts nothing has no `fixInfo`.
+- **`extends` is a file path only.** markdownlint also resolves a package specifier (`markdownlint/style/prettier`, `@org/markdownlint-config`) and a leading `~`; the reader treats each as a path relative to the extending file and fails `extends-missing`.
 - **Under markdownlint a rule sees normalized text:** `\n` endings, HTML comment bodies replaced by `.` runs. So MD025 and MD041 under the adapter can read a comment markdownlint does not treat as one (`<!-- a --->`) as a comment; the programmatic host reads it as written.
 - **The `./config` reader models markdownlint's config files, not markdownlint-cli2's.** No JavaScript config (`.markdownlint.cjs`/`.mjs`) and no `.markdownlint-cli2.*` is read: a directory holding only those lands in `skipped` and the walk continues past it (cli2 would stop there), and naming one directly fails `unsupported`. cli2's `overrides`, globs and `customRules` are not modelled. TOML content and `.markdownlint.toml` are not read.
 - **A config whose parsed value is not an object fails `parse`** (markdownlint would read it as `{}`); an empty document reads as `{}`.
@@ -109,4 +112,4 @@ export default { customRules: MarkdownlintAdapter.rules([NoH1]) };
 
 ## Not included
 
-The 31 built-in rules in `uncovered`, any markdownlint dependency, and markdownlint-cli2's options files and `overrides`. The adapter is checked against markdownlint-cli2 0.24 (markdownlint 0.42).
+The 31 built-in rules in `uncovered`, any markdownlint dependency, and markdownlint-cli2's options files and `overrides`. The rules and the adapter are differentially tested against markdownlint 0.42.1; markdownlint-cli2 0.24.2 runs markdownlint 0.42.2.
