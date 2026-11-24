@@ -188,6 +188,12 @@ export const characterReference = /^&(?:#\d{1,7}|#[xX][\da-fA-F]{1,6}|[A-Za-z][A
 const labelOptions = MarkdownParseOptions.make({ dialect: "gfm", frontmatter: false });
 const references = new Map<string, boolean>();
 
+/** How many character references {@link isReference} holds answers for: the memo never grows past it. @internal */
+export const referenceMemoLimit = 4_096;
+
+/** How many answers {@link isReference} holds now. @internal */
+export const referenceMemoSize = (): number => references.size;
+
 /** Whether `text` is a character reference micromark decodes: a numeric one, or a named one the parser knows. @internal */
 export const isReference = (text: string): boolean => {
 	const known = references.get(text);
@@ -198,6 +204,9 @@ export const isReference = (text: string): boolean => {
 		(parsed.success.findAll("text") as ReadonlyArray<MarkdownNode & { readonly value?: string }>).every(
 			(node) => node.value !== text,
 		);
+	// Module-scoped, so bounded: a long-running host would otherwise keep every reference it has seen. The oldest
+	// answer goes first; a dropped one is only parsed again.
+	if (references.size >= referenceMemoLimit) references.delete(references.keys().next().value as string);
 	references.set(text, decoded);
 	return decoded;
 };
