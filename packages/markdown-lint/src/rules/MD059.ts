@@ -12,6 +12,7 @@ import type * as Lint from "@effected/markdown-lint";
 import { imageLabelNodes, inlineNodes } from "../internal/inline.js";
 import { errorContext } from "../internal/lines.js";
 import { labelEnd } from "../internal/math-text.js";
+import { rawSetting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 const defaultProhibitedTexts = ["click here", "here", "link", "more"];
@@ -44,7 +45,7 @@ export const MD059: Lint.LintRule = LintRule.make({
 	tags: ["accessibility", "links"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md059.md",
 	check: (context, report) => {
-		const setting = context.config.prohibited_texts || defaultProhibitedTexts;
+		const setting = rawSetting(context.config, "prohibited_texts") || defaultProhibitedTexts;
 		const texts =
 			Array.isArray(setting) && setting.every((each): each is string => typeof each === "string")
 				? setting

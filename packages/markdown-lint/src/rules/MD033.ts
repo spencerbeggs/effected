@@ -5,11 +5,8 @@
 
 import type * as Lint from "@effected/markdown-lint";
 import { htmlTagInfo, htmlTextRange, htmlTextTokens } from "../internal/html-text.js";
+import { lowerCaseList, rawSetting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
-
-// markdownlint's `toLowerCaseStringArray`: an array's items as lowercase strings, or nothing.
-const lowerCaseList = (value: unknown): ReadonlyArray<string> =>
-	Array.isArray(value) ? value.map((item) => String(item).toLowerCase()) : [];
 
 /**
  * MD033 `no-inline-html`: no raw HTML.
@@ -28,8 +25,10 @@ export const MD033: Lint.LintRule = LintRule.make({
 	tags: ["html"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md033.md",
 	check: (context, report) => {
-		const allowed = lowerCaseList(context.config.allowed_elements);
-		const tableAllowed = lowerCaseList(context.config.table_allowed_elements || context.config.allowed_elements);
+		const allowed = lowerCaseList(rawSetting(context.config, "allowed_elements"));
+		const tableAllowed = lowerCaseList(
+			rawSetting(context.config, "table_allowed_elements") || rawSetting(context.config, "allowed_elements"),
+		);
 		for (const token of htmlTextTokens(context)) {
 			const tag = htmlTagInfo(token.text);
 			if (tag === undefined || tag.close) continue;

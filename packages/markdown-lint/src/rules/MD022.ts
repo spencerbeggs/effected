@@ -9,7 +9,14 @@ import type * as Lint from "@effected/markdown-lint";
 import { headingNodes } from "../internal/headings.js";
 import { preferredLineEnding } from "../internal/line-endings.js";
 import { contentLine, firstContentLine, isBlankLine } from "../internal/lines.js";
-import { REPEAT_CAP, coercedNumber, coercedText, flagSetting, numberSetting } from "../internal/settings.js";
+import {
+	REPEAT_CAP,
+	coercedNumber,
+	coercedText,
+	flagSetting,
+	numberSetting,
+	rawSetting,
+} from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 // markdownlint's `getLinesFunction` for `lines_above` / `lines_below`: an array gives each heading level its item
@@ -17,7 +24,7 @@ import { LintRule } from "../LintRule.js";
 // item as written: by coercion to count and to test the side is on (`<`, `>=`), strictly to decide the finding
 // (`!==`, so `["2"]` reports two blank lines as wrong), and as text in the detail.
 const linesFunction = (config: Readonly<Record<string, unknown>>, name: string): ((heading: Heading) => unknown) => {
-	const value = config[name];
+	const value = rawSetting(config, name);
 	if (Array.isArray(value)) {
 		const levels: Array<unknown> = [1, 1, 1, 1, 1, 1];
 		for (const [index, item] of value.slice(0, 6).entries()) levels[index] = item;

@@ -12,7 +12,7 @@ import { Result } from "effect";
 import type { DataSegment } from "../internal/inline.js";
 import { textTokens } from "../internal/inline.js";
 import { unmaskedSource } from "../internal/memo.js";
-import { flagSettingOn } from "../internal/settings.js";
+import { flagSettingOn, rawSetting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 const autolinkOptions = MarkdownParseOptions.make({ dialect: "gfm", frontmatter: false });
@@ -40,7 +40,7 @@ export const MD044: Lint.LintRule = LintRule.make({
 	tags: ["spelling"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md044.md",
 	check: (context, report) => {
-		const setting = context.config.names;
+		const setting = rawSetting(context.config, "names");
 		const names = Array.isArray(setting) ? [...(setting as ReadonlyArray<unknown>)] : [];
 		// markdownlint calls string methods on every name and throws on any other value.
 		if (names.length === 0 || !names.every((name): name is string => typeof name === "string")) return;

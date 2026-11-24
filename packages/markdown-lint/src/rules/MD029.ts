@@ -7,7 +7,7 @@ import type { List, ListItem } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
 import { listItemPrefix } from "../internal/containers.js";
 import { inMathBlock, mathFlowBlocks } from "../internal/math-flow.js";
-import { coercedText } from "../internal/settings.js";
+import { coercedText, rawSetting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 const listStyleExamples: Readonly<Record<string, string>> = { one: "1/1/1", ordered: "1/2/3", zero: "0/0/0" };
@@ -29,7 +29,7 @@ export const MD029: Lint.LintRule = LintRule.make({
 	tags: ["ol"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md029.md",
 	check: (context, report) => {
-		const style = coercedText(context.config.style);
+		const style = coercedText(rawSetting(context.config, "style"));
 		const math = mathFlowBlocks(context);
 		for (const list of context.document.findAll("list") as ReadonlyArray<List>) {
 			// Strict: a list starting on a math opener line holds the opener (see `inMathBlock`).

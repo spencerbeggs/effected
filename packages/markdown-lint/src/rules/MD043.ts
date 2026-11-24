@@ -5,7 +5,7 @@
 
 import type * as Lint from "@effected/markdown-lint";
 import { headingNodes, headingText } from "../internal/headings.js";
-import { flagSetting } from "../internal/settings.js";
+import { flagSetting, rawSetting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 const headingsItemsRe = /^(?:[*+?]|\^+|[#%]{1,6}\s+\S.*)$/u;
@@ -70,7 +70,7 @@ export const MD043: Lint.LintRule = LintRule.make({
 	tags: ["headings"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md043.md",
 	check: (context, report) => {
-		const headings = context.config.headings;
+		const headings = rawSetting(context.config, "headings");
 		if (!headings || !Array.isArray(headings)) return;
 		const requiredHeadings = headings.map((item: unknown) => {
 			const text = itemText(item);

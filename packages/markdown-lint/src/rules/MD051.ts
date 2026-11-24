@@ -18,7 +18,7 @@ import { characterReference, codeSpanParts, isReference } from "../internal/inli
 import { mathFlowLines } from "../internal/math-flow.js";
 import { labelEnd, mathTextSpans } from "../internal/math-text.js";
 import { rawDestination, referenceData, skipSpace } from "../internal/references.js";
-import { flagSetting } from "../internal/settings.js";
+import { flagSetting, rawSetting } from "../internal/settings.js";
 import type { LintContext } from "../LintContext.js";
 import { LintRule } from "../LintRule.js";
 
@@ -212,7 +212,7 @@ export const MD051: Lint.LintRule = LintRule.make({
 	check: (context, report) => {
 		const { source } = context;
 		const ignoreCase = flagSetting(context.config, "ignore_case");
-		const ignored = ignoredPattern(context.config.ignored_pattern);
+		const ignored = ignoredPattern(rawSetting(context.config, "ignored_pattern"));
 		const flow = mathFlowLines(context);
 		const math = [...mathTextSpans(context.document, source)].sort((a, b) => a.start - b.start);
 		const fragments = new Map<string, number>([["#top", 0]]);

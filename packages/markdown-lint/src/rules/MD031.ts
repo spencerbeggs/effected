@@ -12,6 +12,7 @@ import { flowNodesWithAncestors } from "../internal/containers.js";
 import { preferredLineEnding } from "../internal/line-endings.js";
 import { contentLine, errorContext, isBlankLine } from "../internal/lines.js";
 import { inMathBlock, mathFlowBlocks } from "../internal/math-flow.js";
+import { rawSetting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 const codeFencePrefix = /^(.*?)[`~]/;
@@ -34,7 +35,7 @@ export const MD031: Lint.LintRule = LintRule.make({
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md031.md",
 	check: (context, report) => {
 		// markdownlint's `(list_items === undefined) || !!list_items`.
-		const listItems = context.config.list_items;
+		const listItems = rawSetting(context.config, "list_items");
 		const includeListItems = listItems === undefined || !!listItems;
 		const lineEnding = preferredLineEnding(context.source);
 		const math = mathFlowBlocks(context);

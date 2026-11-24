@@ -76,6 +76,26 @@ export const setSetting = (config: Config, name: string, fallback: ReadonlyArray
 	return new Set(fallback);
 };
 
+/**
+ * A setting's raw value, for a rule that reads it as markdownlint does, validating it there: the one way a rule
+ * reaches its config besides the coercing readers here. @internal
+ */
+export const rawSetting = (config: Config, name: string): unknown => config[name];
+
+/**
+ * markdownlint's `toLowerCaseStringArray`: an array's items as lowercase strings, or nothing; an item whose
+ * conversion to a string throws (where markdownlint throws) is dropped. @internal
+ */
+export const lowerCaseList = (value: unknown): ReadonlyArray<string> => {
+	if (!Array.isArray(value)) return [];
+	const items: Array<string> = [];
+	for (const item of value) {
+		const text = toText(item);
+		if (text !== undefined) items.push(text.toLowerCase());
+	}
+	return items;
+};
+
 /** `Number(value)` for a raw setting value markdownlint compares by coercion; `NaN` when that throws. @internal */
 export const coercedNumber = (value: unknown): number => toNumber(value) ?? Number.NaN;
 

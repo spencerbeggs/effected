@@ -8,6 +8,7 @@
 // whitespace. Widths are string-width's, as markdownlint measures them.
 
 import type * as Lint from "@effected/markdown-lint";
+import { flagSetting, stringSetting } from "../internal/settings.js";
 import { prefixWidths } from "../internal/string-width.js";
 import type { TableRow } from "../internal/tables.js";
 import { tables } from "../internal/tables.js";
@@ -44,11 +45,11 @@ export const MD060: Lint.LintRule = LintRule.make({
 	tags: ["table"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md060.md",
 	check: (context, report) => {
-		const style = String(context.config.style || "any");
+		const style = stringSetting(context.config, "style", "any");
 		const alignedAllowed = style === "any" || style === "aligned";
 		const compactAllowed = style === "any" || style === "compact";
 		const tightAllowed = style === "any" || style === "tight";
-		const alignedDelimiter = !!context.config.aligned_delimiter;
+		const alignedDelimiter = flagSetting(context.config, "aligned_delimiter");
 		const lineText = (lineNumber: number): string => context.lines[lineNumber - 1] ?? "";
 
 		const addError = (errors: Array<ErrorInfo>, error: ErrorInfo): void => {
