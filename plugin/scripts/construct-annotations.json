@@ -978,6 +978,7 @@
 		"MD001": "heading-increment, heading levels increment by one, no skipped heading level",
 		"MD003": "heading-style, consistent heading style, atx closed-atx or setext",
 		"MD004": "ul-style, consistent unordered list style, dash asterisk or plus marker",
+		"MD005": "list-indent, inconsistent indentation of list items at the same level",
 		"MD009": "no-trailing-spaces, trailing spaces and whitespace at line end, hard break",
 		"MD010": "no-hard-tabs, hard tabs, tab characters, spaces per tab fix",
 		"MD012": "no-multiple-blanks, multiple consecutive blank lines over a maximum",

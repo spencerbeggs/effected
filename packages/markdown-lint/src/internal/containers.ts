@@ -168,3 +168,38 @@ export const flowNodesWithAncestors = (
 	visit(context.document.root as MarkdownNode, []);
 	return found;
 };
+
+/** A list item's prefix as micromark's `listItemPrefix` token gives it. @internal */
+export interface ListItemPrefix {
+	/** The offset of the item's marker. */
+	readonly offset: number;
+	/** The marker's length: one for a bullet, the digits and the delimiter for an ordered item. */
+	readonly marker: number;
+	/** The whitespace after the marker that the prefix holds (micromark's `listItemPrefixWhitespace`), in characters. */
+	readonly whitespace: number;
+}
+
+/**
+ * A list item's `listItemPrefix`, read from its line: the marker, then the
+ * whitespace after it when text follows on the line. micromark counts that
+ * whitespace in columns, a tab to the next multiple of four: up to four
+ * columns are all the prefix's, five or more leave it the first character
+ * (the rest is indented code). A marker with nothing but blanks after it has
+ * no whitespace in its prefix.
+ * @internal
+ */
+export const listItemPrefix = (context: LintContext, item: ListItem): ListItemPrefix => {
+	const offset = item.position.start.offset;
+	const lineNumber = item.position.start.line;
+	const line = context.lines[lineNumber - 1] ?? "";
+	const at = offset - context.mapping.lineStart(lineNumber);
+	const marker = (/^(?:\d{1,9}[.)]|[-+*])/.exec(line.slice(at))?.[0] ?? "-").length;
+	const rest = line.slice(at + marker);
+	const spaces = /^[ \t]*/.exec(rest)?.[0] ?? "";
+	if (spaces.length === 0 || spaces.length === rest.length) return { offset, marker, whitespace: 0 };
+	let column = 0;
+	for (const char of line.slice(0, at + marker)) column = char === "\t" ? column + 4 - (column % 4) : column + 1;
+	const start = column;
+	for (const char of spaces) column = char === "\t" ? column + 4 - (column % 4) : column + 1;
+	return { offset, marker, whitespace: column - start <= 4 ? spaces.length : 1 };
+};

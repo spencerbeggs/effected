@@ -15,6 +15,7 @@
 export { MD001 } from "./MD001.js";
 export { MD003 } from "./MD003.js";
 export { MD004 } from "./MD004.js";
+export { MD005 } from "./MD005.js";
 export { MD009 } from "./MD009.js";
 export { MD010 } from "./MD010.js";
 export { MD012 } from "./MD012.js";
