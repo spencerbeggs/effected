@@ -3,9 +3,10 @@
 // markdown file the way markdownlint-cli2 does (the nearest directory holding
 // a supported `.markdownlint.*` decides; ancestors are not merged in).
 
+import { win32 } from "node:path";
 import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Effect } from "effect";
+import { Duration, Effect, Layer, Option, Path } from "effect";
 import { MarkdownlintConfigFile } from "../src/config/index.js";
 
 const withVolume = (seed: Record<string, string>) => MemoryFileSystem.layerWithPath(seed);
@@ -440,5 +441,39 @@ describe("MarkdownlintConfigFile.resolve", () => {
 				withVolume({ "/r/.markdownlint.json": '{ "MD001": false }', "/r/a/.markdownlint.json": "{ broken" }),
 			),
 		),
+	);
+});
+
+// A Windows path whose drive letter and case differ from the root's: `path.win32.relative` treats the two as one
+// directory, so the outside-root guard passes, but the walk never meets the root's own spelling and once stopped
+// only on reaching it, looping at the drive root forever.
+describe("MarkdownlintConfigFile.resolve on Windows paths", () => {
+	const windowsPath = Layer.succeed(Path.Path)(
+		Path.make({
+			sep: win32.sep,
+			basename: win32.basename,
+			dirname: win32.dirname,
+			extname: win32.extname,
+			format: win32.format,
+			fromFileUrl: () => Effect.die("unused"),
+			isAbsolute: win32.isAbsolute,
+			join: win32.join,
+			normalize: win32.normalize,
+			parse: win32.parse,
+			relative: win32.relative,
+			resolve: win32.resolve,
+			toFileUrl: () => Effect.die("unused"),
+			toNamespacedPath: win32.toNamespacedPath,
+		}),
+	);
+
+	it.effect("stops at the drive root when the root is spelled differently", () =>
+		Effect.gen(function* () {
+			const resolved = yield* MarkdownlintConfigFile.resolve("c:\\Repo\\docs\\a.md", { root: "C:\\repo" }).pipe(
+				Effect.timeoutOption(Duration.seconds(2)),
+			);
+			assert.isTrue(Option.isSome(resolved), "the walk did not stop");
+			assert.deepStrictEqual(Option.getOrThrow(resolved).files, []);
+		}).pipe(Effect.provide(Layer.merge(MemoryFileSystem.layerWith({}), windowsPath))),
 	);
 });

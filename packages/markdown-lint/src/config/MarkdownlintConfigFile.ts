@@ -270,7 +270,11 @@ export class MarkdownlintConfigFile {
 				if (yield* exists(candidate)) skipped.push(candidate);
 			}
 			if (directory === root) break;
-			directory = path.dirname(directory);
+			// A filesystem root is its own parent: stop there too, for a root spelled otherwise than the walk meets it
+			// (a Windows drive letter or case that `relative` treats as the same directory).
+			const parent = path.dirname(directory);
+			if (parent === directory) break;
+			directory = parent;
 		}
 		return { config: {}, files: [], skipped } satisfies ResolvedLintConfig;
 	});
