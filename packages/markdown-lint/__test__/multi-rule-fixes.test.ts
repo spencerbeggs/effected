@@ -44,7 +44,7 @@ const shuffled = <A>(items: ReadonlyArray<A>, seed: string): ReadonlyArray<A> =>
 };
 
 // markdownlint's findings with a fix over every input, per case.
-const ORACLE_FIXES_ALL = 4206;
+const ORACLE_FIXES_ALL = 4278;
 const ORACLE_FIXES_MD004_MD032 = 396;
 const ORACLE_FIXES_MD022_MD009 = 452;
 const ORACLE_FIXES_MD031_MD032 = 368;
@@ -56,8 +56,11 @@ const ORACLE_FIXES_MD005_MD009 = 309;
 const ORACLE_FIXES_MD007_MD004 = 655;
 const ORACLE_FIXES_MD027_MD009 = 454;
 const ORACLE_FIXES_MD029_MD005 = 437;
+const ORACLE_FIXES_MD030_MD004 = 324;
+const ORACLE_FIXES_MD030_MD007 = 479;
+const ORACLE_FIXES_MD030_MD005 = 116;
 // The inputs on which fixes from two or more of the case's rules land on one line, the case the file exists for.
-const MEETING_ALL = 38;
+const MEETING_ALL = 41;
 const MEETING_MD004_MD032 = 17;
 const MEETING_MD022_MD009 = 3;
 const MEETING_MD031_MD032 = 13;
@@ -70,6 +73,9 @@ const MEETING_MD005_MD009 = 2;
 const MEETING_MD007_MD004 = 14;
 const MEETING_MD027_MD009 = 2;
 const MEETING_MD029_MD005 = 2;
+const MEETING_MD030_MD004 = 8;
+const MEETING_MD030_MD007 = 5;
+const MEETING_MD030_MD005 = 2;
 const MEETING_SAMPLE = 11;
 
 describe("applyFixes over several rules' fixes", () => {
@@ -205,6 +211,38 @@ describe("applyFixes over several rules' fixes", () => {
 			[
 				{ name: "renumbered and re-indented items, LF", source: "1. a\n 3. b\n  5. c\n" },
 				{ name: "renumbered and re-indented items, CRLF", source: "1. a\r\n 3. b\r\n  5. c\r\n" },
+			],
+		],
+		// MD030 respaces after a marker; MD004 changes the marker, MD007 an unordered item's indent and MD005 an
+		// ordered item's, on the same line. (MD007 fixes only unordered items and MD005 only ordered ones.)
+		[
+			"MD030 and MD004",
+			["MD030", "MD004"],
+			ORACLE_FIXES_MD030_MD004,
+			MEETING_MD030_MD004,
+			[
+				{ name: "respaced items and markers, LF", source: "-  a\n*   b\n" },
+				{ name: "respaced items and markers, CRLF", source: "-  a\r\n*   b\r\n" },
+			],
+		],
+		[
+			"MD030 and MD007",
+			["MD030", "MD007"],
+			ORACLE_FIXES_MD030_MD007,
+			MEETING_MD030_MD007,
+			[
+				{ name: "respaced and re-indented sublists, LF", source: "- a\n   -  b\n -   c\n" },
+				{ name: "respaced and re-indented sublists, CRLF", source: "- a\r\n   -  b\r\n -   c\r\n" },
+			],
+		],
+		[
+			"MD030 and MD005",
+			["MD030", "MD005"],
+			ORACLE_FIXES_MD030_MD005,
+			MEETING_MD030_MD005,
+			[
+				{ name: "respaced and re-indented ordered items, LF", source: "1. a\n 2.  b\n  3.   c\n" },
+				{ name: "respaced and re-indented ordered items, CRLF", source: "1. a\r\n 2.  b\r\n  3.   c\r\n" },
 			],
 		],
 	];

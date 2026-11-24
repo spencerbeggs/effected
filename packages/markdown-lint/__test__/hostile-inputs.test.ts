@@ -85,6 +85,10 @@ const htmlBlocksOfEmphasis = (count: number): string =>
 // `pairs` repeats of an emphasis and a strong: twice as many spans.
 const emphasisSpans = (pairs: number): string => `# T\n\n${"*a* **b** ".repeat(pairs)}\n`;
 
+// MD030 reads each list's end from the next block after it: alternating markers make every item a list.
+const quotedListsOfTwoMarkers = (count: number): string =>
+	`# T\n\n${Array.from({ length: count }, (_, index) => `> ${index % 2 === 0 ? "-" : "+"}  item ${index}`).join("\n")}\n`;
+
 const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["a 400-column table with CJK cells", wideTable(400, 150)],
 	["2,000 unclosed fences in list items", unclosedFences(2000)],
@@ -95,6 +99,7 @@ const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["one line of 16,000 HTML comments", commentsOnOneLine(16000)],
 	["2,000 HTML blocks each holding an emphasis line", htmlBlocksOfEmphasis(2000)],
 	["a paragraph of 40,000 emphasis spans", emphasisSpans(20000)],
+	["a blockquote of 20,000 one-item lists", quotedListsOfTwoMarkers(20000)],
 ];
 
 describe("hostile inputs", () => {
@@ -186,6 +191,16 @@ describe("hostile settings", () => {
 		const elapsed = performance.now() - start;
 		assert.lengthOf(findings, 1);
 		assert.strictEqual(MarkdownLint.applyFixes(source, findings).split("\n")[5], `${" ".repeat(1_002)}- b`);
+		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
+	});
+
+	it("lints a list under ul_single: 1e9 under the ceiling, its fix capped", { timeout: 30_000 }, () => {
+		const source = '<!-- markdownlint-configure-file {"MD030":{"ul_single":1e9}} -->\n\n# T\n\n- a\n';
+		const start = performance.now();
+		const findings = MarkdownLint.lint(source, rules).filter((finding) => finding.ruleNames[0] === "MD030");
+		const elapsed = performance.now() - start;
+		assert.lengthOf(findings, 1);
+		assert.strictEqual(MarkdownLint.applyFixes(source, findings).split("\n")[4], `-${" ".repeat(1_000)}a`);
 		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
 	});
 

@@ -5,31 +5,14 @@
 // the last content line is read from the list's last descendant. The fix's
 // blockquote prefix is read from the raw line.
 
-import type { Code, Heading, List, MarkdownNode } from "@effected/markdown";
+import type { List, MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
-import { blockQuotePrefixText, flowNodesWithAncestors, isLazyLine } from "../internal/containers.js";
+import { blockQuotePrefixText, flowNodesWithAncestors, isLazyLine, lastContentLine } from "../internal/containers.js";
 import { preferredLineEnding } from "../internal/line-endings.js";
 import type { LineRange } from "../internal/lines.js";
 import { contentLine, errorContext, isBlankLine } from "../internal/lines.js";
 import { inMathBlock, mathFlowBlocks } from "../internal/math-flow.js";
 import { LintRule } from "../LintRule.js";
-
-// The line a node's last content token ends on: the last line holding its text, not a line break or the blank
-// lines a block the kit closes late carries. A setext heading ends on its underline.
-const lastContentLine = (node: MarkdownNode, lines: ReadonlyArray<string>): number => {
-	const children = "children" in node ? (node.children as ReadonlyArray<MarkdownNode>) : [];
-	const last = children.at(-1);
-	if (node.type === "heading" && (node as Heading).headingStyle === "setext") return node.position.end.line;
-	if (last !== undefined) return lastContentLine(last, lines);
-	let line = node.position.end.line;
-	if (node.type === "code" && (node as Code).fenceChar === undefined) {
-		// An indented code block's trailing blank lines are micromark's `lineEndingBlank`, not content.
-		while (line > node.position.start.line && (lines[line - 1] ?? "").trim() === "") line--;
-	} else if (node.position.end.column === 1 && line > node.position.start.line) {
-		line--;
-	}
-	return line;
-};
 
 // The list's last descendant, when it is a paragraph.
 const lastParagraph = (node: MarkdownNode): MarkdownNode | undefined => {

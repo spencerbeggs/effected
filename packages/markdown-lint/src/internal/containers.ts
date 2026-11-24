@@ -2,7 +2,7 @@
 // each line's text inside the blockquotes, list items and footnote
 // definitions the kit places it in, read from raw lines.
 
-import type { ListItem, MarkdownNode } from "@effected/markdown";
+import type { Code, Heading, ListItem, MarkdownNode } from "@effected/markdown";
 import type { LintContext } from "../LintContext.js";
 import { perReading } from "./memo.js";
 
@@ -228,4 +228,82 @@ export const blockQuotePrefixEnd = (
 		at = next;
 	}
 	return end;
+};
+
+/**
+ * The line a node's last content token ends on, as micromark's token for it
+ * ends: the last line holding its text, not a line break or the blank lines
+ * a block the kit closes late carries (an empty list item, an indented code
+ * block). A setext heading ends on its underline.
+ * @internal
+ */
+export const lastContentLine = (node: MarkdownNode, lines: ReadonlyArray<string>): number => {
+	const children = "children" in node ? (node.children as ReadonlyArray<MarkdownNode>) : [];
+	const last = children.at(-1);
+	if (node.type === "heading" && (node as Heading).headingStyle === "setext") return node.position.end.line;
+	if (last !== undefined) return lastContentLine(last, lines);
+	let line = node.position.end.line;
+	if (node.type === "code" && (node as Code).fenceChar === undefined) {
+		// An indented code block's trailing blank lines are micromark's `lineEndingBlank`, not content.
+		while (line > node.position.start.line && (lines[line - 1] ?? "").trim() === "") line--;
+	} else if (node.position.end.column === 1 && line > node.position.start.line) {
+		line--;
+	}
+	return line;
+};
+
+// Each node's next sibling, read once per reading.
+const nextSiblings: (context: LintContext) => ReadonlyMap<MarkdownNode, MarkdownNode> = perReading((context) => {
+	const next = new Map<MarkdownNode, MarkdownNode>();
+	const visit = (node: MarkdownNode): void => {
+		if (!("children" in node)) return;
+		const children = node.children as ReadonlyArray<MarkdownNode>;
+		children.forEach((child, index) => {
+			const sibling = children[index + 1];
+			if (sibling !== undefined) next.set(child, sibling);
+			visit(child);
+		});
+	};
+	visit(context.document.root as MarkdownNode);
+	return next;
+});
+
+// A blank line that carries a blockquote's marker: nothing but markers and whitespace, at least one marker.
+const quotedBlank = /^[ \t]*>[ \t>]*$/;
+
+/**
+ * The line micromark's list token ends on. In the document, as in a list
+ * item, it is the list's last content line. Inside a blockquote or a
+ * footnote definition micromark exits the list only once the next line's
+ * container prefix is read: it ends on the line of the next block after the
+ * list (its next sibling, or its enclosing items' and lists', up to the
+ * blockquote or footnote) when that is a container (a list or a blockquote),
+ * and otherwise past the blank lines after it that carry a blockquote marker.
+ * @internal
+ */
+export const listTokenEndLine = (
+	context: LintContext,
+	list: MarkdownNode,
+	ancestors: ReadonlyArray<MarkdownNode>,
+): number => {
+	const last = lastContentLine(list, context.lines);
+	if (!ancestors.some((node) => node.type === "blockquote" || node.type === "footnoteDefinition")) return last;
+	const siblings = nextSiblings(context);
+	let next: MarkdownNode | undefined;
+	let bound = context.lines.length;
+	let node = list;
+	for (let index = ancestors.length - 1; index >= 0 && next === undefined; index--) {
+		const parent = ancestors[index] as MarkdownNode;
+		next = siblings.get(node);
+		if (parent.type === "blockquote" || parent.type === "footnoteDefinition") {
+			bound = parent.position.end.line;
+			break;
+		}
+		node = parent;
+	}
+	if (next !== undefined && (next.type === "list" || next.type === "blockquote")) return next.position.start.line;
+	let line = last;
+	if (next !== undefined) bound = next.position.start.line - 1;
+	while (line < bound && quotedBlank.test(context.lines[line] ?? "")) line++;
+	return line;
 };
