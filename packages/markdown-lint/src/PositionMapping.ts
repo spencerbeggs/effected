@@ -107,6 +107,17 @@ export class PositionMapping {
 	}
 
 	/**
+	 * The offset a 1-based line starts at; a line past either end reads as
+	 * the nearest line.
+	 *
+	 * @param lineNumber - The 1-based line.
+	 * @returns The UTF-16 offset of the line's first character.
+	 */
+	lineStart(lineNumber: number): number {
+		return this.index.lineStart(lineNumber - 1);
+	}
+
+	/**
 	 * The 1-based line containing `offset`.
 	 *
 	 * @param offset - A UTF-16 offset, clamped to the source; an offset at a

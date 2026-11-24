@@ -4,7 +4,7 @@
 
 import type * as Lint from "@effected/markdown-lint";
 import { preferredLineEnding } from "../internal/line-endings.js";
-import { firstContentLine, isBlankLine, lineStarts } from "../internal/lines.js";
+import { firstContentLine, isBlankLine } from "../internal/lines.js";
 import { LintRule } from "../LintRule.js";
 
 /**
@@ -25,7 +25,7 @@ export const MD047: Lint.LintRule = LintRule.make({
 		if (lastLineNumber < firstContentLine(context)) return;
 		const lastLine = context.lines[lastLineNumber - 1] as string;
 		if (isBlankLine(lastLine)) return;
-		const start = lineStarts(context.source)[lastLineNumber - 1] as number;
+		const start = context.mapping.lineStart(lastLineNumber);
 		report(
 			context.diagnostic({
 				at: { offset: start, length: 0 },

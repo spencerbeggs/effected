@@ -6,7 +6,6 @@ import type { MarkdownNode } from "@effected/markdown";
 import type { LintContext } from "../LintContext.js";
 import { flowNodes } from "./containers.js";
 import { rereadHtmlBlock } from "./html-reread.js";
-import { lineStarts } from "./lines.js";
 import { mathFlowLines } from "./math-flow.js";
 import { inSpans, mathTextSpans } from "./math-text.js";
 
@@ -46,25 +45,24 @@ export const isHtmlFlowComment = (context: LintContext, node: MarkdownNode): boo
 };
 
 // The `htmlText` tokens markdownlint's re-parse of an HTML block's lines gives, at their offsets in `source`.
-const blockHtmlText = (context: LintContext, block: MarkdownNode, starts: ReadonlyArray<number>) => {
+const blockHtmlText = (context: LintContext, block: MarkdownNode) => {
 	const blockLines = context.lines.slice(block.position.start.line - 1, block.position.end.line);
 	const { document, lines } = rereadHtmlBlock(blockLines, block.position.start.line);
 	if (document === undefined) return [];
 	const text = lines.map((line) => line.text).join("\n");
-	const textStarts = lineStarts(text);
 	const math = mathTextSpans(document, text);
 	const found: Array<HtmlText> = [];
 	for (const { node, inTable } of inlineHtml(document.root as MarkdownNode, false, [])) {
 		const line = lines[node.position.start.line - 1];
 		if (line === undefined || line.origin === 0 || inSpans(math, node.position.start.offset)) continue;
 		// The column in the re-read line, less the columns inserted before it, undone last first.
-		let column = node.position.start.offset - (textStarts[node.position.start.line - 1] as number);
+		let column = node.position.start.offset - document.lineIndex.lineStart(node.position.start.line - 1);
 		for (const [at, length] of [...line.inserts].reverse()) {
 			if (column >= at + length) column -= length;
 			else if (column >= at) column = at;
 		}
 		found.push({
-			offset: (starts[line.origin - 1] as number) + column,
+			offset: context.mapping.lineStart(line.origin) + column,
 			text: text.slice(node.position.start.offset, node.position.end.offset),
 			inTable,
 		});
@@ -82,8 +80,7 @@ const blockHtmlText = (context: LintContext, block: MarkdownNode, starts: Readon
  * @internal
  */
 export const htmlTextTokens = (context: LintContext): Array<HtmlText> => {
-	const starts = lineStarts(context.source);
-	const math = mathFlowLines(context, starts);
+	const math = mathFlowLines(context);
 	const mathText = mathTextSpans(context.document, context.source);
 	const tokens: Array<HtmlText> = [];
 	for (const { node, inTable } of inlineHtml(context.root as MarkdownNode, false, [])) {
@@ -96,7 +93,7 @@ export const htmlTextTokens = (context: LintContext): Array<HtmlText> => {
 	}
 	for (const block of flowNodes(context, new Set(["html"]))) {
 		if (math.has(block.position.start.line) || isHtmlFlowComment(context, block)) continue;
-		tokens.push(...blockHtmlText(context, block, starts));
+		tokens.push(...blockHtmlText(context, block));
 	}
 	tokens.sort((a, b) => a.offset - b.offset);
 	return tokens;

@@ -23,11 +23,11 @@ const isClosingFence = (line: string, node: Code): boolean => {
  * item or footnote continues onto an empty line; a blockquote does not).
  * @internal
  */
-export const fencedEndLine = (context: LintContext, node: Code, starts: ReadonlyArray<number>): number => {
+export const fencedEndLine = (context: LintContext, node: Code): number => {
 	const start = node.position.start.line;
 	const end = node.position.end.line;
 	const closed = end > start && isClosingFence(context.lines[end - 1] ?? "", node);
-	if (closed || starts[end] === undefined) return end;
+	if (closed || end >= context.lines.length) return end;
 	const next = end + 1;
 	const containers = context.document.findAll(
 		(candidate) =>
@@ -49,9 +49,9 @@ export const fencedEndLine = (context: LintContext, node: Code, starts: Readonly
  * `codeFenced` token gives them: `startLine + 1` to `endLine - 1`.
  * @internal
  */
-export const fencedInterior = (context: LintContext, node: Code, starts: ReadonlyArray<number>): LineRange => ({
+export const fencedInterior = (context: LintContext, node: Code): LineRange => ({
 	start: node.position.start.line + 1,
-	end: fencedEndLine(context, node, starts) - 1,
+	end: fencedEndLine(context, node) - 1,
 });
 
 /** Every kit code node, fenced or indented. @internal */
@@ -63,10 +63,10 @@ export const codeNodes = (context: LintContext): ReadonlyArray<Code> =>
  * `codeFenced` and `codeIndented` tokens span them.
  * @internal
  */
-export const codeBlockLines = (context: LintContext, starts: ReadonlyArray<number>): Set<number> => {
+export const codeBlockLines = (context: LintContext): Set<number> => {
 	const lines = new Set<number>();
 	for (const node of codeNodes(context)) {
-		const end = node.fenceChar === undefined ? node.position.end.line : fencedEndLine(context, node, starts);
+		const end = node.fenceChar === undefined ? node.position.end.line : fencedEndLine(context, node);
 		addRange(lines, node.position.start.line, end);
 	}
 	return lines;

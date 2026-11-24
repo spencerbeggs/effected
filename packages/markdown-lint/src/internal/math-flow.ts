@@ -34,8 +34,8 @@ const childContainers = (node: MarkdownNode): Array<MarkdownNode> => {
  * container ends, as micromark's token does.
  * @internal
  */
-export const mathFlowBlocks = (context: LintContext, starts: ReadonlyArray<number>): Array<LineRange> => {
-	const excluded = codeBlockLines(context, starts);
+export const mathFlowBlocks = (context: LintContext): Array<LineRange> => {
+	const excluded = codeBlockLines(context);
 	for (const line of nodeLines(flowNodes(context, new Set(["html"])))) excluded.add(line);
 	const math = new Set<number>();
 	const blocks: Array<LineRange> = [];
@@ -91,9 +91,9 @@ export const mathFlowBlocks = (context: LintContext, starts: ReadonlyArray<numbe
 };
 
 /** Every line of every math block {@link mathFlowBlocks} reads. @internal */
-export const mathFlowLines = (context: LintContext, starts: ReadonlyArray<number>): Set<number> => {
+export const mathFlowLines = (context: LintContext): Set<number> => {
 	const lines = new Set<number>();
-	for (const block of mathFlowBlocks(context, starts)) addRange(lines, block.start, block.end);
+	for (const block of mathFlowBlocks(context)) addRange(lines, block.start, block.end);
 	return lines;
 };
 

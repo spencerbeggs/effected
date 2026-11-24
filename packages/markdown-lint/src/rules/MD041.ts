@@ -8,7 +8,7 @@ import type { Heading } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
 import { contentBlocks, frontMatterHasTitle } from "../internal/headings.js";
 import { isHtmlFlowComment } from "../internal/html-text.js";
-import { errorContext, lineStarts } from "../internal/lines.js";
+import { errorContext } from "../internal/lines.js";
 import { isBoolean, isNumber, setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
@@ -58,7 +58,7 @@ export const MD041: Lint.LintRule = LintRule.make({
 		if (errorLine === 0) return;
 		report(
 			context.diagnostic({
-				at: { offset: lineStarts(context.source)[errorLine - 1] as number, length: 0 },
+				at: { offset: context.mapping.lineStart(errorLine), length: 0 },
 				context: errorContext(context.lines[errorLine - 1] as string),
 			}),
 		);

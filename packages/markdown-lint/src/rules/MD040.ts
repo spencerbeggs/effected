@@ -9,7 +9,7 @@
 import type { Code } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
 import { codeNodes } from "../internal/code-blocks.js";
-import { errorContext, lineStarts } from "../internal/lines.js";
+import { errorContext } from "../internal/lines.js";
 import { inMathBlock, mathFlowBlocks } from "../internal/math-flow.js";
 import { LintRule } from "../LintRule.js";
 
@@ -36,7 +36,7 @@ export const MD040: Lint.LintRule = LintRule.make({
 			? (context.config.allowed_languages as ReadonlyArray<unknown>)
 			: [];
 		const languageOnly = !!context.config.language_only;
-		const math = mathFlowBlocks(context, lineStarts(context.source));
+		const math = mathFlowBlocks(context);
 		for (const code of codeNodes(context) as ReadonlyArray<Code>) {
 			if (code.fenceChar === undefined || inMathBlock(math, code.position.start.line)) continue;
 			const offset = code.position.start.offset;

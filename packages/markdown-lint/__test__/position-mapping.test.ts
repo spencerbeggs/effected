@@ -179,4 +179,13 @@ describe("PositionMapping", () => {
 		assert.strictEqual(mapping.lineText(2), "b");
 		assert.strictEqual(mapping.lineText(9), "b");
 	});
+
+	it("reads lineStart after every terminator markdownlint splits on, clamping a line past the end", () => {
+		const mapping = PositionMapping.of("a\r\nbb\rc\nd");
+		assert.deepStrictEqual(
+			[1, 2, 3, 4].map((line) => mapping.lineStart(line)),
+			[0, 3, 6, 8],
+		);
+		assert.strictEqual(mapping.lineStart(9), 8);
+	});
 });

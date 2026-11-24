@@ -5,7 +5,7 @@
 
 import type * as Lint from "@effected/markdown-lint";
 import { codeNodes, fencedInterior } from "../internal/code-blocks.js";
-import { firstContentLine, lineStarts } from "../internal/lines.js";
+import { firstContentLine } from "../internal/lines.js";
 import { isBoolean, isNumber, isStringArray, setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
@@ -60,7 +60,6 @@ export const MD010: Lint.LintRule = LintRule.make({
 		);
 		const spacesPerTab = setting(context.config, "spaces_per_tab", isNumber, 1);
 		const multiplier = Math.max(0, spacesPerTab);
-		const starts = lineStarts(context.source);
 		const spans: Array<Span> = [];
 		for (const node of codeNodes(context)) {
 			if (node.fenceChar !== undefined) {
@@ -68,7 +67,7 @@ export const MD010: Lint.LintRule = LintRule.make({
 				// with `code_blocks: false`, as markdownlint's filter does.
 				const listed = node.lang === undefined || ignored.has(node.lang.toLowerCase());
 				if (includeCode ? ignored.size === 0 || !listed : ignored.size > 0 && !listed) continue;
-				const interior = fencedInterior(context, node, starts);
+				const interior = fencedInterior(context, node);
 				spans.push({
 					startLine: interior.start,
 					startColumn: 0,
@@ -90,7 +89,7 @@ export const MD010: Lint.LintRule = LintRule.make({
 					endColumn: column + length - 1,
 				};
 				if (spans.some((span) => overlaps(span, tab))) continue;
-				const offset = (starts[lineNumber - 1] as number) + match.index;
+				const offset = context.mapping.lineStart(lineNumber) + match.index;
 				report(
 					context.diagnostic({
 						at: { offset, length },

@@ -8,7 +8,6 @@
 
 import type * as Lint from "@effected/markdown-lint";
 import { htmlTagInfo, htmlTextRange, htmlTextTokens } from "../internal/html-text.js";
-import { lineStarts } from "../internal/lines.js";
 import { mathFlowLines } from "../internal/math-flow.js";
 import { inSpans, mathTextSpans } from "../internal/math-text.js";
 import { LintRule } from "../LintRule.js";
@@ -31,7 +30,7 @@ export const MD045: Lint.LintRule = LintRule.make({
 	tags: ["accessibility", "images"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md045.md",
 	check: (context, report) => {
-		const math = mathFlowLines(context, lineStarts(context.source));
+		const math = mathFlowLines(context);
 		const mathText = mathTextSpans(context.document, context.source);
 		for (const entry of context.document.links) {
 			const node = entry.node;

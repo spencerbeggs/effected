@@ -4,13 +4,13 @@
 
 import type * as Lint from "@effected/markdown-lint";
 import { codeBlockLines } from "../internal/code-blocks.js";
-import { firstContentLine, lineStarts } from "../internal/lines.js";
+import { firstContentLine } from "../internal/lines.js";
 import { isNumber, setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 // The offset the text of the line before `lineNumber` ends at, before its terminator.
-const previousEnd = (context: Lint.LintContext, starts: ReadonlyArray<number>, lineNumber: number): number =>
-	(starts[lineNumber - 2] as number) + (context.lines[lineNumber - 2] as string).length;
+const previousEnd = (context: Lint.LintContext, lineNumber: number): number =>
+	context.mapping.lineStart(lineNumber - 1) + (context.lines[lineNumber - 2] as string).length;
 
 /**
  * MD012 `no-multiple-blanks`: no more than `maximum` consecutive blank lines.
@@ -28,8 +28,7 @@ export const MD012: Lint.LintRule = LintRule.make({
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md012.md",
 	check: (context, report) => {
 		const maximum = setting(context.config, "maximum", isNumber, 1);
-		const starts = lineStarts(context.source);
-		const code = codeBlockLines(context, starts);
+		const code = codeBlockLines(context);
 		const reported: Array<{ readonly lineNumber: number; readonly count: number }> = [];
 		let count = 0;
 		for (let lineNumber = firstContentLine(context); lineNumber <= context.lines.length; lineNumber++) {
@@ -51,10 +50,15 @@ export const MD012: Lint.LintRule = LintRule.make({
 		}
 		if (fromEnd === 1) fromEnd = context.lines.length + 1;
 		for (const { lineNumber, count: blanks } of reported) {
-			const start = starts[lineNumber - 1] as number;
+			const start = context.mapping.lineStart(lineNumber);
 			const end = start + (context.lines[lineNumber - 1] as string).length;
-			const from = lineNumber >= fromEnd ? previousEnd(context, starts, lineNumber) : start;
-			const to = lineNumber >= fromEnd ? end : (starts[lineNumber] ?? end);
+			const from = lineNumber >= fromEnd ? previousEnd(context, lineNumber) : start;
+			const to =
+				lineNumber >= fromEnd
+					? end
+					: lineNumber < context.lines.length
+						? context.mapping.lineStart(lineNumber + 1)
+						: end;
 			const fix = { offset: from, length: to - from, content: "" };
 			report(
 				context.diagnostic({

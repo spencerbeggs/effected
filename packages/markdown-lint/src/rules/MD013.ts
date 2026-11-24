@@ -7,7 +7,7 @@ import type { MarkdownNode, Paragraph } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
 import { codeBlockLines } from "../internal/code-blocks.js";
 import { headingNodes } from "../internal/headings.js";
-import { firstContentLine, lineStarts, nodeLines } from "../internal/lines.js";
+import { firstContentLine, nodeLines } from "../internal/lines.js";
 import { isBoolean, isNumber, setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
@@ -85,9 +85,8 @@ export const MD013: Lint.LintRule = LintRule.make({
 		const includeCodeBlocks = setting(context.config, "code_blocks", isBoolean, true);
 		const includeTables = setting(context.config, "tables", isBoolean, true);
 		const includeHeadings = setting(context.config, "headings", isBoolean, true);
-		const starts = lineStarts(context.source);
 		const headings = nodeLines(headingNodes(context));
-		const code = codeBlockLines(context, starts);
+		const code = codeBlockLines(context);
 		const tables = nodeLines(context.document.findAll("table"));
 		const textLines = paragraphTextLines(context);
 		const linkOnly = new Set([...linkLines(context)].filter((line) => !textLines.has(line)));
@@ -113,7 +112,7 @@ export const MD013: Lint.LintRule = LintRule.make({
 				// markdownlint reports through `addErrorDetailIf`, which is silent when the line is exactly the limit.
 				line.length !== maxLength
 			) {
-				const start = starts[lineNumber - 1] as number;
+				const start = context.mapping.lineStart(lineNumber);
 				report(
 					context.diagnostic({
 						at: { offset: start, length: 0 },

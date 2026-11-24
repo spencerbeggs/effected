@@ -8,7 +8,7 @@ import type { Heading } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
 import { headingNodes } from "../internal/headings.js";
 import { preferredLineEnding } from "../internal/line-endings.js";
-import { firstContentLine, isBlankLine, lineStarts } from "../internal/lines.js";
+import { firstContentLine, isBlankLine } from "../internal/lines.js";
 import { isBoolean, setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
@@ -44,7 +44,6 @@ export const MD022: Lint.LintRule = LintRule.make({
 		const above = setting(context.config, "lines_above", isLinesSetting, 1);
 		const below = setting(context.config, "lines_below", isLinesSetting, 1);
 		const includeFrontMatter = setting(context.config, "include_front_matter", isBoolean, false);
-		const starts = lineStarts(context.source);
 		const lineEnding = preferredLineEnding(context.source);
 		const first = firstContentLine(context);
 		const last = context.lines.length;
@@ -66,7 +65,7 @@ export const MD022: Lint.LintRule = LintRule.make({
 				let actual = 0;
 				while (actual < linesAbove && isBlankLine(lineAt(startLine - 1 - actual, includeFrontMatter))) actual++;
 				if (actual !== linesAbove) {
-					const offset = starts[startLine - 1] as number;
+					const offset = context.mapping.lineStart(startLine);
 					report(
 						context.diagnostic({
 							at: { offset, length: 0 },
@@ -86,7 +85,7 @@ export const MD022: Lint.LintRule = LintRule.make({
 				let actual = 0;
 				while (actual < linesBelow && isBlankLine(lineAt(endLine + 1 + actual, false))) actual++;
 				if (actual !== linesBelow) {
-					const offset = starts[endLine] as number;
+					const offset = context.mapping.lineStart(endLine + 1);
 					report(
 						context.diagnostic({
 							at: { offset: heading.position.start.offset, length: 0 },

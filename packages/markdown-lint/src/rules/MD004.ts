@@ -6,7 +6,6 @@
 
 import type { List, MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
-import { lineStarts } from "../internal/lines.js";
 import { inMathBlock, mathFlowBlocks } from "../internal/math-flow.js";
 import { LintRule } from "../LintRule.js";
 
@@ -53,7 +52,7 @@ export const MD004: Lint.LintRule = LintRule.make({
 		const style = String(context.config.style || "consistent");
 		let expectedStyle: string = validStyles.has(style) ? style : "dash";
 		const nestingStyles: Array<Style> = [];
-		const math = mathFlowBlocks(context, lineStarts(context.source));
+		const math = mathFlowBlocks(context);
 		for (const { list, nesting } of listsWithNesting(context.root as MarkdownNode)) {
 			if (list.ordered === true || inMathBlock(math, list.position.start.line)) continue;
 			for (const item of list.children) {

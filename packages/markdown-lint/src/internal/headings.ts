@@ -5,7 +5,6 @@
 import type { Heading, MarkdownNode } from "@effected/markdown";
 import { Option } from "effect";
 import type { LintContext } from "../LintContext.js";
-import { lineStarts } from "./lines.js";
 import { mathFlowLines } from "./math-flow.js";
 import { isString, setting } from "./settings.js";
 
@@ -81,7 +80,7 @@ export const headingStyle = (context: LintContext, heading: Heading): "atx" | "a
  * @internal
  */
 export const headingNodes = (context: LintContext): ReadonlyArray<Heading> => {
-	const math = mathFlowLines(context, lineStarts(context.source));
+	const math = mathFlowLines(context);
 	return (context.document.findAll("heading") as ReadonlyArray<Heading>).filter(
 		(heading) => !math.has(heading.position.start.line),
 	);

@@ -10,7 +10,7 @@ import type * as Lint from "@effected/markdown-lint";
 import { fencedEndLine } from "../internal/code-blocks.js";
 import { flowNodesWithAncestors } from "../internal/containers.js";
 import { preferredLineEnding } from "../internal/line-endings.js";
-import { contentLine, errorContext, isBlankLine, lineStarts } from "../internal/lines.js";
+import { contentLine, errorContext, isBlankLine } from "../internal/lines.js";
 import { inMathBlock, mathFlowBlocks } from "../internal/math-flow.js";
 import { LintRule } from "../LintRule.js";
 
@@ -36,14 +36,13 @@ export const MD031: Lint.LintRule = LintRule.make({
 		// markdownlint's `(list_items === undefined) || !!list_items`.
 		const listItems = context.config.list_items;
 		const includeListItems = listItems === undefined || !!listItems;
-		const starts = lineStarts(context.source);
 		const lineEnding = preferredLineEnding(context.source);
-		const math = mathFlowBlocks(context, starts);
+		const math = mathFlowBlocks(context);
 		const addError = (lineNumber: number, top: boolean): void => {
 			const line = contentLine(context, lineNumber) as string;
 			const prefix = codeFencePrefix.exec(line)?.[1];
-			const offset = starts[lineNumber - 1] as number;
-			const fixAt = starts[lineNumber - (top ? 1 : 0)] as number;
+			const offset = context.mapping.lineStart(lineNumber);
+			const fixAt = context.mapping.lineStart(top ? lineNumber : lineNumber + 1);
 			report(
 				context.diagnostic({
 					at: { offset, length: 0 },
@@ -65,7 +64,7 @@ export const MD031: Lint.LintRule = LintRule.make({
 			if (code.fenceChar === undefined || inMathBlock(math, code.position.start.line)) continue;
 			if (!includeListItems && ancestors.some((ancestor) => ancestor.type === "list")) continue;
 			const startLine = code.position.start.line;
-			const endLine = fencedEndLine(context, code, starts);
+			const endLine = fencedEndLine(context, code);
 			if (!isBlankLine(contentLine(context, startLine - 1))) addError(startLine, true);
 			if (!isBlankLine(contentLine(context, endLine + 1)) && !isBlankLine(contentLine(context, endLine)))
 				addError(endLine, false);

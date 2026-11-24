@@ -10,7 +10,7 @@ import type * as Lint from "@effected/markdown-lint";
 import { blockQuotePrefixText, flowNodesWithAncestors, isLazyLine } from "../internal/containers.js";
 import { preferredLineEnding } from "../internal/line-endings.js";
 import type { LineRange } from "../internal/lines.js";
-import { contentLine, errorContext, isBlankLine, lineStarts } from "../internal/lines.js";
+import { contentLine, errorContext, isBlankLine } from "../internal/lines.js";
 import { inMathBlock, mathFlowBlocks } from "../internal/math-flow.js";
 import { LintRule } from "../LintRule.js";
 
@@ -72,9 +72,8 @@ export const MD032: Lint.LintRule = LintRule.make({
 	tags: ["bullet", "ul", "ol", "blank_lines"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md032.md",
 	check: (context, report) => {
-		const starts = lineStarts(context.source);
 		const lineEnding = preferredLineEnding(context.source);
-		const math = mathFlowBlocks(context, starts);
+		const math = mathFlowBlocks(context);
 		for (const { node, ancestors } of flowNodesWithAncestors(context, new Set(["list"]))) {
 			const list = node as List;
 			if (ancestors.some((ancestor) => ancestor.type === "list")) continue;
@@ -82,7 +81,7 @@ export const MD032: Lint.LintRule = LintRule.make({
 			if (inMathBlock(math, firstLine)) continue;
 			const firstText = context.lines[firstLine - 1] as string;
 			if (!isBlankLine(contentLine(context, firstLine - 1))) {
-				const offset = starts[firstLine - 1] as number;
+				const offset = context.mapping.lineStart(firstLine);
 				report(
 					context.diagnostic({
 						at: { offset, length: 0 },
@@ -97,10 +96,10 @@ export const MD032: Lint.LintRule = LintRule.make({
 				const lastText = context.lines[lastLine - 1] as string;
 				report(
 					context.diagnostic({
-						at: { offset: starts[lastLine - 1] as number, length: 0 },
+						at: { offset: context.mapping.lineStart(lastLine), length: 0 },
 						context: errorContext(lastText.trim()),
 						fix: {
-							offset: starts[lastLine] as number,
+							offset: context.mapping.lineStart(lastLine + 1),
 							length: 0,
 							content: `${blockQuotePrefixText(context, lastLine)}${lineEnding}`,
 						},

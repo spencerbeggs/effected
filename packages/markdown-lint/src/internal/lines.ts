@@ -10,13 +10,6 @@ export const addRange = (set: Set<number>, start: number, end: number): void => 
 	for (let line = start; line <= end; line++) set.add(line);
 };
 
-/** The offset each line of `source` starts at; index 0 is line 1. @internal */
-export const lineStarts = (source: string): Array<number> => {
-	const starts = [0];
-	for (const match of source.matchAll(/\r\n?|\n/g)) starts.push(match.index + match[0].length);
-	return starts;
-};
-
 /** A run of lines, `start` to `end`, 1-based and inclusive. @internal */
 export interface LineRange {
 	readonly start: number;

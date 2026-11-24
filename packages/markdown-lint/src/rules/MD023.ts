@@ -9,7 +9,7 @@ import type { ListItem, MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
 import { flowNodesWithAncestors, itemContentColumn } from "../internal/containers.js";
 import { headingNodes } from "../internal/headings.js";
-import { errorContext, lineStarts } from "../internal/lines.js";
+import { errorContext } from "../internal/lines.js";
 import { LintRule } from "../LintRule.js";
 
 /**
@@ -27,7 +27,6 @@ export const MD023: Lint.LintRule = LintRule.make({
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md023.md",
 	check: (context, report) => {
 		const seen = new Set<MarkdownNode>(headingNodes(context));
-		const starts = lineStarts(context.source);
 		for (const { node, ancestors } of flowNodesWithAncestors(context, new Set(["heading"]))) {
 			if (!seen.has(node)) continue;
 			const lineNumber = node.position.start.line;
@@ -44,10 +43,10 @@ export const MD023: Lint.LintRule = LintRule.make({
 			}
 			const length = column - from;
 			if (length <= 0) continue;
-			const offset = (starts[lineNumber - 1] as number) + from;
+			const offset = context.mapping.lineStart(lineNumber) + from;
 			report(
 				context.diagnostic({
-					at: { offset: starts[lineNumber - 1] as number, length: 0 },
+					at: { offset: context.mapping.lineStart(lineNumber), length: 0 },
 					context: errorContext(line, true, false),
 					range: { offset, length },
 					fix: { offset, length, content: "" },

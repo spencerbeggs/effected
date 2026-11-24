@@ -7,18 +7,18 @@
 import type { List, MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
 import { codeNodes, fencedInterior } from "../internal/code-blocks.js";
-import { addRange, firstContentLine, lineStarts } from "../internal/lines.js";
+import { addRange, firstContentLine } from "../internal/lines.js";
 import { isBoolean, isNumber, setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 // The lines markdownlint leaves to the code: an indented block's every line,
 // and a fenced block's lines between its fences.
-const codeLines = (context: Lint.LintContext, starts: ReadonlyArray<number>): Set<number> => {
+const codeLines = (context: Lint.LintContext): Set<number> => {
 	const lines = new Set<number>();
 	for (const node of codeNodes(context)) {
 		if (node.fenceChar === undefined) addRange(lines, node.position.start.line, node.position.end.line);
 		else {
-			const interior = fencedInterior(context, node, starts);
+			const interior = fencedInterior(context, node);
 			addRange(lines, interior.start, interior.end);
 		}
 	}
@@ -81,8 +81,7 @@ export const MD009: Lint.LintRule = LintRule.make({
 		const includeCode = setting(context.config, "code_blocks", isBoolean, false);
 		const listItemEmptyLines = setting(context.config, "list_item_empty_lines", isBoolean, false);
 		const strict = setting(context.config, "strict", isBoolean, false);
-		const starts = lineStarts(context.source);
-		const code = includeCode ? new Set<number>() : codeLines(context, starts);
+		const code = includeCode ? new Set<number>() : codeLines(context);
 		const listed = listItemEmptyLines ? listLines(context) : new Set<number>();
 		const paragraphs = strict ? spanLines(context, "paragraph") : new Set<number>();
 		const codeSpans = strict ? spanLines(context, "inlineCode") : new Set<number>();
@@ -96,7 +95,7 @@ export const MD009: Lint.LintRule = LintRule.make({
 				!listed.has(lineNumber) &&
 				(expected !== trailing || (strict && (!paragraphs.has(lineNumber) || codeSpans.has(lineNumber))))
 			) {
-				const offset = (starts[lineNumber - 1] as number) + line.length - trailing;
+				const offset = context.mapping.lineStart(lineNumber) + line.length - trailing;
 				report(
 					context.diagnostic({
 						at: { offset, length: trailing },

@@ -9,7 +9,6 @@
 
 import type * as Lint from "@effected/markdown-lint";
 import { contentInContainers } from "../internal/containers.js";
-import { lineStarts } from "../internal/lines.js";
 import { mathFlowLines } from "../internal/math-flow.js";
 import { stringWidth } from "../internal/string-width.js";
 import { LintRule } from "../LintRule.js";
@@ -95,8 +94,7 @@ export const MD060: Lint.LintRule = LintRule.make({
 		const compactAllowed = style === "any" || style === "compact";
 		const tightAllowed = style === "any" || style === "tight";
 		const alignedDelimiter = !!context.config.aligned_delimiter;
-		const starts = lineStarts(context.source);
-		const math = mathFlowLines(context, starts);
+		const math = mathFlowLines(context);
 		const lineText = (lineNumber: number): string => context.lines[lineNumber - 1] ?? "";
 
 		const addError = (errors: Array<ErrorInfo>, error: ErrorInfo): void => {
@@ -226,7 +224,7 @@ export const MD060: Lint.LintRule = LintRule.make({
 				errors = errorsIfTight;
 			}
 			for (const error of errors) {
-				const lineStart = starts[error.lineNumber - 1] as number;
+				const lineStart = context.mapping.lineStart(error.lineNumber);
 				const offset = lineStart + error.column - 1;
 				report(
 					context.diagnostic({
