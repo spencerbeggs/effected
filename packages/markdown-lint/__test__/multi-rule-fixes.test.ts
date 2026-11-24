@@ -11,7 +11,13 @@ import { MD032 } from "../src/rules/MD032.js";
 import { DIFFERENTIAL_TIMEOUT, corpus, fixesDifferential } from "./helpers/differential.js";
 import { oracleApplyFixes, oracleLint } from "./helpers/markdownlint-oracle.js";
 
-const byName = (...names: ReadonlyArray<string>) => rules.filter((rule) => names.includes(rule.name));
+// The wired rules with these names, in markdownlint's order. A name no wired rule has throws: a pair named before its
+// rule is wired would otherwise run, and pin, the other rule alone.
+const byName = (...names: ReadonlyArray<string>) => {
+	const missing = names.filter((name) => !rules.some((rule) => rule.name === name));
+	if (missing.length > 0) throw new Error(`no wired rule named ${missing.join(", ")}`);
+	return rules.filter((rule) => names.includes(rule.name));
+};
 
 // A marker change and a blank-line insert at one column, under each line ending.
 const extra = [
@@ -494,6 +500,10 @@ describe("applyFixes over several rules' fixes", () => {
 			],
 		],
 	];
+	it("refuses a rule name no wired rule has", () => {
+		assert.throws(() => byName("MD009", "MD999"), /no wired rule named MD999/);
+	});
+
 	for (const [label, names, oracleFixes, meeting, own = []] of cases) {
 		it(
 			`agrees with markdownlint on ${label} together`,
