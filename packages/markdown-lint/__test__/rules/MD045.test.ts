@@ -49,6 +49,7 @@ const extra = [
 	{ name: "review: img multiline in para", source: "a <img\nsrc=y> b\n" },
 	{ name: "review: block in list item lines", source: "- <div>\n  <img src=x>\n  </div>\n" },
 	{ name: "review: block in quote lines", source: "> <div>\n> <img src=x>\n" },
+	{ name: "review: $ in image alt", source: "![$](a.png) ![](b.png) $\n" },
 ];
 
 // A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.

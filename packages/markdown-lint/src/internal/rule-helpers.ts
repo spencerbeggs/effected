@@ -510,15 +510,33 @@ export interface Span {
 	readonly end: number;
 }
 
+// Where a link's or image's label ends: the `]` closing the `[` at `open`, brackets nested and escapes skipped.
+const labelEnd = (source: string, open: number, end: number): number => {
+	let depth = 0;
+	for (let at = open + 1; at < end; at++) {
+		const char = source.charAt(at);
+		if (char === "\\") at++;
+		else if (char === "[") depth++;
+		else if (char === "]") {
+			if (depth === 0) return at;
+			depth--;
+		}
+	}
+	return end;
+};
+
 // What micromark reads as one token before a `$` inside it could open math: a code span, inline HTML, an
-// autolink, an image, and a link's destination (the part after its text).
+// autolink, a footnote call, and a link's or image's destination or reference (all after its label, which
+// micromark parses inline, so math can open there).
 const atomicSpans = (node: MarkdownNode, source: string, found: Array<Span>): Array<Span> => {
 	const { start, end } = { start: node.position.start.offset, end: node.position.end.offset };
-	if (node.type === "inlineCode" || node.type === "html" || node.type === "image") found.push({ start, end });
-	else if (node.type === "link" || node.type === "linkReference") {
-		const children = node.children as ReadonlyArray<MarkdownNode>;
+	if (node.type === "inlineCode" || node.type === "html" || node.type === "footnoteReference") {
+		found.push({ start, end });
+	} else if (node.type === "link" || node.type === "linkReference") {
 		if (source.charAt(start) === "<") found.push({ start, end });
-		else found.push({ start: children.at(-1)?.position.end.offset ?? start + 1, end });
+		else found.push({ start: labelEnd(source, start, end), end });
+	} else if (node.type === "image" || node.type === "imageReference") {
+		found.push({ start: labelEnd(source, start + 1, end), end });
 	}
 	if ("children" in node)
 		for (const child of node.children as ReadonlyArray<MarkdownNode>) atomicSpans(child, source, found);
@@ -531,7 +549,8 @@ const atomicSpans = (node: MarkdownNode, source: string, found: Array<Span>): Ar
  * paragraph, heading and table cell, read left to right as micromark does: a
  * run of `$` opens math when a later run of exactly as many closes it (what
  * lies between is math, unparsed), and a code span, inline HTML, an autolink,
- * an image or a link destination that starts first is read whole. A
+ * a footnote call, or a link's or image's destination that starts first is
+ * read whole (a label is read inline, as micromark reads it). A
  * backslash escapes the character after it outside math.
  * @internal
  */

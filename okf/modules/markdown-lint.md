@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-24T00:58:24Z
+  at: 2026-11-24T01:01:04Z
 integrity:
   generated:
-    body: 10197b53d94b2d15
+    body: c0cdd2ecdb5d8022
 ---
 
 # `@effected/markdown-lint`
@@ -291,8 +291,9 @@ plain synchronous function; no logging, no metrics.
 - The math extension's inline `$` math is read the same way, from each
   paragraph's, heading's and table cell's source: a run of `$` closed by
   the next run of exactly as many, unless a code span, inline HTML, an
-  autolink, an image or a link destination starts first. Inline HTML and
-  images inside it are not reported.
+  autolink, a footnote call, or a link's or image's destination starts
+  first. A link's or image's label is read inline, so math can open
+  there. Inline HTML and images inside math are not reported.
 
 - markdownlint re-parses an HTML block (other than one comment) as
   Markdown with HTML blocks and indented code turned off, and MD033 and

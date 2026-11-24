@@ -105,6 +105,13 @@ const extra = [
 	{ name: "review: $ in link ref", source: "[a $][r] <b>x</b> $\n\n[r]: u\n" },
 	{ name: "review: $ in undefined ref", source: "[a $][zz] <b>x</b> $\n" },
 	{ name: "review: block in quote+list", source: "> - <div>\n>   <b>x</b>\n" },
+	{ name: "review: $ in image alt", source: "![$](a.png) <b>x</b> $\n" },
+	{ name: "review: $ in footnote call", source: "x[^a$] <b>y</b> $\n\n[^a$]: z\n" },
+	{ name: "$ in a nested image label", source: "![a [$] b](u) <b>x</b> $\n" },
+	{ name: "$ in an image destination", source: "![x](u$) <b>y</b> $\n" },
+	{ name: "$ after an escaped bracket in an image label", source: "![\\]$](u) <b>x</b> $\n" },
+	{ name: "$ in an image reference", source: "![x][r$] <b>y</b> $\n\n[r$]: /u\n" },
+	{ name: "$ in a reference image label", source: "![$][r] <b>y</b> $\n\n[r]: /u\n" },
 ];
 
 // A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
@@ -198,4 +205,4 @@ describe("MD033 no-inline-html", () => {
 });
 
 // markdownlint's MD033 findings over the corpus (LF and CRLF) and the extras.
-const ORACLE_FINDINGS_DEFAULT = 315;
+const ORACLE_FINDINGS_DEFAULT = 318;
