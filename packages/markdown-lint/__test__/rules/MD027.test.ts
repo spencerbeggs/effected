@@ -161,6 +161,29 @@ describe("MD027 no-multiple-space-blockquote", () => {
 		},
 		DIFFERENTIAL_TIMEOUT,
 	);
+
+	// A line lazy to an inner container (a list item, a nested quote) still carries the outer quote's prefix, and
+	// markdownlint reads the whitespace after it.
+	for (const settings of [{}, { list_items: false }]) {
+		it(
+			`agrees with markdownlint on lazy continuation lines under ${JSON.stringify(settings)}`,
+			() => {
+				const lazyLines = [
+					{ name: "lazy to a list item", source: "> - a\n>  b\n" },
+					{ name: "lazy to an ordered item", source: "> 1. a\n>   b\n" },
+					{ name: "lazy to a nested quote", source: "> > a\n>  b\n" },
+					{ name: "several lazy lines", source: "> - a\n>  b\n>   c\n> d\n" },
+					{ name: "lazy with a tab", source: "> - a\n>\tb\n" },
+					{ name: "lazy to an item in a nested quote", source: "> > - a\n> >  b\n" },
+					{ name: "lazy line with no prefix", source: "> - a\n  b\n" },
+				];
+				const result = differential(MD027, { config: settings, extra: lazyLines });
+				assert.deepStrictEqual(result.divergences, []);
+				assert.isAbove(result.oracleFindings, 0);
+			},
+			DIFFERENTIAL_TIMEOUT,
+		);
+	}
 });
 
 // markdownlint's MD027 findings over the corpus (LF and CRLF) and the extras.

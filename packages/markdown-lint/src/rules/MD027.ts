@@ -113,6 +113,8 @@ export const MD027: Lint.LintRule = LintRule.make({
 					const leading = (/^[ \t]*/.exec(line.slice(at))?.[0] ?? "").length;
 					const next = containerStep(line, lineNumber, container, at);
 					if (next === undefined) {
+						// Lazy to this quote, the line still carries the one before it, and its whitespace after.
+						if (afterQuote) found(at, inList);
 						lazy = true;
 						break;
 					}
@@ -130,6 +132,8 @@ export const MD027: Lint.LintRule = LintRule.make({
 					if (container.type === "listItem") inList = true;
 					const next = containerStep(line, lineNumber, container, at);
 					if (next === undefined) {
+						// Lazy to this item, the line still carries the quote's prefix, and its whitespace after.
+						if (afterQuote) found(at, inList);
 						lazy = true;
 						break;
 					}
