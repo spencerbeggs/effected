@@ -79,4 +79,4 @@ describe("MD050 strong-style", () => {
 });
 
 // markdownlint's MD050 findings over the corpus (LF and CRLF) and the grid.
-const ORACLE_FINDINGS_DEFAULT = 126;
+const ORACLE_FINDINGS_DEFAULT = 128;

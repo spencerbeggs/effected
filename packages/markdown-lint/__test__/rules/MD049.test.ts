@@ -79,4 +79,4 @@ describe("MD049 emphasis-style", () => {
 });
 
 // markdownlint's MD049 findings over the corpus (LF and CRLF) and the grid.
-const ORACLE_FINDINGS_DEFAULT = 190;
+const ORACLE_FINDINGS_DEFAULT = 192;

@@ -109,6 +109,8 @@ export const emphasisStyleGrid: ReadonlyArray<DifferentialInput> = (() => {
 		["reference image", "![*a* _b_][r]\n\n[r]: u\n"],
 		["math in image alt", "![$*a*$ _b_](u)\n"],
 		["image in a link", "[![*a*](u) _b_](v)\n"],
+		["image in an image alt", "![a ![*b*](j) _c_](i)\n"],
+		["strong in a nested image alt", "![a ![**b**](j) __c__](i)\n"],
 		["undefined reference", "[*a* _b_][undef] **c** __d__\n"],
 		["strikethrough", "~~*a*~~ and ~~_b_~~ and ~~**c**~~ __d__\n"],
 		["strikethrough crossing", "*a ~~b* c~~ and _d_\n"],
