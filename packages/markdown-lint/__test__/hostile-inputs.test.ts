@@ -126,6 +126,8 @@ const urlsAfterMathBracket = (count: number): string => `# T\n\n$[$ ${"*https://
 const undefinedReferences = (count: number): string => `# T\n\n${"[a] [b][c] [d][] ".repeat(count)}\n`;
 const imagesAndLinks = (count: number): string => `# T\n\n${"![a] [b](u) ".repeat(count)}\n`;
 const openersThenClosers = (count: number): string => `# T\n\n${"[".repeat(count)}x${"]".repeat(count)}\n`;
+const unusedDefinitions = (count: number): string =>
+	`# T\n\n${Array.from({ length: count }, (_, index) => `[u${index}]: https://u.example/${index}\n`).join("")}`;
 const usesOfOneLabel = (count: number): string =>
 	`# T\n\n${"[r] [x][r] ".repeat(count)}\n\n${"[r]: u\n".repeat(count)}`;
 
@@ -186,6 +188,7 @@ const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["10,000 URLs in emphasis after a bracket in inline math", urlsAfterMathBracket(10000)],
 	["one line of 20,000 undefined references, collapsed and full", undefinedReferences(20000)],
 	["20,000 uses of one label beside 20,000 duplicate definitions", usesOfOneLabel(20000)],
+	["20,000 unused definitions", unusedDefinitions(20000)],
 ];
 
 describe("hostile inputs", () => {

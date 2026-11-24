@@ -44,7 +44,7 @@ const shuffled = <A>(items: ReadonlyArray<A>, seed: string): ReadonlyArray<A> =>
 };
 
 // markdownlint's findings with a fix over every input, per case.
-const ORACLE_FIXES_ALL = 6342;
+const ORACLE_FIXES_ALL = 6366;
 const ORACLE_FIXES_MD004_MD032 = 396;
 const ORACLE_FIXES_MD022_MD009 = 452;
 const ORACLE_FIXES_MD031_MD032 = 368;
@@ -68,6 +68,8 @@ const ORACLE_FIXES_MD044_MD049 = 494;
 const ORACLE_FIXES_MD011_MD009 = 371;
 const ORACLE_FIXES_MD039_MD009 = 518;
 const ORACLE_FIXES_MD034_MD009 = 416;
+const ORACLE_FIXES_MD053_MD009 = 299;
+const ORACLE_FIXES_MD053_MD012 = 102;
 // The inputs on which fixes from two or more of the case's rules land on one line, the case the file exists for.
 const MEETING_ALL = 50;
 const MEETING_MD004_MD032 = 17;
@@ -94,6 +96,8 @@ const MEETING_MD044_MD049 = 2;
 const MEETING_MD011_MD009 = 2;
 const MEETING_MD039_MD009 = 5;
 const MEETING_MD034_MD009 = 2;
+const MEETING_MD053_MD009 = 2;
+const MEETING_MD053_MD012 = 0;
 const MEETING_SAMPLE = 11;
 
 describe("applyFixes over several rules' fixes", () => {
@@ -368,6 +372,28 @@ describe("applyFixes over several rules' fixes", () => {
 			[
 				{ name: "MD034 and MD009, LF", source: "see https://u.v and a@b.co   \nwww.u.v  \n" },
 				{ name: "MD034 and MD009, CRLF", source: "see https://u.v and a@b.co   \r\nwww.u.v  \r\n" },
+			],
+		],
+		// MD053 deletes an unused definition's line while MD009 trims that line's end and the next one's.
+		[
+			"MD053 and MD009",
+			["MD053", "MD009"],
+			ORACLE_FIXES_MD053_MD009,
+			MEETING_MD053_MD009,
+			[
+				{ name: "MD053 and MD009, LF", source: "x\n\n[a]: u   \n[b]: v  \n[c]: w\n\n[c]\n[d]: z   " },
+				{ name: "MD053 and MD009, CRLF", source: "x\r\n\r\n[a]: u   \r\n[b]: v  \r\n[c]: w\r\n\r\n[c]\r\n[d]: z   " },
+			],
+		],
+		// MD053 deletes unused definitions' lines between the runs of blank lines MD012 collapses.
+		[
+			"MD053 and MD012",
+			["MD053", "MD012"],
+			ORACLE_FIXES_MD053_MD012,
+			MEETING_MD053_MD012,
+			[
+				{ name: "MD053 and MD012, LF", source: "x\n\n\n[a]: u\n\n\n[b]: v\n[b]: w\n\n\n[b]\n" },
+				{ name: "MD053 and MD012, CRLF", source: "x\r\n\r\n\r\n[a]: u\r\n\r\n\r\n[b]: v\r\n[b]: w\r\n\r\n\r\n[b]\r\n" },
 			],
 		],
 	];

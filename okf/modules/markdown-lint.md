@@ -1,7 +1,7 @@
 ---
 type: Module
 title: "@effected/markdown-lint"
-description: "A markdownlint-compatible lint rule shape over @effected/markdown trees: one LintRule definition with markdownlint metadata, a pure programmatic host (MarkdownLint) resolving markdownlint configuration and inline comments, a markdownlint custom-rule adapter (MarkdownlintAdapter), 47 ported built-in rules on ./rules held to markdownlint by a differential harness, and a ./config reader of markdownlint config files; every line, range and fix derived from kit offsets by PositionMapping."
+description: "A markdownlint-compatible lint rule shape over @effected/markdown trees: one LintRule definition with markdownlint metadata, a pure programmatic host (MarkdownLint) resolving markdownlint configuration and inline comments, a markdownlint custom-rule adapter (MarkdownlintAdapter), 48 ported built-in rules on ./rules held to markdownlint by a differential harness, and a ./config reader of markdownlint config files; every line, range and fix derived from kit offsets by PositionMapping."
 status: draft
 kind: package
 resource: ../../packages/markdown-lint
@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T16:46:33Z
+  at: 2026-11-24T17:15:17Z
 integrity:
   generated:
-    body: f38aee8d08bd63ec
+    body: 4394f2ed3c365c20
 ---
 
 # `@effected/markdown-lint`
@@ -66,7 +66,7 @@ their own markdownlint and the package cannot pin it.
 | Entry | Holds | May import |
 | --- | --- | --- |
 | `.` | `LintRule`, `LintContext`, `LintDiagnostic`, `PositionMapping`, `LintConfig`, `InlineDirectives`, the `MarkdownLint` host and the `MarkdownlintAdapter` | `@effected/markdown` and `effect`; never a rule module, `./config`, `node:` or a format engine |
-| `./rules` | the 47 ported built-in rules, one free-standing named export each (`MD001` … `MD060`) | the root, through the package's own name for types |
+| `./rules` | the 48 ported built-in rules, one free-standing named export each (`MD001` … `MD060`) | the root, through the package's own name for types |
 | `./rules/all` | `rules`, every port in markdownlint's order, and `uncovered`, the 0 built-in rule names with no port yet | the rule modules |
 | `./config` | `MarkdownlintConfigFile` and `MarkdownlintConfigError` | the root, `@effected/jsonc`, `@effected/yaml`, `FileSystem` and `Path` |
 
@@ -261,7 +261,7 @@ markdownlint's configuration and not markdownlint-cli2's options files is
 
 ## The ported rules
 
-`./rules` ports 47 of markdownlint 0.42's 53 built-in rules: MD001, MD003, MD004, MD005, MD007, MD009, MD010, MD011, MD012, MD013, MD014, MD018, MD019, MD020, MD021, MD022, MD023, MD024, MD025, MD026, MD027, MD028, MD029, MD030, MD031, MD032, MD033, MD034, MD035, MD036, MD037, MD038, MD039, MD040, MD041, MD042, MD043, MD044, MD045, MD046, MD047, MD048, MD049, MD050, MD052, MD059 and MD060. Each is an
+`./rules` ports 48 of markdownlint 0.42's 53 built-in rules: MD001, MD003, MD004, MD005, MD007, MD009, MD010, MD011, MD012, MD013, MD014, MD018, MD019, MD020, MD021, MD022, MD023, MD024, MD025, MD026, MD027, MD028, MD029, MD030, MD031, MD032, MD033, MD034, MD035, MD036, MD037, MD038, MD039, MD040, MD041, MD042, MD043, MD044, MD045, MD046, MD047, MD048, MD049, MD050, MD052, MD053, MD059 and MD060. Each is an
 ordinary `LintRule` carrying markdownlint's own names, description, tags and
 documentation link, and a rule with settings reads them from
 `LintContext.config` under markdownlint's names and defaults, coerced as
@@ -309,7 +309,7 @@ kit parser defects, fixed in `@effected/markdown`: an address after an
 escape or entity was positioned inside it, and the email postprocess went
 quadratic on a run of many text nodes.
 
-MD042 and MD052 read markdownlint's reference link and image
+MD042, MD052 and MD053 read markdownlint's reference link and image
 data through one internal helper (`src/internal/references.ts`): the
 definitions (link and footnote, first wins, the rest duplicates) and the
 references and shortcuts that use a label. Formed references come from the
@@ -413,7 +413,8 @@ plain synchronous function; no logging, no metrics.
   line of 24,000 unclosed inline HTML tags, and 10,000 URLs in emphasis
   after a bracket in inline math, the block's rest re-read once (MD034),
   one line of 20,000 undefined references and 20,000 uses of one label
-  beside 20,000 duplicate definitions (MD052), with ratio guards for the
+  beside 20,000 duplicate definitions (MD052), 20,000 unused definitions
+  (MD053), with ratio guards for the
   math re-read, undefined references, alternating images and links, and
   label starts closed in reverse,
   `applyFixes` over
@@ -620,6 +621,11 @@ plain synchronous function; no logging, no metrics.
   `codeTextPadding` but not its `codeText` token, which MD038 walks, so it
   reports a code span in an undefined reference once (the code-span grid
   pins `[\`  x\`][undef]`).
+- **MD053's whole-line delete of the only line.** For a definition on the
+  only line of a source with no line ending, markdownlint's fix is its
+  whole-line delete (`deleteCount: -1`), which a kit edit (deleting the
+  line's text, the same text left) maps only to an edit on the line. Pinned
+  by a test (1 input), the applied text asserted equal.
 - **MD052 and MD053 enabled with no micromark rule beside them.**
   markdownlint parses with micromark only when an enabled rule's `parser`
   is `"micromark"`, and its MD052 and MD053 (`parser: "none"`) read their

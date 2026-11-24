@@ -1020,6 +1020,7 @@
 		"MD049": "emphasis-style, consistent emphasis marker, asterisk or underscore",
 		"MD050": "strong-style, consistent strong emphasis marker, asterisk or underscore",
 		"MD052": "reference-links-images, reference link or image with an undefined label",
+		"MD053": "link-image-reference-definitions, unused or duplicate link or image reference definition",
 		"MD059": "descriptive-link-text, generic link text such as click here, prohibited texts",
 		"MD060": "table-column-style, table column style, pipe alignment, aligned compact tight",
 		"MarkdownLint": "lint markdown programmatically without markdownlint, run rules over a string or parsed document",
