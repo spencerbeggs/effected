@@ -15,6 +15,7 @@ import {
 	runRule,
 	settingsDifferential,
 } from "../helpers/differential.js";
+import { unclosedFenceEnds } from "../helpers/link-grid.js";
 import { quotedBlankGrid } from "../helpers/list-container-grid.js";
 import { directiveBlockGrid, directiveListEnds } from "../helpers/table-grid.js";
 
@@ -184,6 +185,17 @@ describe("MD027 no-multiple-space-blockquote", () => {
 			DIFFERENTIAL_TIMEOUT,
 		);
 	}
+
+	// An unclosed fence ending the source with no final line ending: micromark reads its last line as code.
+	it(
+		"agrees with markdownlint on an unclosed fence ending the source",
+		() => {
+			const result = differential(MD027, { extra: unclosedFenceEnds });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_UNCLOSED);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD027 findings over the corpus (LF and CRLF) and the extras.
@@ -193,3 +205,6 @@ const ORACLE_FINDINGS_GRID = 543;
 
 // markdownlint's MD027 findings over the corpus (LF and CRLF) and the blocks beside directive lines.
 const ORACLE_FINDINGS_DIRECTIVE_BLOCKS = 121;
+
+// markdownlint's MD027 findings over the corpus (LF and CRLF) and the unclosed fences ending the source.
+const ORACLE_FINDINGS_UNCLOSED = 120;

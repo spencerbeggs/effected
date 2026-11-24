@@ -12,6 +12,7 @@ import {
 	runRule,
 	settingsDifferential,
 } from "../helpers/differential.js";
+import { unclosedFenceEnds } from "../helpers/link-grid.js";
 
 const extra = [
 	{ name: "tabs in text", source: "a\tb\t\tc\n\tlead\n" },
@@ -124,6 +125,17 @@ describe("MD010 no-hard-tabs", () => {
 			"a    b\n",
 		);
 	});
+
+	// An unclosed fence ending the source with no final line ending: micromark reads its last line as code.
+	it(
+		"agrees with markdownlint on an unclosed fence ending the source",
+		() => {
+			const result = differential(MD010, { extra: unclosedFenceEnds });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_UNCLOSED);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD010 findings over the corpus (LF and CRLF) and the extras.
@@ -131,3 +143,6 @@ const ORACLE_FINDINGS_DEFAULT = 199;
 
 // The inputs on which markdownlint throws on an `ignore_code_languages` that is not a list (see the test above).
 const NOT_A_LIST_DIVERGENCES = 33;
+
+// markdownlint's MD010 findings over the corpus (LF and CRLF) and the unclosed fences ending the source.
+const ORACLE_FINDINGS_UNCLOSED = 183;

@@ -14,6 +14,7 @@ import {
 	runRule,
 	settingsDifferential,
 } from "../helpers/differential.js";
+import { unclosedFenceEnds } from "../helpers/link-grid.js";
 import { PROPER_NAMES, properNamesGrid } from "../helpers/proper-names-grid.js";
 
 const run = runRule(MD044);
@@ -95,7 +96,21 @@ describe("MD044 proper-names", () => {
 			"Use JavaScript here.\n",
 		);
 	});
+
+	// An unclosed fence ending the source with no final line ending: micromark reads its last line as code.
+	it(
+		"agrees with markdownlint on an unclosed fence ending the source",
+		() => {
+			const result = differential(MD044, { config: { names: ["JavaScript"] }, extra: unclosedFenceEnds });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_UNCLOSED);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD044 findings over the corpus (LF and CRLF).
 const ORACLE_FINDINGS_DEFAULT = 196;
+
+// markdownlint's MD044 findings over the corpus (LF and CRLF) and the unclosed fences ending the source.
+const ORACLE_FINDINGS_UNCLOSED = 207;

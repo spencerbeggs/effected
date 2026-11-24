@@ -9,6 +9,7 @@ import { MarkdownEdit } from "@effected/markdown";
 import { Option } from "effect";
 import { MD014 } from "../../src/rules/MD014.js";
 import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
+import { unclosedFenceEnds } from "../helpers/link-grid.js";
 
 const extra = [
 	{ name: "every line a command", source: "```sh\n$ ls\n$ cd x\n```\n" },
@@ -62,7 +63,21 @@ describe("MD014 commands-show-output", () => {
 			"```sh\nls\ncd x\n```\n",
 		);
 	});
+
+	// An unclosed fence ending the source with no final line ending: micromark reads its last line as code.
+	it(
+		"agrees with markdownlint on an unclosed fence ending the source",
+		() => {
+			const result = differential(MD014, { extra: unclosedFenceEnds });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_UNCLOSED);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD014 findings over the corpus (LF and CRLF) and the extras.
 const ORACLE_FINDINGS_DEFAULT = 53;
+
+// markdownlint's MD014 findings over the corpus (LF and CRLF) and the unclosed fences ending the source.
+const ORACLE_FINDINGS_UNCLOSED = 35;

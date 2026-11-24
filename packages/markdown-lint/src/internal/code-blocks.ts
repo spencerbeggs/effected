@@ -119,9 +119,20 @@ const strippedIndent = (text: string, columns: number): number => {
  */
 export const codeFlowValues = (context: LintContext, node: Code): ReadonlyArray<CodeFlowValue> => {
 	const fenced = node.fenceChar !== undefined;
-	const range = fenced
+	const range: { start: number; end: number } = fenced
 		? fencedInterior(context, node)
 		: { start: node.position.start.line, end: node.position.end.line };
+	// An unclosed fence ending on the source's last line, no line ending after it: micromark's `codeFlowValue` holds
+	// that line too, where the `codeFenced` token's interior (`fencedInterior`, what MD009 and MD010 read) does not.
+	const last = context.lines.length;
+	if (
+		fenced &&
+		node.position.end.line === last &&
+		fencedEndLine(context, node) === last &&
+		!(last > node.position.start.line && isClosingFence(context.lines[last - 1] ?? "", node))
+	) {
+		range.end = last;
+	}
 	const indent = fenced ? fenceIndent(context, node) : 4;
 	const values: Array<CodeFlowValue> = [];
 	for (let lineNumber = range.start; lineNumber <= range.end; lineNumber++) {

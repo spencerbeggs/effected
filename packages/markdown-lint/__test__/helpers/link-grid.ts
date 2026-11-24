@@ -61,3 +61,15 @@ export const linkGrid: ReadonlyArray<DifferentialInput> = (() => {
 	}
 	return grid;
 })();
+
+// Unclosed fences ending the source with no final line ending, whose last line micromark reads as code: plain, in a
+// list item and a blockquote, with backticks and tildes, with trailing spaces and tabs in the code.
+export const unclosedFenceEnds: ReadonlyArray<import("./differential.js").DifferentialInput> = [
+	{ name: "unclosed backtick fence", source: "```\njavascript" },
+	{ name: "unclosed tilde fence", source: "~~~\njavascript" },
+	{ name: "unclosed fence in a list item", source: "- ```\n  javascript" },
+	{ name: "unclosed fence in a blockquote", source: "> ```\n> javascript" },
+	{ name: "unclosed fence, trailing whitespace", source: "```\n\tjavascript  " },
+	{ name: "unclosed fence, command", source: "```sh\n$ ls" },
+	{ name: "unclosed fence, two lines", source: "```\njavascript\njavascript" },
+];
