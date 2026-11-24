@@ -179,6 +179,16 @@ describe("hostile settings", () => {
 		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
 	});
 
+	it("lints a sublist under indent: 1e9 under the ceiling, its fix capped", { timeout: 30_000 }, () => {
+		const source = '<!-- markdownlint-configure-file {"MD007":{"indent":1e9}} -->\n\n# T\n\n- a\n  - b\n';
+		const start = performance.now();
+		const findings = MarkdownLint.lint(source, rules).filter((finding) => finding.ruleNames[0] === "MD007");
+		const elapsed = performance.now() - start;
+		assert.lengthOf(findings, 1);
+		assert.strictEqual(MarkdownLint.applyFixes(source, findings).split("\n")[5], `${" ".repeat(1_002)}- b`);
+		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
+	});
+
 	it("lints a heading under lines_above: 1e8 under the ceiling, its fix capped", { timeout: 30_000 }, () => {
 		const source = "text\n# T\n";
 		const start = performance.now();

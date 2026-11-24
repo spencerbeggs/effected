@@ -203,3 +203,29 @@ export const listItemPrefix = (context: LintContext, item: ListItem): ListItemPr
 	for (const char of spaces) column = char === "\t" ? column + 4 - (column % 4) : column + 1;
 	return { offset, marker, whitespace: column - start <= 4 ? spaces.length : 1 };
 };
+
+/**
+ * The 0-based column just past the last blockquote marker (and its optional
+ * space) that `chain`'s containers (its lists are passed over) carry on line
+ * `lineNumber`: micromark's
+ * last `blockQuotePrefix` token on that line, as its `endColumn - 1`; 0 when
+ * none of them is a blockquote, or the line is lazy to one.
+ * @internal
+ */
+export const blockQuotePrefixEnd = (
+	context: LintContext,
+	lineNumber: number,
+	chain: ReadonlyArray<MarkdownNode>,
+): number => {
+	const line = context.lines[lineNumber - 1] ?? "";
+	let at = 0;
+	let end = 0;
+	for (const container of chain) {
+		if (!isContainer(container)) continue;
+		const next = containerStep(line, lineNumber, container, at);
+		if (next === undefined) return end;
+		if (container.type === "blockquote") end = next;
+		at = next;
+	}
+	return end;
+};

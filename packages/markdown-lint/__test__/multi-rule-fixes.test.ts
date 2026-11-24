@@ -44,7 +44,7 @@ const shuffled = <A>(items: ReadonlyArray<A>, seed: string): ReadonlyArray<A> =>
 };
 
 // markdownlint's findings with a fix over every input, per case.
-const ORACLE_FIXES_ALL = 3234;
+const ORACLE_FIXES_ALL = 3633;
 const ORACLE_FIXES_MD004_MD032 = 396;
 const ORACLE_FIXES_MD022_MD009 = 452;
 const ORACLE_FIXES_MD031_MD032 = 368;
@@ -53,8 +53,9 @@ const ORACLE_FIXES_MD009_MD010 = 542;
 const ORACLE_FIXES_MD020_MD009 = 333;
 const ORACLE_FIXES_MD021_MD009 = 359;
 const ORACLE_FIXES_MD005_MD009 = 309;
+const ORACLE_FIXES_MD007_MD004 = 655;
 // The inputs on which fixes from two or more of the case's rules land on one line, the case the file exists for.
-const MEETING_ALL = 35;
+const MEETING_ALL = 38;
 const MEETING_MD004_MD032 = 17;
 const MEETING_MD022_MD009 = 3;
 const MEETING_MD031_MD032 = 13;
@@ -64,7 +65,8 @@ const MEETING_MD009_MD010 = 3;
 const MEETING_MD020_MD009 = 2;
 const MEETING_MD021_MD009 = 2;
 const MEETING_MD005_MD009 = 2;
-const MEETING_SAMPLE = 8;
+const MEETING_MD007_MD004 = 14;
+const MEETING_SAMPLE = 11;
 
 describe("applyFixes over several rules' fixes", () => {
 	// Recorded divergence "findings come in rule order": lint returns the rules' findings in the order of the rules it
@@ -165,6 +167,17 @@ describe("applyFixes over several rules' fixes", () => {
 			[
 				{ name: "re-indented items and trailing spaces, LF", source: "1. a  \n 2. b   \n  3. c \n" },
 				{ name: "re-indented items and trailing spaces, CRLF", source: " 9. a  \r\n10. b\r\n  11. c   \r\n" },
+			],
+		],
+		// MD007 re-indents a sublist item and MD004 changes its marker, on one line.
+		[
+			"MD007 and MD004",
+			["MD007", "MD004"],
+			ORACLE_FIXES_MD007_MD004,
+			MEETING_MD007_MD004,
+			[
+				{ name: "re-indented sublists and markers, LF", source: "- a\n   * b\n + c\n> - d\n>    + e\n" },
+				{ name: "re-indented sublists and markers, CRLF", source: "- a\r\n   * b\r\n + c\r\n" },
 			],
 		],
 	];

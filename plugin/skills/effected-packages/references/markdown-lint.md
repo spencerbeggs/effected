@@ -34,7 +34,7 @@ The root never reaches a rule module or `./config`: import only the rules you ru
 
 ## The rule set
 
-`./rules` ports 28 of markdownlint 0.42's built-in rules, each carrying markdownlint's names, aliases, description, tags and settings (read from `context.config` under markdownlint's names and defaults), and each held finding for finding to markdownlint, fixes included, by a differential test over markdownlint's own fixture corpus: `MD001` `MD003` `MD004` `MD005` `MD009` `MD010` `MD012` `MD013` `MD018` `MD019` `MD020` `MD021` `MD022` `MD023` `MD024` `MD025` `MD026` `MD031` `MD032` `MD033` `MD035` `MD036` `MD040` `MD041` `MD043` `MD045` `MD047` `MD060`. Configure them by number or alias (`"heading-increment": false`) exactly as in a `.markdownlint.jsonc`.
+`./rules` ports 29 of markdownlint 0.42's built-in rules, each carrying markdownlint's names, aliases, description, tags and settings (read from `context.config` under markdownlint's names and defaults), and each held finding for finding to markdownlint, fixes included, by a differential test over markdownlint's own fixture corpus: `MD001` `MD003` `MD004` `MD005` `MD007` `MD009` `MD010` `MD012` `MD013` `MD018` `MD019` `MD020` `MD021` `MD022` `MD023` `MD024` `MD025` `MD026` `MD031` `MD032` `MD033` `MD035` `MD036` `MD040` `MD041` `MD043` `MD045` `MD047` `MD060`. Configure them by number or alias (`"heading-increment": false`) exactly as in a `.markdownlint.jsonc`.
 
 **`uncovered` is how you say what was not checked.** It lists the first names of the built-in rules with no port, in markdownlint's order. A tool that lints with `rules` and reports clean has checked only the ported set; print `uncovered` (or the part of it the user's config enables) rather than implying markdownlint parity.
 
