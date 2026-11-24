@@ -15,6 +15,11 @@ const isClosingFence = (line: string, node: Code): boolean => {
 	return match !== null && match[2] === node.fenceChar && (match[1] as string).length >= (node.fenceLength ?? 3);
 };
 
+// The lines a container (a blockquote, list item or footnote definition) starts on.
+const containerStartLines: (context: LintContext) => ReadonlySet<number> = perReading(
+	(context) => new Set(containerNodes(context).map((container) => container.position.start.line)),
+);
+
 /**
  * The 1-based line micromark's `codeFenced` token ends on. A closed fence
  * ends on its closing fence line. An unclosed fence ends where the kit's
@@ -31,16 +36,16 @@ export const fencedEndLine = (context: LintContext, node: Code): number => {
 	const closed = end > start && isClosingFence(context.lines[end - 1] ?? "", node);
 	if (closed || end >= context.lines.length) return end;
 	const next = end + 1;
-	const containers = containerNodes(context);
-	if (containers.some((container) => container.position.start.line === next)) return next;
+	if (containerStartLines(context).has(next)) return next;
 	const emptyLast = next === context.lines.length && context.lines[next - 1] === "";
-	const quoted = containers.some(
+	if (!emptyLast) return end;
+	const quoted = containerNodes(context).some(
 		(container) =>
 			container.type === "blockquote" &&
 			container.position.start.offset <= node.position.start.offset &&
 			node.position.end.offset <= container.position.end.offset,
 	);
-	return emptyLast && !quoted ? next : end;
+	return quoted ? end : next;
 };
 
 /**
