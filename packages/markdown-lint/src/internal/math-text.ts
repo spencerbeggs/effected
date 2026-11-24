@@ -69,8 +69,11 @@ export const mathTextSpans = (document: MarkdownDocument, source: string): Reado
 		const atomic = atomicSpans(leaf, source, []).sort((a, b) => a.start - b.start);
 		const end = leaf.position.end.offset;
 		let at = leaf.position.start.offset;
+		// `atomic` is sorted by start and `at` only moves forward: `next` is the first span not before `at`.
+		let next = 0;
 		while (at < end) {
-			const skip = atomic.find((span) => span.start === at);
+			while (next < atomic.length && (atomic[next] as Span).start < at) next++;
+			const skip = atomic[next]?.start === at ? atomic[next] : undefined;
 			if (skip !== undefined) {
 				at = Math.max(skip.end, at + 1);
 				continue;
