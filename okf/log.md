@@ -10,6 +10,7 @@
 * Updated The markdownlint-compatible lint shape is its own pure package; @effected/markdown gains only the callback visitor
 * Updated effected
 * Updated workspace
+* Updated @effected/changesets
 
 ## 2026-11-23
 

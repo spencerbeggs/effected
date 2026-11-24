@@ -19,10 +19,10 @@ sources:
     resource: ../../packages/markdown-lint/__test__/config-file.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T04:25:23Z
+  at: 2026-11-24T05:55:52Z
 integrity:
   generated:
-    body: 3c2076480c8f1d8c
+    body: df2ca7006b61e53c
 ---
 
 # The kit's markdown lint reads markdownlint's own configuration model, not markdownlint-cli2's, and stays in @effected/markdown-lint for now
@@ -92,8 +92,11 @@ a `config` key holding markdownlint's object.
   rejected.** It is the likely final form once document-set analysis lands
   in `@effected/markdown`. It is not done now because fifty rules chasing
   markdownlint fidelity would version the parser on every rule fix. The
-  lint code keeps nothing `@effected/markdown` could not host, so the later
-  move stays mechanical. The [placement
+  root, `./rules` and `./rules/all` keep nothing `@effected/markdown` could
+  not host, so their move stays mechanical. `./config` is the exception: it
+  needs `@effected/jsonc`, `@effected/yaml`, `FileSystem` and `Path`, which
+  would take a pure package to the boundary tier, so it stays outside any
+  fold or moves to its own subpath there. The [placement
   decision](markdown-lint-package.md) records why the lint shape left the
   parser in the first place.
 

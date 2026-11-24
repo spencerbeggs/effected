@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T04:25:23Z
+  at: 2026-11-24T05:55:52Z
 integrity:
   generated:
-    body: 58de0b60d08c514b
+    body: 87ac339dbd7d8a04
 ---
 
 # `@effected/markdown-lint`
@@ -217,8 +217,14 @@ rule's configured `severity` (a parse refusal is always `error`). Under the
 adapter markdownlint does all of that itself: `context.config` is
 `params.config` and the kit-side severity is `error`. A rule that reads
 `front_matter_title` (MD001, MD025, MD041) takes a falsy value (`false`,
-`0`, `null`, `""`) to mean front matter is ignored, as markdownlint does,
-rather than as a bad setting falling back to its default. A differential test
+`0`, `null`, `""`) to mean front matter is ignored, as markdownlint does.
+Every rule reads its settings as markdownlint's rule reads them, coerced
+rather than type-checked, through one reader per upstream idiom in
+`src/internal/settings.ts` (`Number(x ?? d)`, `!!x`, `x === undefined ||
+!!x`, `String(x || d)`, `String(x === undefined ? d : x)`, a list of
+strings): `"50"` is `50`, `0` is `false`, a number where a string goes is its
+text. A setting never throws: where markdownlint's own reading throws or
+hangs, the kit reads it as absent or bounds it (see Known divergences). A differential test
 runs both hosts over the same inputs and configs and requires equal lines,
 details and severities[^host-config-tests].
 
@@ -227,7 +233,9 @@ file-system code: `MarkdownlintConfigFile` needs `FileSystem` and `Path` in
 `R`, parses with `@effected/jsonc` and `@effected/yaml`, and nothing reachable
 from the package root imports it (the root-purity gate in
 `rules-metadata.test.ts`). `read(path)` reads one file and its `extends`
-chain. A reference is a file path, relative to the extending file or absolute.
+chain. A reference is a file path, relative to the extending file or absolute;
+a package specifier or a leading `~`, which markdownlint also resolves, is
+read as a relative path (see Known divergences).
 Each file is merged over the one it extends with `LintConfig.merge`. The caps
 are 16 links and 1 MiB per file, the size checked before parsing.
 `resolve(filePath, { root })` follows markdownlint-cli2, as a probe of cli2
@@ -253,7 +261,8 @@ MD004, MD009, MD010, MD012, MD013, MD018, MD019, MD022, MD023, MD024, MD025,
 MD026, MD031, MD032, MD033, MD040, MD041, MD045, MD047 and MD060. Each is an
 ordinary `LintRule` carrying markdownlint's own names, description, tags and
 documentation link, and a rule with settings reads them from
-`LintContext.config` under markdownlint's names and defaults. `./rules/all`'s `uncovered` lists the
+`LintContext.config` under markdownlint's names and defaults, coerced as
+markdownlint coerces them. `./rules/all`'s `uncovered` lists the
 other 31 by first name. The metadata gate in `rules-metadata.test.ts` reads
 the installed markdownlint's rule list and requires every port's metadata
 to equal it, both lists to be in markdownlint's order, every built-in rule
@@ -289,9 +298,10 @@ plain synchronous function; no logging, no metrics.
   The eleven disagreements are all CSH005; the port follows systems'
   markdownlint engine, and the count is pinned.
 - **A real markdownlint.** `markdownlint-host.test.ts` imports the
-  markdownlint that this repository's own `markdownlint-cli2` installs at
-  the workspace root (through a variable specifier: it ships no types, and
-  the package takes no dependency on it), and runs the adapted rules in it:
+  exact-pinned `markdownlint` devDependency, 0.42.1 like the vendored
+  source (the workspace root's `markdownlint-cli2` 0.24.2 resolves its own
+  copy, 0.42.2), through a variable specifier so no `src/` type resolves
+  against its declarations, and runs the adapted rules in it:
   byte-identical to the golden, `applyFixes` over the mapped `fixInfo` equal
   to `MarkdownEdit.applyAll` over the kit edits (LF, CRLF, frontmatter,
   astral characters), `frontMatter` numbering, inline disable comments, one
@@ -310,19 +320,29 @@ plain synchronous function; no logging, no metrics.
   harness to a positive control (a faithful throwaway MD047, zero
   divergences) and negative ones (a late line, a missing finding, a wrong
   fix). The oracle is the exact-pinned `markdownlint` devDependency, 0.42.1.
+  `settingsDifferential` runs the same comparison over named settings cases
+  and a few probe documents without the corpus: every rule with settings is
+  held to zero divergence on non-canonical values (quoted numbers, `0` and
+  `1` for booleans, `null`, numbers for strings, per-level items as
+  written), and the residues below are pinned by count.
 - **The vendored corpus.** `__test__/fixtures/markdownlint/` holds 436
   byte-identical copies of upstream's `test/*.md` at tag `v0.42.1`, copied
   from the `.repos/markdownlint` submodule by
   `scripts/capture-markdownlint-corpus.mjs` (no arguments, idempotent), whose
   `README.md` records the tag, the commit and the count. Never edit a fixture
   by hand; re-run the script after re-pinning the submodule.
-- **Hostile-input ceilings.** `hostile-inputs.test.ts` lints five shapes that
+- **Hostile-input ceilings.** `hostile-inputs.test.ts` lints seven shapes that
   once made a lint with all 22 rules superlinear (a 400-column table with CJK
   cells, 2,000 unclosed fences in list items, a 9,000-block mixed document,
   3,000 lines in blockquotes 40 deep with inline HTML, one paragraph of
-  60,000 code-span, link and lone `$` groups) and holds each to a 5,000 ms
-  ceiling: far above the fixed times (under 1 s) and far below the unfixed
-  ones (12 to 21 s). It is in the root `vitest.config.ts`'s `SLOW_TESTS` and
+  60,000 code-span, link and lone `$` groups, one 198 KB line holding an
+  inline data-URI image, one line of 16,000 HTML comments), `applyFixes` over
+  90,000 fixes, and three settings that drive a loop or a repeat
+  (`lines_above: 1e999` and `spaces_per_tab: 1e9` in a `configure-file`
+  comment, `lines_above: 1e8`), and holds each to a 5,000 ms ceiling: far
+  above the fixed times (under 1 s) and far below the unfixed ones (9 to
+  21 s, or never returning). The reading pass's own ceilings (the comment
+  mask and the front matter count) sit there too, at 1,000 ms. It is in the root `vitest.config.ts`'s `SLOW_TESTS` and
   `TIMING_TESTS`, so it runs in the timing tier, alone on its runner, and
   never in the fast tier (see [the test tiers](../decisions/vitest-test-tiers.md)).
 
@@ -359,8 +379,8 @@ plain synchronous function; no logging, no metrics.
   adapted MD041 nothing; before two h1s, markdownlint's MD041 reports line 1
   and the adapted MD025 reports the second h1 instead. A comment whose body
   starts with `>` or `->` keeps those characters through the mask, so both
-  hosts agree there. Observed by running the adapted rules inside
-  markdownlint 0.42.1; not pinned by a test.
+  hosts agree there. Pinned by a test (`markdownlint-host.test.ts`, the two
+  inputs and a control).
 - MD012 under `maximum: 0`: markdownlint 0.42.1 throws on a file that is
   all front matter with no final line break (`front-matter-no-crlf.md`,
   LF and CRLF, 2 inputs). Its content is one empty line numbered one past
@@ -390,6 +410,48 @@ plain synchronous function; no logging, no metrics.
   title (MD025 reports the later h1s, MD041 nothing) where the kit reports
   MD041 on line 1. Matching it needs the parser to drop the mark. Pinned by
   a test (MD041 2 inputs, MD022 1, MD025 1).
+- **The kit bounds a setting where markdownlint hangs or throws.** Settings
+  are document content (an inline `configure-file` comment), so a count or a
+  width that drives a loop or a `repeat` is input. MD022 counts blank lines
+  beside a heading, and every line past the document's edge reads as blank:
+  markdownlint loops through them one by one, forever under `lines_above:
+  1e999`, where the kit stops at the edge and counts the rest at once (the
+  same count for any finite setting, pinned against markdownlint up to 500).
+  A repeat is capped at 1,000: MD010's spaces per tab (markdownlint throws
+  `RangeError` at `spaces_per_tab: 1e9`) and the blank lines an MD022 fix
+  inserts. No fix differs below the cap. Pinned by ceiling tests.
+- **The kit reads a setting markdownlint throws on.** An invalid
+  `front_matter_title` pattern (`"("`) reads as the default pattern in
+  MD001, MD025 and MD041, where markdownlint's `new RegExp` throws; a truthy
+  `ignore_code_languages` that is not a list reads as no languages in MD010,
+  where markdownlint calls `.map` on it and throws; a value whose conversion
+  to a primitive throws reads as absent. Pinned by tests (MD001 42 inputs,
+  MD025 32, MD041 32, MD010 33, each a markdownlint throw).
+- **A fractional MD013 limit reports no range.** markdownlint reports a
+  fractional limit's overflow as fractional columns (`[51.5, 69.5]`); a kit
+  range is whole columns, so the kit's finding carries none, with the same
+  line and detail. Before this the kit threw a schema error out of `lint`.
+  Pinned by a test (29 inputs).
+- **An empty insert carries no `fixInfo`.** MD022 compares a per-level
+  `lines_above` / `lines_below` item as written (`["2"]`, `[null]`,
+  `[true]`) and a fractional count as a number, so markdownlint can report a
+  heading whose blank lines are right, with a fix inserting nothing
+  (`{ insertText: "" }`). The kit reports the same finding, but an empty edit
+  maps to no `fixInfo`. MD012 under a negative `maximum` reports every line,
+  which is the all-blank case above: the last line's delete differs. The
+  text the fixes leave is markdownlint's in both. Pinned by tests (MD022 41
+  inputs, MD012 16).
+- **A decoded and an escaped reference in one text node.** MD013 tells a
+  decoded named reference from one the parse left as text by looking for it
+  in the text node's value, so an escaped `\&amp;` later in the same node
+  makes an earlier decoded `&amp;` read as text, and its link line stops
+  being link-only. Pinned by a test (1 input).
+- **A tab after spaces before a math fence in a container.** The math fence
+  patterns read spaces only, where micromark expands a tab to its column, so
+  in a blockquote `> \t$$` opens math to micromark and not to the kit, and
+  `>   \t$$` the reverse. A probe across containers found 92 such readings,
+  all in blockquotes, in MD033, MD045 and MD060. Pinned by a test (MD060 1
+  input, MD033 1).
 
 - `./config` loads no JavaScript config (`.markdownlint.cjs`, `.mjs`) and
   none of cli2's own options files (`.markdownlint-cli2.*`). A directory
@@ -404,6 +466,13 @@ plain synchronous function; no logging, no metrics.
   cli2 tries between them: TOML content in a `.markdownlint.json` (or any
   config) fails `parse`, where cli2 accepts it. No `.markdownlint.toml` is
   looked for on the walk, in either. Pinned by a test.
+- `./config` reads `extends` as a file path only. markdownlint falls back to
+  module resolution when the path is not a file, so `"extends":
+  "markdownlint/style/prettier"` or a shared `@org/markdownlint-config`
+  works there, and it expands a leading `~` to the home directory. The kit
+  reads each as a path relative to the extending file and fails
+  `extends-missing`. Deliberate: the design limits `extends` to relative or
+  absolute paths. Pinned by a test.
 - `./config` detects an `extends` cycle by resolved path, lexically, without
   following symlinks: a chain that re-enters one file through a symlink
   alias runs to the 16-link cap and fails `extends-depth` rather than
