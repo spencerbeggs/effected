@@ -1007,6 +1007,7 @@
 		"MD041": "first-line-heading, first-line-h1, first line heading, document starts with h1",
 		"MD043": "required-headings, required heading structure, document outline, heading list pattern",
 		"MD045": "no-alt-text, image without alternate text, accessibility",
+		"MD046": "code-block-style, consistent code block style, fenced or indented",
 		"MD047": "single-trailing-newline, trailing newline, file ends with one line break",
 		"MD060": "table-column-style, table column style, pipe alignment, aligned compact tight",
 		"MarkdownLint": "lint markdown programmatically without markdownlint, run rules over a string or parsed document",
