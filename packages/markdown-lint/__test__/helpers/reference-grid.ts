@@ -136,3 +136,12 @@ export const paragraphBreakShapes: ReadonlyArray<DifferentialInput> = [
 	{ name: "directive grammar edges", source: '::1note[label]\n\n::é[label]\n\n::note[label]{a="}"}\n' },
 	{ name: "reference after a fence", source: "```\n[a]\n```\n[b][c]\n" },
 ];
+
+// Definitions directly above a table's header row, which the parser reclaims into a paragraph it then reads
+// definitions from, as cmark-gfm and micromark do.
+export const definitionsAboveTables: ReadonlyArray<DifferentialInput> = [
+	{ name: "one definition", source: "[t]: https://example.com\n| a | b |\n| - | - |\n| [x][t] | d |\n" },
+	{ name: "two definitions", source: "[t]: https://example.com\n[u]: /u\n| a | b |\n| - | - |\n| [x][t] | d |\n" },
+	{ name: "a definition, then text", source: "[a]: /a\ntext\n| a |\n| - |\n" },
+	{ name: "in a blockquote", source: "> [t]: /t\n> | a |\n> | - |\n> | [x][t] |\n" },
+];

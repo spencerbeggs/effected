@@ -15,7 +15,13 @@ import {
 	settingsDifferential,
 } from "../helpers/differential.js";
 import { oracleLint } from "../helpers/markdownlint-oracle.js";
-import { labelShapes, paragraphBreakShapes, referenceGrid, tabbedDefinitions } from "../helpers/reference-grid.js";
+import {
+	definitionsAboveTables,
+	labelShapes,
+	paragraphBreakShapes,
+	referenceGrid,
+	tabbedDefinitions,
+} from "../helpers/reference-grid.js";
 
 const extra = [...referenceGrid, ...labelShapes];
 
@@ -150,6 +156,17 @@ describe("MD052 reference-links-images", () => {
 		},
 		DIFFERENTIAL_TIMEOUT,
 	);
+
+	// A definition directly above a table's header row is a definition.
+	it(
+		"agrees with markdownlint on definitions directly above a table",
+		() => {
+			const result = differential(MD052, { extra: definitionsAboveTables });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_ABOVE_TABLES);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD052 findings over the corpus (LF and CRLF), the grid and the label shapes.
@@ -163,3 +180,6 @@ const ORACLE_FINDINGS_TABBED = 246;
 
 // markdownlint's MD052 findings over the corpus (LF and CRLF) and the shapes after a paragraph break.
 const ORACLE_FINDINGS_BREAKS = 258;
+
+// markdownlint's MD052 findings over the corpus (LF and CRLF) and the definitions above tables.
+const ORACLE_FINDINGS_ABOVE_TABLES = 74;
