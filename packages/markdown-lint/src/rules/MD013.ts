@@ -26,6 +26,13 @@ const replaceLastRun = (line: string): string => {
 	return `${line.slice(0, start)}#`;
 };
 
+// A line's text less its trailing spaces and tabs, scanned back from the end (an unanchored `[ \t]+$` is quadratic).
+const withoutLineSuffix = (text: string): string => {
+	let end = text.length;
+	while (end > 0 && (text[end - 1] === " " || text[end - 1] === "\t")) end--;
+	return text.slice(0, end);
+};
+
 // The lines holding a paragraph's own text: its direct text children, less the line breaks between them, the
 // indentation that opens a continuation line, and character escapes and references (micromark's `data` tokens
 // directly under `paragraph`).
@@ -45,7 +52,11 @@ const paragraphTextLines = (context: Lint.LintContext): Set<number> => {
 					.replace(/&[A-Za-z][A-Za-z\d]{0,30};/g, (reference) => (value.includes(reference) ? reference : ""));
 			const segments = text.split(LINE_BREAK);
 			for (const [index, segment] of segments.entries()) {
-				if (notData(index === 0 ? segment : segment.replace(/^[ \t]+/, "")).length > 0) {
+				// The indentation opening a continuation line is micromark's `linePrefix`, and the spaces and tabs before
+				// a line break its `lineSuffix`: neither is `data`.
+				const opened = index === 0 ? segment : segment.replace(/^[ \t]+/, "");
+				const content = index < segments.length - 1 ? withoutLineSuffix(opened) : opened;
+				if (notData(content).length > 0) {
 					lines.add(child.position.start.line + index);
 				}
 			}

@@ -186,6 +186,50 @@ describe("MD013 line-length", () => {
 		DIFFERENTIAL_TIMEOUT,
 	);
 
+	// A space before a soft line break is micromark's `lineSuffix`, not `data`, so a line holding a link, a character
+	// reference and that space is link-only to markdownlint. Found by fuzzing the paragraph-text reading.
+	it(
+		"reads a space before a line break as no paragraph text",
+		() => {
+			const link = "[link](http://example.com/a/long/path/x)";
+			const result = settingsDifferential(
+				MD013,
+				[{ line_length: 20 }],
+				[
+					{ name: "reference then a space", source: `${link}&#38; \nx\n` },
+					{ name: "named reference then a space", source: `${link}&amp; \nx\n` },
+					{ name: "reference then a tab", source: `${link}&lt;\t\nx\n` },
+					{ name: "control: text then a space", source: `${link} y \nx\n` },
+				],
+			);
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, 1);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
+	// Recorded divergence "a decoded and an escaped reference in one text node": the kit tells a decoded named
+	// reference from text the parse left by looking for it in the node's value, and an escaped `\&amp;` later in the
+	// same node leaves `&amp;` there, so the decoded one reads as text and its link line is not link-only.
+	it(
+		"reads a decoded named reference as text when the same text node holds it escaped",
+		() => {
+			const link = "[link](http://example.com/a/long/path/x)";
+			const result = settingsDifferential(
+				MD013,
+				[{ line_length: 20 }],
+				[{ name: "decoded then escaped", source: `${link}&amp; \n&lt;\\&amp;\n` }],
+			);
+			assert.deepStrictEqual(
+				result.divergences.map((divergence) => divergence.reason),
+				[
+					'extra finding 1: kit {"lineNumber":1,"ruleNames":["MD013","line-length"],"detail":"Expected: 20; Actual: 46","context":null,"range":[21,26],"fixInfo":null,"severity":"error"}',
+				],
+			);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
 	it("reports a line past the limit with the overflow as its range", () => {
 		const source = `${"a".repeat(30)} ${"b".repeat(30)} ${"c".repeat(30)}\n`;
 		const findings = run(source, { line_length: 40 });
