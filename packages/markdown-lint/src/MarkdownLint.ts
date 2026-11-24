@@ -41,7 +41,9 @@ export interface MarkdownLintOptions {
 	 * Read markdownlint's front matter block as front matter rather than
 	 * parsing its lines as markdown; defaults to `true`, as markdownlint
 	 * always strips front matter before its rules run. Off, the rules see no
-	 * `frontmatter` and the fences parse as markdown.
+	 * `frontmatter` and the fences parse as markdown; the comment mask still
+	 * skips those lines, as it skips markdownlint's front matter, so a comment
+	 * there reaches the rules unmasked.
 	 */
 	readonly frontmatter?: boolean;
 	/**
@@ -207,7 +209,9 @@ export class MarkdownLint {
 	 * document cannot say which dialect it was parsed with, so a caller who
 	 * parsed as commonmark passes `dialect: "commonmark"`. Same ordering,
 	 * naming check and throws as {@link MarkdownLint.lint}, and the same
-	 * refusal reporting on a re-read.
+	 * refusal reporting on a re-read. A re-read always captures front matter,
+	 * as `lint` does by default: there is no option to re-read a document
+	 * parsed with `frontmatter: false` the same way.
 	 *
 	 * @param document - The parsed document.
 	 * @param rules - The rules to run, in order.
@@ -273,7 +277,7 @@ export class MarkdownLint {
 	 *
 	 * @param source - The markdown text, frontmatter included.
 	 * @param rules - The rules to run, in order.
-	 * @param options - The name, dialect and frontmatter capture.
+	 * @param options - The name, dialect, frontmatter capture, configuration and inline-comment switch.
 	 * @returns An `Effect` succeeding with every finding.
 	 */
 	static readonly lintEffect: (

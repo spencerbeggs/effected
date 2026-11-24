@@ -77,8 +77,11 @@ export interface LintReport {
  * rule; the tree is parsed from that same text. Under markdownlint the
  * adapter rebuilds it from `params.frontMatterLines` and `params.lines`, so
  * it also carries `\n` line endings. Positions are unaffected by any of it.
- * `MarkdownLint.lintDocument` is the one exception: it reads the document it
- * is handed as given, comments unmasked.
+ * `MarkdownLint.lintDocument` re-reads a document whose comments it would
+ * mask, so it hands a rule the same masked text. A comment's text is
+ * therefore not available to a rule on either host, in the tree's `html`
+ * nodes either, as under markdownlint: a check on what a comment says belongs
+ * outside a lint rule.
  *
  * `frontmatter` is markdownlint's front matter block (see
  * {@link LintFrontmatter}). A kit capture sits at the head of

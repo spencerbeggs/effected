@@ -77,7 +77,7 @@ for (const finding of findings) {
 
 `lint` is pure, synchronous and total. Line numbers count the whole file, frontmatter included. Findings come in rule order, then in the order each rule reported them. A document the kit refuses to parse — only one nested past its hardening cap — is reported as one finding per rule rather than thrown. `lintDocument` runs rules over an already-parsed `MarkdownDocument`, and `lintEffect` is `lint` as an `Effect` under a `MarkdownLint.lint` span.
 
-Each finding is a `LintDiagnostic`: `ruleNames`, `lineNumber`, `column`, and `Option`s of `detail`, `context`, `range` (`[column, length]`), `fixInfo` (markdownlint's one-line fix) and `edit` (the fix as a kit `MarkdownEdit`, for `MarkdownEdit.applyAll`).
+Each finding is a `LintDiagnostic`: `ruleNames`, `lineNumber`, `column`, and `Option`s of `detail`, `context`, `range` (`[column, length]`), `fixInfo` (markdownlint's one-line fix) and `edit` (the fix as a kit `MarkdownEdit`), and its rule's `severity`. Apply findings' fixes with `MarkdownLint.applyFixes`, which chooses among fixes that meet as markdownlint's `--fix` does.
 
 ## Run it inside markdownlint
 

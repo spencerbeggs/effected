@@ -202,7 +202,8 @@ export class PositionMapping {
 	 *
 	 * Anything else — an edit crossing a line break, one starting inside a
 	 * `\r\n`, or one that changes nothing — is `Option.none()`. The fix is not
-	 * lost: the diagnostic keeps it as a kit edit for `MarkdownEdit.applyAll`.
+	 * lost: the diagnostic keeps it as a kit edit, which `MarkdownLint.applyFixes`
+	 * applies.
 	 * `fixInfo.lineNumber` is set only when the edit's line differs from
 	 * `lineNumber`, as markdownlint's built-in rules do.
 	 *

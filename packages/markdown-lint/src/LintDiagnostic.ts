@@ -89,8 +89,10 @@ export class LintDiagnostic extends Schema.Class<LintDiagnostic>("LintDiagnostic
 	/** The fix as markdownlint's one-line `fixInfo`, when it can say it. */
 	fixInfo: Schema.Option(LintFixInfo),
 	/**
-	 * The fix as a kit offset edit, for `MarkdownEdit.applyAll`; present
-	 * whenever the rule offered a fix, `fixInfo` or not.
+	 * The fix as a kit offset edit; present whenever the rule offered a fix,
+	 * `fixInfo` or not. Apply a set of findings' fixes with
+	 * `MarkdownLint.applyFixes`, which chooses among fixes that meet as
+	 * markdownlint does; `MarkdownEdit.applyAll` over the raw edits does not.
 	 */
 	edit: Schema.Option(MarkdownEdit),
 }) {}
