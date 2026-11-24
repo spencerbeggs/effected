@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-24T00:52:04Z
+  at: 2026-11-24T00:58:24Z
 integrity:
   generated:
-    body: e6540e6576ee2354
+    body: 10197b53d94b2d15
 ---
 
 # `@effected/markdown-lint`
@@ -297,11 +297,16 @@ plain synchronous function; no logging, no metrics.
 - markdownlint re-parses an HTML block (other than one comment) as
   Markdown with HTML blocks and indented code turned off, and MD033 and
   MD045 report the tags it finds there. The kit's dialects cannot turn a
-  construct off, so the block's lines are re-read with every line that
-  could open a block indented four columns behind the line before it (or a
-  stub line), table rows kept as written. Block structure inside such a
-  block (a heading, a list, a fence) is therefore read as paragraph text;
-  only the inline HTML it yields is used.
+  construct off, so the kit parses the block's lines as written and
+  neutralizes what those two constructs read, then parses again, until a
+  parse finds neither. An HTML block that interrupts a paragraph is
+  indented four columns, which makes it a continuation line. One right
+  after a table gets a leading pipe, which makes it a body row. Any other
+  HTML block or indented code block gets a stub line before it. Fences,
+  headings, lists, blockquotes, thematic breaks and tables are read as
+  written. The parse runs at most eight times, and a block still unsettled
+  after that is read as the last parse read it. No corpus block needs more
+  than three.
 
 - MD060 measures with a port of string-width 8.3.0 and
   get-east-asian-width 1.7.0's Wide and Fullwidth ranges, the copies

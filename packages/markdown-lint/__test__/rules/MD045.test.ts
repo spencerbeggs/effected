@@ -33,6 +33,22 @@ const extra = [
 	{ name: "no final newline", source: "![](a.png)" },
 	{ name: "alt in another attribute", source: '<img data-alt="x" src="a.png"> <img src="alt=x">\n' },
 	{ name: "footnote", source: "[^1]: ![](a.png)\n\nText[^1]\n" },
+	{ name: "review: md image in html block", source: "<div>\n![](a.png)\n</div>\n" },
+	{ name: "review: img no alt in html block", source: '<div>\n<img src="a.png">\n</div>\n' },
+	{ name: "review: img in heading in block MD045", source: "<div>\n# `a\n<img src=x>`\n</div>\n" },
+	{ name: "review: MD045 image in math", source: "a $![](x)$ b\n" },
+	{ name: "review: full ref empty label", source: "![][r]\n\n[r]: u\n" },
+	{ name: "review: collapsed ref", source: "![r][]\n\n[r]: u\n" },
+	{ name: "review: image in link", source: "[![](a)](b)\n" },
+	{ name: "review: image label whitespace", source: "![ ](a)\n" },
+	{ name: "review: image label escaped", source: "![\\]](a)\n" },
+	{ name: "review: multi-line image", source: "![\n](a)\n" },
+	{ name: "review: img uppercase in table", source: "| a |\n| - |\n| <IMG src=x> |\n" },
+	{ name: "review: img alt in other attr", source: '<img data-alt="x" src=y>\n' },
+	{ name: "review: img aria-hidden quoted", source: "<img aria-hidden='TRUE' src=y>\n" },
+	{ name: "review: img multiline in para", source: "a <img\nsrc=y> b\n" },
+	{ name: "review: block in list item lines", source: "- <div>\n  <img src=x>\n  </div>\n" },
+	{ name: "review: block in quote lines", source: "> <div>\n> <img src=x>\n" },
 ];
 
 // A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
@@ -64,4 +80,4 @@ describe("MD045 no-alt-text", () => {
 });
 
 // markdownlint's MD045 findings over the corpus (LF and CRLF) and the extras.
-const ORACLE_FINDINGS_DEFAULT = 52;
+const ORACLE_FINDINGS_DEFAULT = 61;

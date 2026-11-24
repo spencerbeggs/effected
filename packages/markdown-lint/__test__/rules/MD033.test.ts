@@ -3,6 +3,7 @@
 
 import { assert, describe, it } from "@effect/vitest";
 import { Option } from "effect";
+import { HTML_REREAD_MAX_PASSES, rereadHtmlBlock } from "../../src/internal/rule-helpers.js";
 import { MarkdownLint } from "../../src/MarkdownLint.js";
 import { MD033 } from "../../src/rules/MD033.js";
 import { differential } from "../helpers/differential.js";
@@ -57,6 +58,53 @@ const extra = [
 		name: "allowed set from this repository",
 		source: "a<br>b <details><summary>s</summary></details> <img src=x> <sup>1</sup><sub>2</sub> <span>no</span>\n",
 	},
+	{ name: "review: tilde fence in html block", source: "<div>\n~~~\n<b>x</b>\n~~~\n</div>\n" },
+	{ name: "review: backtick fence in html block", source: "<div>\n```\n<b>x</b>\n```\n</div>\n" },
+	{ name: "review: indented-4 line in pre block", source: "<pre>\n\n    <b>x</b>\n</pre>\n" },
+	{ name: "review: blockquote html block later line", source: "> <div>\n> <b>x</b>\n> </div>\n" },
+	{ name: "review: list item html block", source: "- <div>\n  <span>x</span>\n  </div>\n" },
+	{ name: "review: comment inside block then tag", source: "<div>\n<!-- c --> <b>x</b>\n</div>\n" },
+	{ name: "review: self closing", source: "<div>\n<br/>\n<img src=a />\n</div>\n" },
+	{ name: "review: attr with gt", source: "<div title=\"a>b\">\n<span title='>'>x</span>\n</div>\n" },
+	{ name: "review: nested tags across lines", source: '<div>\n<span\nclass="a">x</span>\n</div>\n' },
+	{ name: "review: img after heading line in block", source: "<div>\n# <b>h</b>\n</div>\n" },
+	{ name: "review: setext in html block", source: "<div>\n<b>x</b>\n===\n</div>\n" },
+	{ name: "review: code span across fence-like lines", source: "<div>\n`a\n<b>x</b>\n`\n</div>\n" },
+	{ name: "review: html block type7 with code span", source: "<span>\n`<b>` <i>y</i>\n</span>\n" },
+	{ name: "review: script block with tags", source: "<script>\nvar a = '<b>';\n</script>\n" },
+	{ name: "review: pre block blank lines", source: "<pre>\na\n\n<b>x</b>\n</pre>\n" },
+	{ name: "review: html block, table rows", source: "<div>\n| a | <b>x</b> |\n| - | - |\n</div>\n" },
+	{ name: "review: html block, link ref def", source: "<div>\n[a]: <b>\n</div>\n" },
+	{ name: "review: html block, autolink", source: "<div>\n<http://x.y/<b>>\n</div>\n" },
+	{ name: "review: html block, list then lazy", source: "<div>\n- a\n<b>x</b>\n</div>\n" },
+	{ name: "review: html block tab line", source: "<div>\n\t<b>x</b>\n</div>\n" },
+	{ name: "review: html block math", source: "<div>\n$$\n<b>x</b>\n$$\n</div>\n" },
+	{ name: "review: html block blank then indented", source: "<pre>\n\n\t<b>x</b>\n</pre>\n" },
+	{ name: "review: fence 3 closed by 4", source: "<div>\n```\n<b>x</b>\n````\n</div>\n" },
+	{ name: "review: unclosed fence in block", source: "<div>\n```\n<b>x</b>\n</div>\n" },
+	{ name: "review: heading ends code span", source: "<div>\n# `a\n<b>x</b>`\n</div>\n" },
+	{ name: "review: blank-separated pre, code span pairs across blank", source: "<pre>\n`a\n\n<b>x</b>`\n</pre>\n" },
+	{ name: "review: thematic break splits span", source: "<div>\n`a\n***\n<b>x</b>`\n</div>\n" },
+	{ name: "review: list item splits span", source: "<div>\n`a\n- <b>x</b>`\n</div>\n" },
+	{ name: "review: blockquote splits span", source: "<div>\n`a\n> <b>x</b>`\n</div>\n" },
+	{ name: "review: inline math $", source: "a $<b>x</b>$ c\n" },
+	{ name: "review: inline math $$", source: "a $$<b>x</b>$$ c\n" },
+	{ name: "review: $ with space after", source: "a $ <b>x</b> $ c\n" },
+	{ name: "review: escaped dollar", source: "a \\$<b>x</b>$ c\n" },
+	{ name: "review: $ across lines", source: "a $x\n<b>y</b>$ c\n" },
+	{ name: "review: $ in code then html", source: "`$` <b>x</b> $\n" },
+	{ name: "review: $ in link text", source: "[a $](u) <b>x</b> $\n" },
+	{ name: "review: $ in link dest", source: "[a](u$) <b>x</b> $\n" },
+	{ name: "review: $ in link title", source: '[a](u "$") <b>x</b> $\n' },
+	{ name: "review: $ unmatched size", source: "$$a$ <b>x</b> $\n" },
+	{ name: "review: $ in emphasis", source: "*$* <b>x</b> $\n" },
+	{ name: "review: $ in table cell", source: "| a | b |\n| - | - |\n| $x | <b>y</b>$ |\n" },
+	{ name: "review: $ in autolink", source: "<http://a$b> <b>x</b> $\n" },
+	{ name: "review: $ html attr", source: '<a title="$"> <b>x</b> $\n' },
+	{ name: "review: $ in setext heading", source: "a $\n<b>x</b> $\n===\n" },
+	{ name: "review: $ in link ref", source: "[a $][r] <b>x</b> $\n\n[r]: u\n" },
+	{ name: "review: $ in undefined ref", source: "[a $][zz] <b>x</b> $\n" },
+	{ name: "review: block in quote+list", source: "> - <div>\n>   <b>x</b>\n" },
 ];
 
 // A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
@@ -113,6 +161,29 @@ describe("MD033 no-inline-html", () => {
 		}
 	});
 
+	it("settles the re-read of a hostile HTML block within its bound, quickly", () => {
+		// Thousands of lines that each open an HTML block or indented code, with and without blank lines between.
+		const hostile = [
+			Array.from({ length: 3000 }, (_, index) => (index % 2 === 0 ? "<div>" : "    <b>x</b>")),
+			Array.from(
+				{ length: 3500 },
+				(_, index) => ["<div>", "", "    x", "", "- <p>", "  ", "      y"][index % 7] as string,
+			),
+			Array.from({ length: 3000 }, (_, index) =>
+				index % 3 === 0 ? "| a | <b>x</b> |" : index % 3 === 1 ? "| - | - |" : "</div>",
+			),
+		];
+		for (const lines of hostile) {
+			const started = Date.now();
+			const reread = rereadHtmlBlock(lines, 1);
+			assert.isTrue(reread.settled);
+			assert.isAtMost(reread.passes, HTML_REREAD_MAX_PASSES);
+			const findings = run(lines.join("\n"));
+			assert.isAbove(findings.length, 0);
+			assert.isBelow(Date.now() - started, 5_000);
+		}
+	});
+
 	it("reports an inline element with its name and the tag as its range", () => {
 		const findings = run("Text <span class='x'>y</span>\n");
 		assert.deepStrictEqual(
@@ -127,4 +198,4 @@ describe("MD033 no-inline-html", () => {
 });
 
 // markdownlint's MD033 findings over the corpus (LF and CRLF) and the extras.
-const ORACLE_FINDINGS_DEFAULT = 252;
+const ORACLE_FINDINGS_DEFAULT = 315;

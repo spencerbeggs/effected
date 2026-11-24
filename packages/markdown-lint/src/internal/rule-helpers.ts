@@ -601,59 +601,152 @@ export interface HtmlText {
 	readonly inTable: boolean;
 }
 
-// Every inline `html` node under `node`, with whether a table holds it.
+const FLOW_PARENTS = new Set(["root", "blockquote", "listItem", "footnoteDefinition"]);
+
+// Every inline `html` node under `node` (none an HTML block), with whether a table holds it.
 const inlineHtml = (node: MarkdownNode, inTable: boolean, found: Array<{ node: MarkdownNode; inTable: boolean }>) => {
 	const tabled = inTable || node.type === "table";
-	if (node.type === "html") found.push({ node, inTable: tabled });
 	if ("children" in node) {
-		for (const child of node.children as ReadonlyArray<MarkdownNode>) inlineHtml(child, tabled, found);
+		for (const child of node.children as ReadonlyArray<MarkdownNode>) {
+			if (child.type === "html" && !FLOW_PARENTS.has(node.type)) found.push({ node: child, inTable: tabled });
+			inlineHtml(child, tabled, found);
+		}
 	}
 	return found;
 };
 
-// A line the re-read keeps as written: a table row (a line with a pipe) that cannot open an HTML block.
-const keptLine = (line: string): boolean => line.includes("|") && !/^[\s>]*</.test(line) && !/^(?: {4}|\t)/.test(line);
+/** One line of an HTML block's re-read text: its text, its source line (0 for a stub) and the columns inserted. */
+interface RereadLine {
+	readonly text: string;
+	readonly origin: number;
+	readonly inserts: ReadonlyArray<readonly [at: number, length: number]>;
+}
+
+/**
+ * How many times the re-read parses an HTML block at most. Each pass
+ * neutralizes every HTML block and indented code block the parse finds, and
+ * every line inside such an HTML block that could open another; a later
+ * pass only finds what a neutralized line changed the reading of (a line
+ * after a stub, a block a stub closes), which real HTML nests a few levels
+ * at most. Past the bound the block is read as the last pass left it.
+ * @internal
+ */
+export const HTML_REREAD_MAX_PASSES = 8;
+
+// A line that opens an HTML block, past its containers' prefix: at most three spaces, then `<`.
+const opensHtml = /^ {0,3}</;
+
+/**
+ * markdownlint re-parses an HTML block's lines as Markdown with HTML blocks
+ * and indented code turned off. The kit cannot turn a construct off, so it
+ * parses the lines as written and neutralizes what those two constructs
+ * read, until a parse finds neither: an HTML block that interrupts a
+ * paragraph is indented four columns behind the container prefix, which
+ * makes it the paragraph's continuation; one right after a table gets a
+ * leading pipe, which makes it a body row; any other HTML block or indented
+ * code block gets a stub line before it (its container prefix and `x`),
+ * its own prefix blanked but for blockquote markers, and an HTML block's
+ * line is indented four columns. Every other block (fences, headings,
+ * lists, blockquotes, thematic breaks, tables) is read as written.
+ * @internal
+ */
+export const rereadHtmlBlock = (
+	blockLines: ReadonlyArray<string>,
+	firstLine: number,
+): {
+	readonly document: MarkdownDocument | undefined;
+	readonly lines: ReadonlyArray<RereadLine>;
+	readonly passes: number;
+	readonly settled: boolean;
+} => {
+	const lines: Array<RereadLine> = blockLines.map((text, index) => ({ text, origin: firstLine + index, inserts: [] }));
+	let document: MarkdownDocument | undefined;
+	let passes = 0;
+	while (passes < HTML_REREAD_MAX_PASSES) {
+		passes++;
+		const parsed = MarkdownDocument.parseResult(lines.map((line) => line.text).join("\n"), reparseOptions);
+		if (Result.isFailure(parsed)) return { document, lines, passes, settled: false };
+		document = parsed.success;
+		const found: Array<{ readonly node: MarkdownNode; readonly previous: MarkdownNode | undefined }> = [];
+		const visit = (node: MarkdownNode): void => {
+			const children = ("children" in node ? node.children : []) as ReadonlyArray<MarkdownNode>;
+			for (const [index, child] of children.entries()) {
+				if (child.type === "html" || (child.type === "code" && (child as Code).fenceChar === undefined)) {
+					found.push({ node: child, previous: children[index - 1] });
+				}
+				if (CONTAINERS.has(child.type)) visit(child);
+			}
+		};
+		visit(document.root as MarkdownNode);
+		if (found.length === 0) return { document, lines, passes, settled: true };
+		// The bound is spent: the block is read as this pass read it.
+		if (passes === HTML_REREAD_MAX_PASSES) break;
+		// Bottom up, so a stub line inserted below never moves a node still to come.
+		for (const { node, previous } of found.reverse()) {
+			const row = node.position.start.line - 1;
+			const at = node.position.start.column - 1;
+			const isHtml = node.type === "html";
+			const indent = (line: RereadLine): RereadLine => ({
+				text: `${line.text.slice(0, at)}    ${line.text.slice(at)}`,
+				origin: line.origin,
+				inserts: [...line.inserts, [at, 4]],
+			});
+			// The rest of an HTML block's lines that could open another are indented now, saving a pass each.
+			if (isHtml) {
+				for (let index = node.position.end.line - 1; index > row; index--) {
+					const line = lines[index] as RereadLine;
+					if (/^[ \t>]*$/.test(line.text.slice(0, at)) && opensHtml.test(line.text.slice(at))) {
+						lines[index] = indent(line);
+					}
+				}
+			}
+			const line = lines[row] as RereadLine;
+			const follows = previous !== undefined && previous.position.end.line === row ? previous.type : undefined;
+			if (isHtml && follows === "paragraph") {
+				lines[row] = indent(line);
+				continue;
+			}
+			// After a table, micromark reads the line as a body row: a leading pipe makes it one to the kit too.
+			if (follows === "table") {
+				lines[row] = {
+					text: `${line.text.slice(0, at)}|${line.text.slice(at)}`,
+					origin: line.origin,
+					inserts: [...line.inserts, [at, 1]],
+				};
+				continue;
+			}
+			const head = line.text.slice(0, at);
+			const blanked: RereadLine = {
+				text: head.replace(/[^>]/g, " ") + line.text.slice(at),
+				origin: line.origin,
+				inserts: line.inserts,
+			};
+			lines.splice(row, 1, { text: `${head}x`, origin: 0, inserts: [] }, isHtml ? indent(blanked) : blanked);
+		}
+	}
+	return { document, lines, passes, settled: false };
+};
 
 // The `htmlText` tokens markdownlint's re-parse of an HTML block's lines gives, at their offsets in `source`.
 const blockHtmlText = (context: LintContext, block: MarkdownNode, starts: ReadonlyArray<number>) => {
-	const lines: Array<string> = [];
-	// For each line of the re-read text, the source line it holds (0 for a stub line) and the columns added.
-	const origins: Array<{ readonly line: number; readonly shift: number }> = [];
-	let afterBlank = true;
-	for (let lineNumber = block.position.start.line; lineNumber <= block.position.end.line; lineNumber++) {
-		const line = context.lines[lineNumber - 1] ?? "";
-		if (line.trim() === "") {
-			lines.push("");
-			origins.push({ line: 0, shift: 0 });
-			afterBlank = true;
-			continue;
-		}
-		if (keptLine(line)) {
-			lines.push(line);
-			origins.push({ line: lineNumber, shift: 0 });
-		} else {
-			// Indented four columns, as the continuation of the line before (or of a stub line), no line opens a block.
-			if (afterBlank) {
-				lines.push("x");
-				origins.push({ line: 0, shift: 0 });
-			}
-			lines.push(`    ${line}`);
-			origins.push({ line: lineNumber, shift: 4 });
-		}
-		afterBlank = false;
-	}
-	const text = lines.join("\n");
-	const parsed = MarkdownDocument.parseResult(text, reparseOptions);
-	if (Result.isFailure(parsed)) return [];
+	const blockLines = context.lines.slice(block.position.start.line - 1, block.position.end.line);
+	const { document, lines } = rereadHtmlBlock(blockLines, block.position.start.line);
+	if (document === undefined) return [];
+	const text = lines.map((line) => line.text).join("\n");
 	const textStarts = lineStarts(text);
-	const math = mathTextSpans(parsed.success, text);
+	const math = mathTextSpans(document, text);
 	const found: Array<HtmlText> = [];
-	for (const { node, inTable } of inlineHtml(parsed.success.root as MarkdownNode, false, [])) {
-		const origin = origins[node.position.start.line - 1];
-		if (origin === undefined || origin.line === 0 || inSpans(math, node.position.start.offset)) continue;
-		const column = node.position.start.offset - (textStarts[node.position.start.line - 1] as number) - origin.shift;
+	for (const { node, inTable } of inlineHtml(document.root as MarkdownNode, false, [])) {
+		const line = lines[node.position.start.line - 1];
+		if (line === undefined || line.origin === 0 || inSpans(math, node.position.start.offset)) continue;
+		// The column in the re-read line, less the columns inserted before it, undone last first.
+		let column = node.position.start.offset - (textStarts[node.position.start.line - 1] as number);
+		for (const [at, length] of [...line.inserts].reverse()) {
+			if (column >= at + length) column -= length;
+			else if (column >= at) column = at;
+		}
 		found.push({
-			offset: (starts[origin.line - 1] as number) + column,
+			offset: (starts[line.origin - 1] as number) + column,
 			text: text.slice(node.position.start.offset, node.position.end.offset),
 			inTable,
 		});
@@ -665,31 +758,27 @@ const blockHtmlText = (context: LintContext, block: MarkdownNode, starts: Readon
  * markdownlint's `htmlText` tokens, at their offsets in `source`, in order:
  * the kit's inline `html` nodes, less any inside inline math, and the tags
  * inside each HTML block that is not one comment, which markdownlint
- * re-parses as Markdown with HTML blocks and indented code turned off. The
- * kit re-reads such a block's lines with every line that could open a block
- * indented four columns behind the line before it (or a stub line), table
- * rows kept as written, and maps that parse's inline `html` nodes back. The
- * nodes the kit reads inside a math block are dropped.
+ * re-parses as Markdown with HTML blocks and indented code turned off (see
+ * {@link rereadHtmlBlock}), mapped back to the block's own lines. The nodes
+ * the kit reads inside a math block are dropped.
  * @internal
  */
 export const htmlTextTokens = (context: LintContext): Array<HtmlText> => {
 	const starts = lineStarts(context.source);
 	const math = mathFlowLines(context, starts);
 	const mathText = mathTextSpans(context.document, context.source);
-	const blocks = new Set(flowNodes(context, new Set(["html"])));
 	const tokens: Array<HtmlText> = [];
 	for (const { node, inTable } of inlineHtml(context.root as MarkdownNode, false, [])) {
-		if (math.has(node.position.start.line)) continue;
-		if (!blocks.has(node)) {
-			if (inSpans(mathText, node.position.start.offset)) continue;
-			tokens.push({
-				offset: node.position.start.offset,
-				text: context.source.slice(node.position.start.offset, node.position.end.offset),
-				inTable,
-			});
-		} else if (!isHtmlFlowComment(context, node)) {
-			tokens.push(...blockHtmlText(context, node, starts));
-		}
+		if (math.has(node.position.start.line) || inSpans(mathText, node.position.start.offset)) continue;
+		tokens.push({
+			offset: node.position.start.offset,
+			text: context.source.slice(node.position.start.offset, node.position.end.offset),
+			inTable,
+		});
+	}
+	for (const block of flowNodes(context, new Set(["html"]))) {
+		if (math.has(block.position.start.line) || isHtmlFlowComment(context, block)) continue;
+		tokens.push(...blockHtmlText(context, block, starts));
 	}
 	tokens.sort((a, b) => a.offset - b.offset);
 	return tokens;
