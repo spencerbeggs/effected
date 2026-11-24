@@ -3,8 +3,9 @@
 // the front matter), line offsets, and the code-block line ranges the
 // micromark tokens markdownlint reads would give, derived from the kit tree.
 
-import type { Code, Heading, ListItem, MarkdownDocument, MarkdownNode } from "@effected/markdown";
-import { Option } from "effect";
+import type { Code, Heading, ListItem, MarkdownNode } from "@effected/markdown";
+import { MarkdownDocument, MarkdownParseOptions } from "@effected/markdown";
+import { Option, Result } from "effect";
 import type { LintContext } from "../LintContext.js";
 
 /** Read setting `name`, or `fallback` when it is absent or fails `guard`. @internal */
@@ -582,3 +583,119 @@ export const mathTextSpans = (document: MarkdownDocument, source: string): Array
 /** Whether `offset` lies inside one of `spans`. @internal */
 export const inSpans = (spans: ReadonlyArray<Span>, offset: number): boolean =>
 	spans.some((span) => span.start <= offset && offset < span.end);
+
+const reparseOptions = MarkdownParseOptions.make({ dialect: "gfm", frontmatter: false });
+
+/** One `htmlText` token: where its text starts, the text, and whether a table holds it. @internal */
+export interface HtmlText {
+	readonly offset: number;
+	readonly text: string;
+	readonly inTable: boolean;
+}
+
+// Every inline `html` node under `node`, with whether a table holds it.
+const inlineHtml = (node: MarkdownNode, inTable: boolean, found: Array<{ node: MarkdownNode; inTable: boolean }>) => {
+	const tabled = inTable || node.type === "table";
+	if (node.type === "html") found.push({ node, inTable: tabled });
+	if ("children" in node) {
+		for (const child of node.children as ReadonlyArray<MarkdownNode>) inlineHtml(child, tabled, found);
+	}
+	return found;
+};
+
+// A line the re-read keeps as written: a table row (a line with a pipe) that cannot open an HTML block.
+const keptLine = (line: string): boolean => line.includes("|") && !/^[\s>]*</.test(line) && !/^(?: {4}|\t)/.test(line);
+
+// The `htmlText` tokens markdownlint's re-parse of an HTML block's lines gives, at their offsets in `source`.
+const blockHtmlText = (context: LintContext, block: MarkdownNode, starts: ReadonlyArray<number>) => {
+	const lines: Array<string> = [];
+	// For each line of the re-read text, the source line it holds (0 for a stub line) and the columns added.
+	const origins: Array<{ readonly line: number; readonly shift: number }> = [];
+	let afterBlank = true;
+	for (let lineNumber = block.position.start.line; lineNumber <= block.position.end.line; lineNumber++) {
+		const line = context.lines[lineNumber - 1] ?? "";
+		if (line.trim() === "") {
+			lines.push("");
+			origins.push({ line: 0, shift: 0 });
+			afterBlank = true;
+			continue;
+		}
+		if (keptLine(line)) {
+			lines.push(line);
+			origins.push({ line: lineNumber, shift: 0 });
+		} else {
+			// Indented four columns, as the continuation of the line before (or of a stub line), no line opens a block.
+			if (afterBlank) {
+				lines.push("x");
+				origins.push({ line: 0, shift: 0 });
+			}
+			lines.push(`    ${line}`);
+			origins.push({ line: lineNumber, shift: 4 });
+		}
+		afterBlank = false;
+	}
+	const text = lines.join("\n");
+	const parsed = MarkdownDocument.parseResult(text, reparseOptions);
+	if (Result.isFailure(parsed)) return [];
+	const textStarts = lineStarts(text);
+	const math = mathTextSpans(parsed.success, text);
+	const found: Array<HtmlText> = [];
+	for (const { node, inTable } of inlineHtml(parsed.success.root as MarkdownNode, false, [])) {
+		const origin = origins[node.position.start.line - 1];
+		if (origin === undefined || origin.line === 0 || inSpans(math, node.position.start.offset)) continue;
+		const column = node.position.start.offset - (textStarts[node.position.start.line - 1] as number) - origin.shift;
+		found.push({
+			offset: (starts[origin.line - 1] as number) + column,
+			text: text.slice(node.position.start.offset, node.position.end.offset),
+			inTable,
+		});
+	}
+	return found;
+};
+
+/**
+ * markdownlint's `htmlText` tokens, at their offsets in `source`, in order:
+ * the kit's inline `html` nodes, less any inside inline math, and the tags
+ * inside each HTML block that is not one comment, which markdownlint
+ * re-parses as Markdown with HTML blocks and indented code turned off. The
+ * kit re-reads such a block's lines with every line that could open a block
+ * indented four columns behind the line before it (or a stub line), table
+ * rows kept as written, and maps that parse's inline `html` nodes back. The
+ * nodes the kit reads inside a math block are dropped.
+ * @internal
+ */
+export const htmlTextTokens = (context: LintContext): Array<HtmlText> => {
+	const starts = lineStarts(context.source);
+	const math = mathFlowLines(context, starts);
+	const mathText = mathTextSpans(context.document, context.source);
+	const blocks = new Set(flowNodes(context, new Set(["html"])));
+	const tokens: Array<HtmlText> = [];
+	for (const { node, inTable } of inlineHtml(context.root as MarkdownNode, false, [])) {
+		if (math.has(node.position.start.line)) continue;
+		if (!blocks.has(node)) {
+			if (inSpans(mathText, node.position.start.offset)) continue;
+			tokens.push({
+				offset: node.position.start.offset,
+				text: context.source.slice(node.position.start.offset, node.position.end.offset),
+				inTable,
+			});
+		} else if (!isHtmlFlowComment(context, node)) {
+			tokens.push(...blockHtmlText(context, node, starts));
+		}
+	}
+	tokens.sort((a, b) => a.offset - b.offset);
+	return tokens;
+};
+
+/**
+ * markdownlint's `getHtmlTagInfo`: an `htmlText` token's element name, and
+ * whether it is a closing tag; `undefined` for a comment, declaration or
+ * CDATA.
+ * @internal
+ */
+export const htmlTagInfo = (text: string): { readonly name: string; readonly close: boolean } | undefined => {
+	const name = /^<([^!>][^/\s>]*)/.exec(text)?.[1];
+	if (name === undefined) return undefined;
+	const close = name.startsWith("/");
+	return { name: close ? name.slice(1) : name, close };
+};
