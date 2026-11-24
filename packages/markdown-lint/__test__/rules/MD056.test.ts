@@ -7,7 +7,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Option } from "effect";
 import { MD056 } from "../../src/rules/MD056.js";
 import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
-import { lonePipeRows, tableGrid } from "../helpers/table-grid.js";
+import { directiveGrid, lonePipeRows, tableGrid } from "../helpers/table-grid.js";
 
 const run = runRule(MD056);
 
@@ -18,6 +18,18 @@ describe("MD056 table-column-count", () => {
 			const result = differential(MD056, { extra: tableGrid });
 			assert.deepStrictEqual(result.divergences, []);
 			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
+	// markdownlint's directive extension ends a table before a leaf directive, a container directive's opening and an
+	// open container directive's closing fence, in every container.
+	it(
+		"agrees with markdownlint where a directive line ends a table",
+		() => {
+			const result = differential(MD056, { extra: directiveGrid });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DIRECTIVES);
 		},
 		DIFFERENTIAL_TIMEOUT,
 	);
@@ -57,3 +69,6 @@ describe("MD056 table-column-count", () => {
 
 // markdownlint's MD056 findings over the corpus (LF and CRLF) and the table grid.
 const ORACLE_FINDINGS_DEFAULT = 109;
+
+// markdownlint's MD056 findings over the corpus (LF and CRLF) and the directive grid.
+const ORACLE_FINDINGS_DIRECTIVES = 150;

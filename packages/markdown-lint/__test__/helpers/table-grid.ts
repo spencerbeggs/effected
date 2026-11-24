@@ -71,3 +71,64 @@ export const lonePipeRows: ReadonlyArray<DifferentialInput> = [
 	{ name: "lone pipe row", source: "| a | b |\n| - | - |\n|\n" },
 	{ name: "lone pipe row before more rows", source: "| a | b |\n| - | - |\n| c | d |\n|\n| e | f |\n\ntext\n" },
 ];
+
+// Directive-like lines after a table's delimiter row, which markdownlint's directive extension reads as a leaf, a
+// container's opening or closing fence (ending the table) or as text (one more row): in each container, with and
+// without a container directive open around the table.
+const directiveLines: ReadonlyArray<string> = [
+	"::leaf",
+	"::leaf[x]",
+	"::leaf{y}",
+	"::leaf[x]{y}",
+	"::leaf[]",
+	"::leaf[a [b] c]",
+	'::leaf{a="}"}',
+	"::leaf   ",
+	"  ::leaf",
+	"::1a",
+	"::é",
+	"::a-b_c",
+	"::\tleaf",
+	":::note",
+	":::note[x]{y}",
+	":::note{}",
+	"::::note",
+	":::note   ",
+	":::",
+	"::::",
+	"::leaf x",
+	"::leaf[x] y",
+	"::leaf{y}[x]",
+	":: leaf",
+	"::_a",
+	"::-a",
+	"::a.b",
+	"::leaf[",
+	"::leaf{",
+	":::note x",
+	"::: note",
+	"::",
+];
+
+const directiveContainers: ReadonlyArray<readonly [string, string, string]> = [
+	["top", "", ""],
+	["blockquote", "> ", "> "],
+	["list item", "- ", "  "],
+	["nested blockquote", "> > ", "> > "],
+];
+
+export const directiveGrid: ReadonlyArray<DifferentialInput> = (() => {
+	const grid: Array<DifferentialInput> = [];
+	for (const [place, first, rest] of directiveContainers) {
+		for (const line of directiveLines) {
+			for (const opened of [false, true]) {
+				const head = opened ? `${first}:::outer\n${rest}` : first;
+				grid.push({
+					name: `${JSON.stringify(line)} in ${place}${opened ? " in a container directive" : ""}`,
+					source: `${head}| a | b |\n${rest}| - | - |\n${rest}${line}\n${rest}| c | d |\n`,
+				});
+			}
+		}
+	}
+	return grid;
+})();

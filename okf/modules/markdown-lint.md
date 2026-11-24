@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T18:58:42Z
+  at: 2026-11-24T19:09:56Z
 integrity:
   generated:
-    body: efcd856dcc9b23a8
+    body: b2ffc51644b03521
 ---
 
 # `@effected/markdown-lint`
@@ -359,9 +359,13 @@ trailing whitespace included, split at each pipe no backslash escapes, a
 code span, inline math or a link hiding none), its cells opening at each
 pipe, the last pipe and the blanks after it closing the last cell. The
 delimiter row holds its indentation, so it and its first cell start past
-the containers' markers alone. A table micromark reads in a container
-directive (`:::name` ... `:::`) ends at the closing fence, where the kit's
-parser reads one more row. Over the table grid
+the containers' markers alone. markdownlint's directive extension ends a
+table before a leaf directive (`::name`), a container directive's opening
+(`:::name`) and an open container directive's closing fence (`:::`), each
+with an optional `[label]` then `{attributes}` and nothing after, read past
+the line's containers in any of them, where the kit's parser reads one more
+row; the directive grid (`directiveGrid`, 32 lines in 4 containers, with
+and without a container directive open) agrees finding for finding. Over the table grid
 (`__test__/helpers/table-grid.ts`, 36 shapes in 9 placements, CRLF and bare
 CR among them) and the corpus, the kit's tables start and end where
 micromark's do, row for row, with one parser-reading difference (below).

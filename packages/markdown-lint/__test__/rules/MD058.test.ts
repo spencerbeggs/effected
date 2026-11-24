@@ -9,7 +9,7 @@ import { MarkdownEdit } from "@effected/markdown";
 import { Option } from "effect";
 import { MD058 } from "../../src/rules/MD058.js";
 import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
-import { lonePipeRows, tableGrid } from "../helpers/table-grid.js";
+import { directiveGrid, lonePipeRows, tableGrid } from "../helpers/table-grid.js";
 
 const edges = [
 	{ name: "first and last lines", source: "| a | b |\n| - | - |\n| c | d |" },
@@ -31,6 +31,18 @@ describe("MD058 blanks-around-tables", () => {
 			const result = differential(MD058, { extra: [...tableGrid, ...edges] });
 			assert.deepStrictEqual(result.divergences, []);
 			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
+	// markdownlint's directive extension ends a table before a leaf directive, a container directive's opening and an
+	// open container directive's closing fence, in every container: MD058 reports the line before it, and its fix.
+	it(
+		"agrees with markdownlint where a directive line ends a table",
+		() => {
+			const result = differential(MD058, { extra: directiveGrid });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DIRECTIVES);
 		},
 		DIFFERENTIAL_TIMEOUT,
 	);
@@ -72,3 +84,6 @@ describe("MD058 blanks-around-tables", () => {
 
 // markdownlint's MD058 findings over the corpus (LF and CRLF), the table grid and the edges.
 const ORACLE_FINDINGS_DEFAULT = 135;
+
+// markdownlint's MD058 findings over the corpus (LF and CRLF) and the directive grid.
+const ORACLE_FINDINGS_DIRECTIVES = 306;
