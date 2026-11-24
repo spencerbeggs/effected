@@ -30,6 +30,8 @@ const bomExtra = [
 	{ name: "byte order mark before front matter", source: "\uFEFF---\ntitle: Doc\n---\n\nIntro\n" },
 	{ name: "two byte order marks", source: "\uFEFF\uFEFFIntro\n\n# Title\n" },
 	{ name: "two byte order marks before front matter", source: "\uFEFF\uFEFF---\ntitle: Doc\n---\n\nIntro\n" },
+	{ name: "two byte order marks before a heading", source: "\uFEFF\uFEFF# Title\n\ntext\n" },
+	{ name: "three byte order marks before a heading", source: "\uFEFF\uFEFF\uFEFF# Title\n\ntext\n" },
 ];
 
 // A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
@@ -70,12 +72,18 @@ describe("MD041 first-line-heading", () => {
 	}
 
 	it(
-		"agrees with markdownlint on a leading byte order mark, one or two, in both hosts",
+		"reads front matter after one leading byte order mark only, and diverges where micromark drops a second",
 		() => {
-			// markdownlint strips exactly one leading byte order mark: a second one is text, so a front matter
-			// block after it is not front matter and its title does not count.
+			// markdownlint strips exactly one leading byte order mark: a second one is text to its front matter
+			// reader, so a block after it is not front matter and its title does not count. micromark then drops
+			// that second mark before it parses, which the kit does not model: two marks before a heading read as
+			// a heading there and as text here. That one input is a recorded divergence; three marks agree again.
 			const result = differential(MD041, { extra: [...extra, ...bomExtra] });
-			assert.deepStrictEqual(result.divergences, []);
+			assert.deepStrictEqual(
+				result.divergences.map((divergence) => divergence.fixture),
+				["two byte order marks before a heading"],
+			);
+			assert.match(result.divergences[0]?.reason ?? "", /^extra finding 1: kit \{"lineNumber":1,"ruleNames":\["MD041"/);
 			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT + ORACLE_FINDINGS_BOM);
 			for (const { name, source } of bomExtra) {
 				const document = Result.getOrThrow(MarkdownDocument.parseResult(source));
@@ -120,5 +128,6 @@ describe("MD041 first-line-heading", () => {
 // markdownlint's MD041 findings over the corpus (LF and CRLF) and the extras.
 const ORACLE_FINDINGS_DEFAULT = 30;
 
-// markdownlint's MD041 findings over the byte order mark inputs: all but the single mark before a title.
-const ORACLE_FINDINGS_BOM = 3;
+// markdownlint's MD041 findings over the byte order mark inputs: one mark before text, and two before text, before a
+// front matter title and three before a heading (micromark drops only the second, so a third is text).
+const ORACLE_FINDINGS_BOM = 4;

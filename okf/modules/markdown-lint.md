@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-24T02:55:54Z
+  at: 2026-11-24T03:42:40Z
 integrity:
   generated:
-    body: e6bc9e41891c1a05
+    body: f10aa414bb90eed9
 ---
 
 # `@effected/markdown-lint`
@@ -251,6 +251,17 @@ plain synchronous function; no logging, no metrics.
   nothing where markdownlint's delete of that line alone would remove a
   line break. The kit edits still apply to markdownlint's text. Pinned by a
   test (two and three blank lines, 2 inputs).
+- A second leading byte order mark: markdownlint drops one before it
+  reads front matter, and micromark drops one more before it parses, so
+  after two marks the text from line 1 is read as Markdown with neither
+  mark. `@effected/markdown` drops none, and the kit reads the second mark
+  as text: two marks before `# Title` are a heading to markdownlint and a
+  paragraph to the kit (MD041), and two marks before a `---` block give a
+  thematic break and a setext heading on line 2 there, a setext heading on
+  line 1 here (MD022). Matching it needs the parser to drop the mark, since
+  micromark's line-1 columns then skip it while markdownlint's lines keep
+  it. Pinned by a test (MD041 and MD022, 1 input each); one mark, and three,
+  agree.
 
 - `./config` loads no JavaScript config (`.markdownlint.cjs`, `.mjs`) and
   none of cli2's own options files (`.markdownlint-cli2.*`). A directory

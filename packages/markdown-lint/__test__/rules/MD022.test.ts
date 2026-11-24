@@ -26,6 +26,12 @@ const extra = [
 // A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
 const run = runRule(MD022);
 
+// A leading byte order mark, once and twice, before front matter and a heading.
+const bomExtra = [
+	{ name: "byte order mark before front matter", source: "\uFEFF---\ntitle: x\n---\nText\n\n# H\n\n# H2\n" },
+	{ name: "two byte order marks before front matter", source: "\uFEFF\uFEFF---\ntitle: x\n---\nText\n\n# H\n\n# H2\n" },
+];
+
 describe("MD022 blanks-around-headings", () => {
 	it(
 		"agrees with markdownlint with default settings",
@@ -59,6 +65,23 @@ describe("MD022 blanks-around-headings", () => {
 			DIFFERENTIAL_TIMEOUT,
 		);
 	}
+
+	it(
+		"diverges from markdownlint where micromark drops a second leading byte order mark",
+		() => {
+			// markdownlint reads front matter after one mark, and micromark then drops a second before it parses:
+			// after two marks the `---` is a thematic break and `title: x` a setext heading on line 2. The kit reads
+			// the second mark as text, so its setext heading starts on line 1. One mark agrees.
+			const result = differential(MD022, { extra: [...extra, ...bomExtra] });
+			assert.deepStrictEqual(
+				result.divergences.map((divergence) => divergence.fixture),
+				["two byte order marks before front matter"],
+			);
+			assert.strictEqual(result.divergences[0]?.reason, "finding 1 (line 2) lineNumber: kit 1, markdownlint 2");
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT + ORACLE_FINDINGS_BOM);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 
 	it("reads a wrong-typed setting as its default", () => {
 		for (const settings of [{ lines_above: "2" }, { lines_below: [1, "2"] }, { include_front_matter: "yes" }]) {
@@ -94,3 +117,6 @@ describe("MD022 blanks-around-headings", () => {
 
 // markdownlint's MD022 findings over the corpus (LF and CRLF) and the extras.
 const ORACLE_FINDINGS_DEFAULT = 145;
+
+// markdownlint's MD022 findings over the byte order mark inputs: the setext heading after two marks, above and below.
+const ORACLE_FINDINGS_BOM = 2;
