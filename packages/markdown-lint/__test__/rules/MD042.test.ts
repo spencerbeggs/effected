@@ -10,6 +10,7 @@ import { Option } from "effect";
 import { MD042 } from "../../src/rules/MD042.js";
 import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
 import { linkGrid } from "../helpers/link-grid.js";
+import { tabbedDefinitions } from "../helpers/reference-grid.js";
 
 const extra = [
 	{ name: "empty destinations", source: '[a]() and [b](<>) and [c]( ) and [d]( "t")\n' },
@@ -80,7 +81,21 @@ describe("MD042 no-empty-links", () => {
 		assert.deepStrictEqual(finding?.range, Option.some([5, 8] as const));
 		assert.deepStrictEqual(finding?.fixInfo, Option.none());
 	});
+
+	// A definition's whitespace may be tabs (CommonMark §4.7), as markdownlint reads it.
+	it(
+		"agrees with markdownlint over definitions whose whitespace is a tab",
+		() => {
+			const result = differential(MD042, { extra: tabbedDefinitions });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_TABBED);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD042 findings over the corpus (LF and CRLF), the grid and the extras.
 const ORACLE_FINDINGS_DEFAULT = 97;
+
+// markdownlint's MD042 findings over the corpus (LF and CRLF) and the tabbed definitions.
+const ORACLE_FINDINGS_TABBED = 52;

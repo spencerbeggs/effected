@@ -15,7 +15,7 @@ import {
 	settingsDifferential,
 } from "../helpers/differential.js";
 import { oracleLint } from "../helpers/markdownlint-oracle.js";
-import { labelShapes, referenceGrid } from "../helpers/reference-grid.js";
+import { labelShapes, referenceGrid, tabbedDefinitions } from "../helpers/reference-grid.js";
 
 const extra = [...referenceGrid, ...labelShapes];
 
@@ -127,6 +127,17 @@ describe("MD052 reference-links-images", () => {
 		assert.deepStrictEqual(finding?.range, Option.some([5, 16] as const));
 		assert.deepStrictEqual(finding?.fixInfo, Option.none());
 	});
+
+	// A definition's whitespace may be tabs (CommonMark §4.7), as markdownlint reads it.
+	it(
+		"agrees with markdownlint over definitions whose whitespace is a tab",
+		() => {
+			const result = differential(MD052, { config: { shortcut_syntax: true }, extra: tabbedDefinitions });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_TABBED);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD052 findings over the corpus (LF and CRLF), the grid and the label shapes.
@@ -134,3 +145,6 @@ const ORACLE_FINDINGS_DEFAULT = 200;
 
 // markdownlint's MD052 findings under `shortcut_syntax` over the corpus (LF and CRLF) and the CR-only label shapes.
 const ORACLE_FINDINGS_CR = 285;
+
+// markdownlint's MD052 findings over the corpus (LF and CRLF) and the tabbed definitions.
+const ORACLE_FINDINGS_TABBED = 246;

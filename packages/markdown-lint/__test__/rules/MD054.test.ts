@@ -17,7 +17,7 @@ import {
 } from "../helpers/differential.js";
 import { linkGrid } from "../helpers/link-grid.js";
 import { linkStyleGrid } from "../helpers/link-style-grid.js";
-import { labelShapes, referenceGrid } from "../helpers/reference-grid.js";
+import { labelShapes, referenceGrid, tabbedDefinitions } from "../helpers/reference-grid.js";
 
 const extra = [...linkGrid, ...referenceGrid, ...labelShapes, ...linkStyleGrid];
 
@@ -109,8 +109,25 @@ describe("MD054 link-image-style", () => {
 			"See [the docs](https://d.example/a\\(b\\)).\n\n[d]: https://d.example/a(b)\n",
 		);
 	});
+
+	// A definition's whitespace may be tabs (CommonMark §4.7), as markdownlint reads it.
+	it(
+		"agrees with markdownlint over definitions whose whitespace is a tab",
+		() => {
+			const result = differential(MD054, {
+				config: { full: false, shortcut: false, inline: false, url_inline: false },
+				extra: tabbedDefinitions,
+			});
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_TABBED);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD054 findings over the corpus (LF and CRLF) and the grids, where the corpus's own comments
 // disallow styles.
 const ORACLE_FINDINGS_DEFAULT = 482;
+
+// markdownlint's MD054 findings over the corpus (LF and CRLF) and the tabbed definitions.
+const ORACLE_FINDINGS_TABBED = 1606;

@@ -98,3 +98,16 @@ export const labelShapes: ReadonlyArray<DifferentialInput> = [
 	{ name: "math block", source: "$$\n[a]\n$$\n\n[b]\n" },
 	{ name: "front matter", source: "---\nt: [a]\n---\n[b]\n\n[c]: u\n" },
 ];
+
+// Definitions whose whitespace is a tab (CommonMark §4.7 allows spaces or tabs), used and unused, beside references,
+// shortcuts, a duplicate and inline links, in a blockquote and a list item.
+export const tabbedDefinitions: ReadonlyArray<DifferentialInput> = [
+	{ name: "tab after the destination", source: "[a] [b][a]\n\n[a]: /u\t\n[c]: /c\t\n" },
+	{ name: "tab before the destination", source: "[a] [b][a]\n\n[a]:\t/u\n[c]:\t/c\n" },
+	{ name: "tabs around the title", source: '[a]\n\n[a]:\t/u\t"t"\t\n[c]: /c\t(x)\n' },
+	{ name: "tab before the line ending", source: "[a]\n\n[a]:\t\n/u\n[c]:\t\n/c\n" },
+	{ name: "tabbed duplicate", source: "[a]\n\n[a]:\t/u\n[a]: /v\t\n" },
+	{ name: "tabbed hash destination", source: "[a] [b]\n\n[a]:\t#\n[b]: #\t\n" },
+	{ name: "tabbed in containers", source: "> [a]\n>\n> [a]:\t/u\t\n\n- [b]\n\n  [b]:\t/v\t\n" },
+	{ name: "inline links with tabs", source: '[x](\t/u\t) [y](/u\t"t"\t) [https://u.example](\thttps://u.example\t)\n' },
+];

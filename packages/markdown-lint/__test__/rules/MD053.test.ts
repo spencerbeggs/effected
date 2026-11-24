@@ -20,7 +20,7 @@ import {
 	settingsDifferential,
 } from "../helpers/differential.js";
 import { oracleLint } from "../helpers/markdownlint-oracle.js";
-import { labelShapes, referenceGrid } from "../helpers/reference-grid.js";
+import { labelShapes, referenceGrid, tabbedDefinitions } from "../helpers/reference-grid.js";
 
 // Definitions beside other text, in containers, across lines, last in a source with no final line ending.
 const definitionShapes = [
@@ -184,7 +184,21 @@ describe("MD053 link-image-reference-definitions", () => {
 			"Text.\n\n[used]: https://example.org\n\n[used]\n",
 		);
 	});
+
+	// A definition's whitespace may be tabs (CommonMark §4.7), as markdownlint reads it.
+	it(
+		"agrees with markdownlint over definitions whose whitespace is a tab",
+		() => {
+			const result = differential(MD053, { extra: tabbedDefinitions });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_TABBED);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD053 findings over the corpus (LF and CRLF), the grid, the label shapes and the definition shapes.
 const ORACLE_FINDINGS_DEFAULT = 1137;
+
+// markdownlint's MD053 findings over the corpus (LF and CRLF) and the tabbed definitions.
+const ORACLE_FINDINGS_TABBED = 25;
