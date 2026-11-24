@@ -40,8 +40,9 @@ export const MD040: Lint.LintRule = LintRule.make({
 		for (const code of codeNodes(context) as ReadonlyArray<Code>) {
 			if (code.fenceChar === undefined || inMathBlock(math, code.position.start.line)) continue;
 			const offset = code.position.start.offset;
-			const lineEnd = context.source.slice(offset).search(/\r\n?|\n/);
-			const text = lineEnd === -1 ? context.source.slice(offset) : context.source.slice(offset, offset + lineEnd);
+			const line = code.position.start.line;
+			// The opening fence, from its first character to its line's end.
+			const text = (context.lines[line - 1] as string).slice(offset - context.mapping.lineStart(line));
 			const [, , info = "", meta = ""] = openingFence.exec(text) ?? [];
 			const at = { offset, length: 0 };
 			if (info === "") report(context.diagnostic({ at, context: errorContext(text) }));

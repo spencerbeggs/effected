@@ -9,7 +9,7 @@ import type * as Lint from "@effected/markdown-lint";
 import { Predicate } from "effect";
 import { headingNodes } from "../internal/headings.js";
 import { preferredLineEnding } from "../internal/line-endings.js";
-import { firstContentLine, isBlankLine } from "../internal/lines.js";
+import { contentLine, firstContentLine, isBlankLine } from "../internal/lines.js";
 import { setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
@@ -20,9 +20,11 @@ const isLinesSetting = (value: unknown): value is number | ReadonlyArray<number>
 const linesFor = (value: number | ReadonlyArray<number>, heading: Heading): number =>
 	typeof value === "number" ? value : (value.slice(0, 6)[heading.depth - 1] ?? 1);
 
-// markdownlint's `getBlockQuotePrefixText`: the line's blockquote markers and the indentation around them,
-// trailing space trimmed, then a line break, `count` times.
-const prefixText = (line: string | undefined, count: number, lineEnding: string): string =>
+// markdownlint's `getBlockQuotePrefixText` for the line a blank goes next to: its blockquote markers and the
+// indentation around them read straight from its raw text, trailing space trimmed, then a line break, `count`
+// times. Deliberately not the container-aware `blockQuotePrefixText` MD032 uses: the two read different
+// patterns on purpose, so do not merge them.
+const rawQuotePrefixLines = (line: string | undefined, count: number, lineEnding: string): string =>
 	`${(/^(?:[ \t]*>[ \t]?)*/.exec(line ?? "")?.[0] ?? "").trimEnd()}${lineEnding}`.repeat(Math.max(0, count));
 
 /**
@@ -55,8 +57,6 @@ export const MD022: Lint.LintRule = LintRule.make({
 				: frontMatter && lineNumber >= 1 && lineNumber < first
 					? (context.lines[lineNumber - 1] as string)
 					: "";
-		const contentLine = (lineNumber: number): string | undefined =>
-			lineNumber >= first && lineNumber <= last ? context.lines[lineNumber - 1] : undefined;
 		for (const heading of headingNodes(context)) {
 			const startLine = heading.position.start.line;
 			const endLine = heading.position.end.line;
@@ -75,7 +75,7 @@ export const MD022: Lint.LintRule = LintRule.make({
 							fix: {
 								offset,
 								length: 0,
-								content: prefixText(contentLine(startLine - 1), linesAbove - actual, lineEnding),
+								content: rawQuotePrefixLines(contentLine(context, startLine - 1), linesAbove - actual, lineEnding),
 							},
 						}),
 					);
@@ -95,7 +95,7 @@ export const MD022: Lint.LintRule = LintRule.make({
 							fix: {
 								offset,
 								length: 0,
-								content: prefixText(contentLine(endLine + 1), linesBelow - actual, lineEnding),
+								content: rawQuotePrefixLines(contentLine(context, endLine + 1), linesBelow - actual, lineEnding),
 							},
 						}),
 					);

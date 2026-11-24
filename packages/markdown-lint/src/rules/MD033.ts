@@ -33,13 +33,11 @@ export const MD033: Lint.LintRule = LintRule.make({
 		for (const token of htmlTextTokens(context)) {
 			const tag = htmlTagInfo(token.text);
 			if (tag === undefined || tag.close) continue;
-			const name = tag.name;
-			const element = name.toLowerCase();
-			if ((token.inTable || !allowed.includes(element)) && (!token.inTable || !tableAllowed.includes(element))) {
+			if (!(token.inTable ? tableAllowed : allowed).includes(tag.name.toLowerCase())) {
 				report(
 					context.diagnostic({
 						at: { offset: token.offset, length: 0 },
-						detail: `Element: ${name}`,
+						detail: `Element: ${tag.name}`,
 						range: htmlTextRange(token),
 					}),
 				);
