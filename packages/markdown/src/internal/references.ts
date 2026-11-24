@@ -219,24 +219,27 @@ export interface ParsedReference {
 	readonly url: string;
 	/** The decoded title, absent when the definition carries none. */
 	readonly title?: string;
-	/** How many characters of `text` the definition consumed. */
+	/** How many characters of `text`, from where it starts, the definition consumed. */
 	readonly length: number;
 }
 
 /**
- * Parse a link reference definition at the start of `text`.
+ * Parse a link reference definition at `start` in `text` (its start by
+ * default), without slicing `text`: a paragraph's run of definitions is parsed
+ * in one pass.
  *
- * Returns `undefined` when `text` does not begin with one — which is not an
+ * Returns `undefined` when `text` does not hold one there — which is not an
  * error: the text is simply paragraph content.
  */
-export const parseReference = (text: string): ParsedReference | undefined => {
+export const parseReference = (text: string, start = 0): ParsedReference | undefined => {
 	const scanner = new ReferenceScanner(text);
+	scanner.pos = start;
 
 	const labelLength = scanner.parseLinkLabel();
 	if (labelLength === 0) {
 		return undefined;
 	}
-	const rawLabel = text.slice(0, labelLength);
+	const rawLabel = text.slice(start, start + labelLength);
 
 	if (scanner.peek() !== C_COLON) {
 		return undefined;
@@ -284,6 +287,6 @@ export const parseReference = (text: string): ParsedReference | undefined => {
 		label: rawLabel.slice(1, -1),
 		url,
 		...(title === undefined ? {} : { title }),
-		length: scanner.pos,
+		length: scanner.pos - start,
 	};
 };

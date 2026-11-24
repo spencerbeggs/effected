@@ -38,6 +38,11 @@
 //     the merged run's text nodes from the start, O(nodes) per address: a run
 //     split by brackets or escapes into many nodes went quadratic. A forward
 //     cursor makes it linear (guard at the bottom).
+//  8. Link reference definition extraction split a paragraph's leading
+//     definitions off one at a time, each re-slicing and re-scanning the
+//     paragraph's line segments and searching the parent's children: a run of
+//     consecutive definitions went quadratic. One pass makes it linear (guard
+//     at the bottom).
 //
 // Three cases nest deeper than `MAX_NESTING_DEPTH` by construction and are
 // REFUSED rather than parsed — a typed guard trip in milliseconds, which is
@@ -231,6 +236,38 @@ describe("pathological inputs", () => {
 		// TIMEOUT_MS is 8000): generous against instrumented linear cost —
 		// two orders of magnitude of headroom — while anything worse than
 		// the measured quadratic fails HERE instead of grinding the runner.
+		8000 * 40 + 5000,
+	);
+
+	// The linearity guard for definition extraction (defect 8). A paragraph's leading definitions were split off one
+	// at a time, each re-slicing the paragraph's per-line segments, re-scanning them for its source offsets and
+	// splicing its node in by a search of the parent's children: O(definitions) per definition. 20k consecutive
+	// definitions took 1.5s, ~14x per input quadrupling. One pass with a forward segment cursor and one splice makes
+	// it linear. Same method and threshold as the guards above.
+	it(
+		"consecutive link reference definitions scale linearly",
+		() => {
+			const timeAt = (reps: number): number => {
+				const input = Array.from({ length: reps }, (_, index) => `[r${index}]: /u${index}\n`).join("");
+				let best = Number.POSITIVE_INFINITY;
+				for (let pass = 0; pass < 5; pass += 1) {
+					const started = cpuNow();
+					parseBlocks(input, "gfm");
+					best = Math.min(best, cpuNow() - started);
+				}
+				return best;
+			};
+			timeAt(500);
+			const small = timeAt(2500);
+			const large = timeAt(10000);
+			const ratio = large / Math.max(small, 1);
+			assert.isBelow(
+				ratio,
+				8,
+				`4x the input cost ${ratio.toFixed(1)}x the CPU time (${small.toFixed(1)}ms -> ${large.toFixed(1)}ms); ` +
+					"linear is ~4x, the per-definition re-slice was ~16x",
+			);
+		},
 		8000 * 40 + 5000,
 	);
 
