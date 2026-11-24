@@ -5,6 +5,11 @@
 * Updated @effected/markdown-lint
 * Updated @effected/markdown
 * Updated The vitest suite splits into a fast tier with coverage and a slow tier run beside it
+* Updated Every package carries the same manifest shape and file set
+* Added The kit's markdown lint reads markdownlint's own configuration model, not markdownlint-cli2's, and stays in @effected/markdown-lint for now
+* Updated The markdownlint-compatible lint shape is its own pure package; @effected/markdown gains only the callback visitor
+* Updated effected
+* Updated workspace
 
 ## 2026-11-23
 

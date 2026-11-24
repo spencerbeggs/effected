@@ -51,10 +51,10 @@ sources:
     resource: ../../packages/markdown/__test__/visitor-traverse.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T01:44:45Z
+  at: 2026-11-24T04:25:23Z
 integrity:
   generated:
-    body: 0867275fd9be8c33
+    body: 85f3d532fb02f157
 ---
 
 # `@effected/markdown`
@@ -674,6 +674,13 @@ The kit ends both at the last content line. Second, a quoted blank line
 closes the definition, because cmark-gfm's continuation prefix tests the raw
 line for `\n`. So in `> [^1]: a\n>\n>     b\n` the kit reads `b` as indented
 code in the blockquote, while micromark keeps it inside the definition.
+
+The parser does not drop a leading byte order mark (U+FEFF), as micromark's
+preprocessing does: the mark is text at offset 0, so the mark followed by `# Title` parses
+as a paragraph, not a heading. A caller that wants micromark's reading
+strips one mark first, as [`markdown-lint`](markdown-lint.md)'s hosts do;
+`markdown-lint` records the divergence this leaves for a source opening with
+two or more marks. No test pins the parser's behaviour here.
 
 The standing goal is an empty skip map, matching the `toml` precedent: the
 dialect matrix runs the whole CommonMark corpus under both dialects with an

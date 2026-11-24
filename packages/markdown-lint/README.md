@@ -8,7 +8,8 @@
 Write a markdown lint rule once, against [`@effected/markdown`](../markdown) trees, and run it two ways: with a pure programmatic linter, or inside [markdownlint](https://github.com/DavidAnson/markdownlint) (and so markdownlint-cli2 and the VS Code extension) as a custom rule. Line numbers, ranges and fixes come from the kit's own positions, so the two hosts report the same findings on the same lines.
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, still in `0.x`
-> development. It depends on `@effected/markdown` and peers on `effect`.
+> development. It depends on `@effected/markdown`, `@effected/jsonc` and
+> `@effected/yaml` (the last two only for `./config`) and peers on `effect`.
 >
 > **Stability: unstable.** This package's API surface is not yet considered
 > complete and may change across `0.x` releases. Pin an exact version. Full
@@ -96,6 +97,59 @@ Two things a rule sees differently under markdownlint, because markdownlint hide
 
 The adapter is checked against markdownlint-cli2 0.24 (markdownlint 0.42).
 
+## Configure it
+
+Both hosts take markdownlint's own configuration object as `config` (default `{ default: true }`): rule names, aliases and tags as keys, `default`, a rule's settings in its object, and `enabled` and `severity` (`"error"` or `"warning"`) inside it. `MarkdownLint` resolves it as markdownlint does, through `LintConfig`, and honours inline `<!-- markdownlint-disable -->`-style comments through `InlineDirectives` unless `noInlineConfig` is set. A rule reads its own settings from `context.config`, and each finding carries its rule's `severity`:
+
+```ts
+const findings = MarkdownLint.lint(source, [NoH1], {
+  config: { default: false, "no-h1": { severity: "warning" } },
+});
+```
+
+Under markdownlint the adapter leaves all of this to markdownlint, which hands the rule its settings itself.
+
+## Built-in rules
+
+`@effected/markdown-lint/rules` ports markdownlint's built-in rules over kit trees, one named export per rule, each held finding for finding to markdownlint 0.42 by a differential test over markdownlint's own fixture corpus. Import only the rules you run; `@effected/markdown-lint/rules/all` exports `rules`, every port in markdownlint's order, and `uncovered`, the names of the built-in rules with no port yet:
+
+```ts
+import { MarkdownLint } from "@effected/markdown-lint";
+import { MD022, MD041 } from "@effected/markdown-lint/rules";
+import { rules, uncovered } from "@effected/markdown-lint/rules/all";
+
+MarkdownLint.lint(source, [MD022, MD041]);
+const everything = MarkdownLint.lint(source, rules);
+console.log(`not checked: ${uncovered.join(", ")}`);
+```
+
+`MarkdownLint.applyFixes(source, findings)` applies the findings' fixes the way `markdownlint-cli2 --fix` does, including its line-ending normalization.
+
+## Read config files
+
+`@effected/markdown-lint/config` reads markdownlint's own config files (`.markdownlint.jsonc`, `.json`, `.yaml`, `.yml`) and their `extends` chains. `MarkdownlintConfigFile.resolve` finds the config that applies to a markdown file the way markdownlint-cli2 does: the nearest directory with one decides, up to `root`. It needs `FileSystem` and `Path` from your platform layer, and fails with a `MarkdownlintConfigError` carrying a `reason` and the offending `path`:
+
+```ts
+import { MarkdownLint } from "@effected/markdown-lint";
+import { MarkdownlintConfigFile } from "@effected/markdown-lint/config";
+import { rules } from "@effected/markdown-lint/rules/all";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { Effect, FileSystem } from "effect";
+
+const program = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const resolved = yield* MarkdownlintConfigFile.resolve("docs/guide.md", { root: process.cwd() });
+  // resolved.config: the configuration object; resolved.files: where it came from;
+  // resolved.skipped: config files found but not read (JavaScript configs, .markdownlint-cli2.*)
+  const source = yield* fs.readFileString("docs/guide.md");
+  return MarkdownLint.lint(source, rules, { config: resolved.config });
+});
+
+Effect.runPromise(program.pipe(Effect.provide(NodeServices.layer)));
+```
+
+markdownlint-cli2's own options files (`.markdownlint-cli2.*`) and JavaScript configs are not read: move a cli2 file's `config` block into a `.markdownlint.jsonc`. Its globs, `overrides`, `customRules` and formatters belong to the tool running the lint.
+
 ## Positions
 
 `PositionMapping` is the one place an offset becomes a markdownlint coordinate:
@@ -110,9 +164,14 @@ The adapter is checked against markdownlint-cli2 0.24 (markdownlint 0.42).
 - `LintRule` — a rule: `names`, `description`, `tags`, optional `information`, and `check`. `name` is its first name.
 - `LintContext` / `LintReport` / `LintFrontmatter` — what a check reads, and what it reports through `context.diagnostic`.
 - `LintDiagnostic` / `LintFixInfo` / `LintRange` — one finding, in markdownlint's `onError` fields.
-- `PositionMapping` — offsets to `lineNumber`, `column`, `range` and `fixInfo`; `of(source)` or `fromDocument(document)`.
-- `MarkdownLint` — `lint`, `lintDocument` and `lintEffect`, the programmatic host, with `MarkdownLintOptions` (`name`, `dialect`, `frontmatter`).
+- `PositionMapping` — offsets to `lineNumber`, `column`, `range` and `fixInfo`, and `lineStart(lineNumber)`; `of(source)` or `fromDocument(document)`.
+- `MarkdownLint` — `lint`, `lintDocument`, `lintEffect` and `applyFixes`, the programmatic host, with `MarkdownLintOptions` (`name`, `dialect`, `frontmatter`, `config`, `noInlineConfig`) and `MarkdownLintDocumentOptions`.
+- `LintConfig` / `InlineDirectives` — markdownlint's configuration object and inline comments, resolved per rule and per line; `LintSeverity`, `LintConfigRecord`, `EffectiveLintConfig`.
 - `MarkdownlintAdapter` — `rule` and `rules`, to markdownlint custom rules, with `MarkdownlintAdapterOptions` and the structural markdownlint types (`MarkdownlintRule`, `MarkdownlintRuleParams`, `MarkdownlintOnError`, `MarkdownlintErrorInfo`, `MarkdownlintFixInfo`).
+
+- `@effected/markdown-lint/rules` — the ported built-in rules, `MD001` … `MD060`.
+- `@effected/markdown-lint/rules/all` — `rules` and `uncovered`.
+- `@effected/markdown-lint/config` — `MarkdownlintConfigFile` (`read`, `resolve`), `MarkdownlintConfigError`, `ResolvedLintConfig`.
 
 ## License
 

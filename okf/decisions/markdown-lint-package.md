@@ -13,11 +13,11 @@ sources:
   - id: markdownlint-types
     resource: https://github.com/DavidAnson/markdownlint/blob/v0.42.0/lib/markdownlint.d.mts
 generated:
-  by: "claude-code/opus-5.5"
-  at: 2026-11-07T03:13:10Z
+  by: "okfit/claude-code"
+  at: 2026-11-24T04:25:23Z
 integrity:
   generated:
-    body: 577060f9e892c1b2
+    body: 247e0f6f000e7998
   verified:
     by: human:spencer
     at: 2026-11-08T18:25:54Z
@@ -99,8 +99,9 @@ markdownlint calls a rule synchronously[^issue-1030].
   byte-identical output.
 - Where systems' two engines disagreed (CSH005), one definition has to pick
   one; the example port follows the markdownlint engine.
-- A rule cannot read markdownlint's per-rule configuration yet;
-  `LintContext` has no `config`.
+- A rule reads its markdownlint settings from `LintContext.config`; the
+  configuration model it comes from, and the files it is read from, are
+  [the config-model decision](markdown-lint-targets-markdownlint.md).
 
 [^issue-1030]: <https://github.com/spencerbeggs/effected/issues/1030>
 [^markdownlint-types]: markdownlint's `lib/markdownlint.d.mts`.

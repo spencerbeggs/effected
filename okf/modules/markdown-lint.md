@@ -1,7 +1,7 @@
 ---
 type: Module
 title: "@effected/markdown-lint"
-description: "A markdownlint-compatible lint rule shape over @effected/markdown trees: one LintRule definition with markdownlint metadata, a pure programmatic host (MarkdownLint) and a markdownlint custom-rule adapter (MarkdownlintAdapter), with every line, range and fix derived from kit offsets by PositionMapping."
+description: "A markdownlint-compatible lint rule shape over @effected/markdown trees: one LintRule definition with markdownlint metadata, a pure programmatic host (MarkdownLint) resolving markdownlint configuration and inline comments, a markdownlint custom-rule adapter (MarkdownlintAdapter), 22 ported built-in rules on ./rules held to markdownlint by a differential harness, and a ./config reader of markdownlint config files; every line, range and fix derived from kit offsets by PositionMapping."
 status: draft
 kind: package
 resource: ../../packages/markdown-lint
@@ -26,11 +26,11 @@ sources:
   - id: systems-804
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
-  by: "claude-code/opus-5.5"
-  at: 2026-11-24T03:59:14Z
+  by: "okfit/claude-code"
+  at: 2026-11-24T04:25:23Z
 integrity:
   generated:
-    body: 68df3f0b0e91c210
+    body: 58de0b60d08c514b
 ---
 
 # `@effected/markdown-lint`
@@ -46,14 +46,40 @@ alternatives are in [the placement decision](../decisions/markdown-lint-package.
 
 ## Tier and dependency posture
 
-**Pure tier.** No IO and no runtime dependency beyond `@effected/markdown`
-(`workspace:^`, a regular dependency: pure, and no shared-instance contract
-the [peer discipline](../conventions/peer-dependency-discipline.md) would
-ask a peer for) and the `effect` peer. `@effected/source`'s `LineIndex`
-comes through `@effected/markdown`'s re-export, so there is no second edge.
+**[Boundary tier](../glossary/library-tier.md).** The root, `./rules` and
+`./rules/all` perform no IO; the `./config` subpath reads files through core
+`FileSystem` and `Path`, required in `R` and provided by the consumer's
+platform layer. Three regular `workspace:^` dependencies, all pure and none a
+shared-instance contract the
+[peer discipline](../conventions/peer-dependency-discipline.md) would ask a
+peer for: `@effected/markdown`, which every entry point uses, and
+`@effected/jsonc` and `@effected/yaml`, which only `./config` imports. The
+`effect` peer is the only peer, and there are **zero external runtime
+dependencies**. `@effected/source`'s `LineIndex` comes through
+`@effected/markdown`'s re-export, so there is no second edge.
 **No markdownlint import, at any tier**: the adapter matches markdownlint's
 custom-rule contract structurally with local types, so a consumer brings
 their own markdownlint and the package cannot pin it.
+
+## Entry points
+
+| Entry | Holds | May import |
+| --- | --- | --- |
+| `.` | `LintRule`, `LintContext`, `LintDiagnostic`, `PositionMapping`, `LintConfig`, `InlineDirectives`, the `MarkdownLint` host and the `MarkdownlintAdapter` | `@effected/markdown` and `effect`; never a rule module, `./config`, `node:` or a format engine |
+| `./rules` | the 22 ported built-in rules, one free-standing named export each (`MD001` … `MD060`) | the root, through the package's own name for types |
+| `./rules/all` | `rules`, every port in markdownlint's order, and `uncovered`, the 31 built-in rule names with no port yet | the rule modules |
+| `./config` | `MarkdownlintConfigFile` and `MarkdownlintConfigError` | the root, `@effected/jsonc`, `@effected/yaml`, `FileSystem` and `Path` |
+
+The rules are separate exports so a consumer pays only for the rules it
+imports; `./rules/all` is the one module that reaches every rule. The root
+purity gate in `rules-metadata.test.ts` walks the source import graph and
+fails if the root reaches a rule or config module, `node:` or a format
+engine. The subpaths name root types through `import type * as Lint from
+"@effected/markdown-lint"` and import values relatively, so one `LintRule`
+class exists at runtime; `effected.toml` keeps that name external in the
+declarations (`dtsExternals`) and scopes an `ae-forgotten-export` suppression
+to the three subpath entries, the `cli-kit` `./ui` precedent, and
+`subpaths.test.ts` pins that no subpath declaration leaks a local.
 
 ## Surface
 
@@ -70,11 +96,13 @@ context construction and rule run both hosts share, which is what makes
 - `LintContext` — type-only: `name`, `document` (`MarkdownDocument`),
   `root`, `source` (the whole text, frontmatter included), `lines`,
   `frontmatter: Option<LintFrontmatter>` (the kit capture node, its line
-  count and lines), `mapping`, and `diagnostic(report)`, the builder a rule
+  count and lines), `mapping`, `config` (the rule's own settings, without
+  `enabled` and `severity`), and `diagnostic(report)`, the builder a rule
   reports through. A `LintReport` names its anchor as a node or an offset
   span, plus optional `detail`, `context`, `range` (`true` for the anchor's
   span, or another span) and `fix` (a kit offset edit).
-- `LintDiagnostic` — `ruleNames`, `lineNumber`, `column`, and `Option`s of
+- `LintDiagnostic` — `ruleNames`, `lineNumber`, `column`, `severity`
+  (`LintSeverity`, `"error"` or `"warning"`), and `Option`s of
   `detail`, `context`, `range` (`[column, length]`), `fixInfo`
   (`LintFixInfo`, markdownlint's one-line fix with its own optional field
   names) and `edit` (the kit `MarkdownEdit`). Absence is `Option.none()`
@@ -91,20 +119,37 @@ context construction and rule run both hosts share, which is what makes
   crosses a line break otherwise has no `fixInfo` and keeps the kit `edit`.
   `lineStart(lineNumber)` is a line's start offset: the one line table the
   rules read, so no rule keeps a second one.
+- `LintConfig` — static, pure: `effective(config, rules)` resolves
+  markdownlint's configuration object (`default`, rule and tag keys,
+  `enabled` and `severity` inside a rule's object) to per-rule
+  `enabled`, `severity` and settings maps (a key naming a tag or a
+  name, case-insensitive, reaches every rule it names), `merge(base, over)`
+  is markdownlint's shallow `extends` merge, and `key(rule)` is the key a rule's
+  entries live under.
+- `InlineDirectives` — static, pure: `resolve(lines, config, rules,
+  options)` reads the `<!-- markdownlint-… -->` comments (`disable`,
+  `enable`, `capture`, `restore`, the `-file`, `-line` and `-next-line`
+  forms, `configure-file`) and returns the effective configuration and each
+  line's enabled map; `noInlineConfig: true` ignores them.
 - `MarkdownLint` — `lint(source, rules, options)` (total and synchronous),
-  `lintDocument(document, rules)` for an already-parsed document (the same
-  reading and findings as `lint` over `document.source`: the parse is
-  reused when it already is markdownlint's reading, otherwise the source is
-  re-read with `options.dialect`), and
+  `lintDocument(document, rules, options)` for an already-parsed document
+  (the same reading and findings as `lint` over `document.source`: one
+  leading byte order mark is dropped, the parse is reused when it already is
+  markdownlint's reading, otherwise the source is re-read with
+  `options.dialect`, default gfm), and
   `applyFixes(source, findings)`, which applies findings' kit edits under
   markdownlint's `applyFixes` policy (the fix `markdownlint-cli2 --fix`
   makes: identical fixes once, one insert per line and column, the longest,
   an insert and a delete at one column made one replace, a fix running into
   the one to its right skipped, a whole-line delete taking its line's other
-  fixes), and
+  fixes; then, as markdownlint does, every line break in the result is
+  rewritten to the source's most common ending, so a mixed-ending file comes
+  back with one ending), and
   `lintEffect`, the `Effect` under a `MarkdownLint.lint` span defined in
-  terms of `lint`. Defaults: gfm, frontmatter capture on (markdownlint
-  always strips front matter). Findings come in rule order, then report
+  terms of `lint`. Options (`MarkdownLintOptions`): `name`, `dialect`,
+  `frontmatter`, `config` and `noInlineConfig`. Defaults: gfm, frontmatter
+  capture on (markdownlint always strips front matter), `{ default: true }`,
+  inline comments honoured. Findings come in rule order, then report
   order. Two rules sharing a name throws, as a wiring error.
 - `MarkdownlintAdapter` — `rule(lintRule, options)` and `rules(lintRules,
   options)` return objects satisfying markdownlint's `Rule` with
@@ -142,14 +187,17 @@ markdownlint's own BOM-free coordinates (a differential test applies both to a
 BOM fixture and compares).
 
 `MarkdownLint.lint` and `lintDocument` read a file as markdownlint does, so a rule sees the
-same text and tree in both hosts: HTML comment bodies after the front matter
+same text and tree in both hosts: front matter is found by markdownlint's
+own pattern, run with the RE2 semantics markdownlint runs it under (ASCII
+`\s`, `^` and `$` at `\n` only), HTML comment bodies after the front matter
 are masked before the parse, and `LintFrontmatter.lineCount` and `lines` are
 markdownlint's own front matter count (its closing `---` swallows trailing
 blank lines). `LintFrontmatter.node` is `Option.some` only when the kit
 captured that block too; a block the kit does not capture (`{…}`, a
 `...`-closed one) is parsed as spaces of equal length, so no tree node lies
-inside it and no offset moves, and a `---json` block markdownlint does not
-read as front matter is not captured either. The text before masking is not on
+inside it and no offset moves. A `---json` block is not front matter to
+markdownlint, so it is not captured either: it is read as content, a
+thematic break and what follows. The text before masking is not on
 `LintContext`: only the reader of an HTML block that is one comment needs
 it (markdownlint reads that comment before masking it), the host records it
 internally, and under markdownlint it equals the masked text.
@@ -167,7 +215,10 @@ settings (without `enabled` and `severity`) as `LintContext.config`; a
 finding on a line where its rule is disabled is dropped; each carries the
 rule's configured `severity` (a parse refusal is always `error`). Under the
 adapter markdownlint does all of that itself: `context.config` is
-`params.config` and the kit-side severity is `error`. A differential test
+`params.config` and the kit-side severity is `error`. A rule that reads
+`front_matter_title` (MD001, MD025, MD041) takes a falsy value (`false`,
+`0`, `null`, `""`) to mean front matter is ignored, as markdownlint does,
+rather than as a bad setting falling back to its default. A differential test
 runs both hosts over the same inputs and configs and requires equal lines,
 details and severities[^host-config-tests].
 
@@ -184,9 +235,30 @@ are 16 links and 1 MiB per file, the size checked before parsing.
 directory the first of `.markdownlint.jsonc`, `.json`, `.yaml`, `.yml` is
 that directory's config. The nearest directory holding one decides, with its
 own `extends` chain. A farther directory's config is **replaced**, not merged:
-cli2 inherits an ancestor's config only into a directory with none. Every
-failure is a `MarkdownlintConfigError` with a `reason` and the offending
-`path`[^config-file-tests].
+cli2 inherits an ancestor's config only into a directory with none. The
+result, `ResolvedLintConfig`, is the `config`, the `files` it came from (the
+nearest file then its `extends` chain) and the unsupported files the walk
+`skipped`; with no config found it is `{}`. Every failure is a
+`MarkdownlintConfigError`, a `Schema.TaggedError` with a `reason`
+(`unreadable`, `parse`, `extends-missing`, `extends-cycle`,
+`extends-depth`, `too-large`, `unsupported`), the offending `path`, and an
+optional `detail` and `cause`[^config-file-tests]. Why the reader models
+markdownlint's configuration and not markdownlint-cli2's options files is
+[the config-model decision](../decisions/markdown-lint-targets-markdownlint.md).
+
+## The ported rules
+
+`./rules` ports 22 of markdownlint 0.42's 53 built-in rules: MD001, MD003,
+MD004, MD009, MD010, MD012, MD013, MD018, MD019, MD022, MD023, MD024, MD025,
+MD026, MD031, MD032, MD033, MD040, MD041, MD045, MD047 and MD060. Each is an
+ordinary `LintRule` carrying markdownlint's own names, description, tags and
+documentation link, and a rule with settings reads them from
+`LintContext.config` under markdownlint's names and defaults. `./rules/all`'s `uncovered` lists the
+other 31 by first name. The metadata gate in `rules-metadata.test.ts` reads
+the installed markdownlint's rule list and requires every port's metadata
+to equal it, both lists to be in markdownlint's order, every built-in rule
+to be ported or uncovered exactly once, and `./rules` to export exactly
+`./rules/all`'s rules.
 
 ## Failure posture
 
@@ -227,6 +299,32 @@ plain synchronous function; no logging, no metrics.
   custom-rule validation[^host-tests].
 - `position-mapping.test.ts` pins setext, multi-line, frontmatter, CRLF,
   bare `\r`, UTF-16 and every `fixInfo` branch.
+- **The differential harness** (`__test__/helpers/differential.ts`) proves
+  every rule port: it runs one kit rule and the markdownlint rule of the same
+  name, each alone, over every fixture of the corpus (as written, as LF and as
+  CRLF) plus each test's extra inputs, compares the findings as an ordered
+  list field by field, then compares the text the two engines' fixes produce
+  (`MarkdownLint.applyFixes` against markdownlint's `applyFixes`). Each rule's
+  test asserts the exact list of divergences, normally empty, so a divergence
+  that appears or disappears fails. `differential-harness.test.ts` holds the
+  harness to a positive control (a faithful throwaway MD047, zero
+  divergences) and negative ones (a late line, a missing finding, a wrong
+  fix). The oracle is the exact-pinned `markdownlint` devDependency, 0.42.1.
+- **The vendored corpus.** `__test__/fixtures/markdownlint/` holds 436
+  byte-identical copies of upstream's `test/*.md` at tag `v0.42.1`, copied
+  from the `.repos/markdownlint` submodule by
+  `scripts/capture-markdownlint-corpus.mjs` (no arguments, idempotent), whose
+  `README.md` records the tag, the commit and the count. Never edit a fixture
+  by hand; re-run the script after re-pinning the submodule.
+- **Hostile-input ceilings.** `hostile-inputs.test.ts` lints five shapes that
+  once made a lint with all 22 rules superlinear (a 400-column table with CJK
+  cells, 2,000 unclosed fences in list items, a 9,000-block mixed document,
+  3,000 lines in blockquotes 40 deep with inline HTML, one paragraph of
+  60,000 code-span, link and lone `$` groups) and holds each to a 5,000 ms
+  ceiling: far above the fixed times (under 1 s) and far below the unfixed
+  ones (12 to 21 s). It is in the root `vitest.config.ts`'s `SLOW_TESTS` and
+  `TIMING_TESTS`, so it runs in the timing tier, alone on its runner, and
+  never in the fast tier (see [the test tiers](../decisions/vitest-test-tiers.md)).
 
 ## Known divergences
 
@@ -235,10 +333,34 @@ plain synchronous function; no logging, no metrics.
   cells an author wrote; the CSH005 port reports a short row's padded cells
   as empty values where systems' micromark rule reports "too few columns".
   Pinned by a test.
-- A parse refusal (a document nested past the hardening cap) always
-  reports severity `error` in the programmatic host, where markdownlint
-  would apply the rule's configured severity to the adapter's refusal
-  finding.
+- A parse refusal (a document nested past the hardening cap) is reported
+  per rule at severity `error` in the programmatic host, whatever the rule's
+  configured `severity`; under the adapter markdownlint applies the
+  configured severity to the same refusal finding. Pinned by a test
+  (`host-config.test.ts`).
+- `InlineDirectives` creates its comment regex per `resolve` call.
+  markdownlint's is global and module-level, so an unclosed inline comment
+  leaves its `lastIndex` set and the next document's first line is searched
+  from that position. The kit carries the position from line to line within
+  one document, as markdownlint does (pinned by a test), and never into the
+  next document, so a lint does not depend on what was linted before it.
+  Deliberate; no cross-document test pins it.
+- MD047's fix and `MarkdownLint.applyFixes`'s line-ending rewrite use the
+  source's most common line ending, and `\n` when the source has none. markdownlint takes `os.EOL` there, so on Windows it writes
+  `\r\n` into a file with no line break where the kit writes `\n`. Identical
+  on every other platform; not pinned, since CI runs on Linux.
+- Under `MarkdownlintAdapter`, MD025 and MD041 read an HTML block's comment
+  from markdownlint's masked lines, because markdownlint hands a custom rule
+  no unmasked text, where the programmatic host and markdownlint's own rules
+  read the comment as written. The mask keeps `<!--` and `-->` and replaces
+  the body with `.` runs, so a comment that is not one to markdownlint
+  because its body ends in `-` (`<!-- a --->`) reads as one under the
+  adapter: before `# Title`, markdownlint's MD041 reports line 1 and the
+  adapted MD041 nothing; before two h1s, markdownlint's MD041 reports line 1
+  and the adapted MD025 reports the second h1 instead. A comment whose body
+  starts with `>` or `->` keeps those characters through the mask, so both
+  hosts agree there. Observed by running the adapted rules inside
+  markdownlint 0.42.1; not pinned by a test.
 - MD012 under `maximum: 0`: markdownlint 0.42.1 throws on a file that is
   all front matter with no final line break (`front-matter-no-crlf.md`,
   LF and CRLF, 2 inputs). Its content is one empty line numbered one past
@@ -351,10 +473,13 @@ plain synchronous function; no logging, no metrics.
   first, as string-width does.
 
 - `lintDocument` cannot know the dialect a document was parsed with:
-  `MarkdownDocument` does not record it. When the given parse is not
-  already markdownlint's reading, the source is re-read with
-  `options.dialect` (default gfm), so a caller who parsed as commonmark
-  passes `dialect: "commonmark"`.
+  `MarkdownDocument` does not record it, so it trusts `options.dialect`
+  (default gfm) to match the parse on both of its paths. When the given
+  parse is not already markdownlint's reading, the source is re-read with
+  `options.dialect`; when it is, the parse is reused and the option is never
+  checked against it. A caller who parsed as commonmark passes `dialect:
+  "commonmark"`; one who omits it gets a gfm re-read on the first path and
+  their own commonmark tree on the second.
 
 [^issue-1030]: <https://github.com/spencerbeggs/effected/issues/1030>
 [^markdownlint-types]: markdownlint's `lib/markdownlint.d.mts`, checked against the markdownlint 0.42 that markdownlint-cli2 0.24 runs.
