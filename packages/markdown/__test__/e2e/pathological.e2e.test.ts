@@ -52,6 +52,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { parseBlocks } from "../../src/internal/blockParser.js";
 import { isGuardExceeded } from "../../src/internal/carriers.js";
+import { Markdown } from "../../src/Markdown.js";
 import { renderHtml } from "./support/htmlWriter.js";
 import { PATHOLOGICAL_CASES } from "./support/pathological/cases.js";
 
@@ -298,6 +299,41 @@ describe("pathological inputs", () => {
 				8,
 				`4x the input cost ${ratio.toFixed(1)}x the CPU time (${small.toFixed(1)}ms -> ${large.toFixed(1)}ms); ` +
 					"linear is ~4x, the per-call node walk was ~16x",
+			);
+		},
+		8000 * 40 + 5000,
+	);
+
+	// The linearity guard for one long paragraph of inline nodes, two paths of it. Each node's position maps its
+	// index in the paragraph's content back to the source through the paragraph's segments, one per line, and a scan
+	// from the first segment cost O(lines) per node. And each link's emphasis pass walked the delimiter stack from its
+	// top for the first delimiter above the link's opener, passing it when there was none and running to the stack's
+	// base, every earlier line's emphasis delimiters still open there. Before both fixes 4x the lines cost 14.7x here
+	// under coverage (61/212/727ms at 4k/8k/16k lines uninstrumented for the first path alone). Same clock, sampling
+	// and threshold as the guard above.
+	it(
+		"a long paragraph of inline nodes scales linearly",
+		() => {
+			const timeAt = (lines: number): number => {
+				const input = "*a* [b](/u) c\n".repeat(lines);
+				let best = Number.POSITIVE_INFINITY;
+				for (let pass = 0; pass < 5; pass += 1) {
+					const started = cpuNow();
+					Markdown.parseResult(input);
+					best = Math.min(best, cpuNow() - started);
+				}
+				return best;
+			};
+
+			timeAt(1000);
+			const small = timeAt(4000);
+			const large = timeAt(16000);
+			const ratio = large / Math.max(small, 1);
+			assert.isBelow(
+				ratio,
+				8,
+				`4x the input cost ${ratio.toFixed(1)}x the CPU time (${small.toFixed(1)}ms -> ${large.toFixed(1)}ms); ` +
+					"linear is ~4x, the quadratic paths were ~15x",
 			);
 		},
 		8000 * 40 + 5000,
