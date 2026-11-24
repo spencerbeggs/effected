@@ -43,6 +43,31 @@ const readings = [
 	{ name: "emphasis across an html close tag", source: "<b>_x a@b.co</b> y_ and _x <b>_ a@b.co</b> y_\n" },
 ];
 
+const emphasisAcrossTags = [
+	// markdownlint reports, the kit does not: the `_` after the address's trailing `.` opens micromark emphasis that
+	// pairs with a later `_` across the close tag, so the open tag finds no close.
+	{ name: "diverges: a later underscore after the close tag", source: "<i>_a@b.co._</i> x_\n" },
+	{ name: "diverges: a later address after the close tag", source: "<b>_a@b.co._</b> _a@b.co._\n" },
+	// The kit reports, markdownlint does not: the kit's emphasis, opened by the run micromark gave the address, pairs
+	// with a `_` after the close tag, so the close tag is no sibling of the open one.
+	{ name: "diverges: an underscore right after the close tag", source: "<b>_a@b.co</b>_\n" },
+	{ name: "diverges: another tag name", source: "<span>_a@b.co</span>_ x\n" },
+	{ name: "diverges: a double underscore run", source: "<b>__a@b.co</b>__\n" },
+	{ name: "diverges: an underscore later on the line", source: "<b>_a@b.co</b> y_\n" },
+	{ name: "diverges: a trailing dot before the close tag", source: "<b>_a@b.co.</b> x_\n" },
+	{ name: "diverges: a second element after", source: "<b>_a@b.co</b>_ <b>c@d.ef</b>\n" },
+	// Agrees: an asterisk is no address character, an underscore not right before the address leaves it a delimiter
+	// in both, a URL or www literal takes no underscore, and with no later underscore nothing pairs.
+	{ name: "asterisk run", source: "<b>*a@b.co</b>* and <b>_a@b.co</b>*\n" },
+	{ name: "underscore before a word", source: "<b>_x a@b.co</b>_\n" },
+	{ name: "underscore inside the address", source: "<b>x_a@b.co</b>_ and <b>a@b.co_</b>_\n" },
+	{ name: "URL after the underscore", source: "<b>_https://a.co</b>_\n" },
+	{ name: "www after the underscore", source: "<b>_www.a.co</b>_\n" },
+	{ name: "no later underscore", source: "<b>_a@b.co._</b>\n" },
+	{ name: "asterisk later", source: "<b>_a@b.co._</b> x*\n" },
+	{ name: "underscore before the open tag", source: "_<b>a@b.co_</b> and _a@b.co <b>c@d.ef_</b>\n" },
+];
+
 const run = runRule(MD034);
 
 describe("MD034 no-bare-urls", () => {
@@ -72,6 +97,24 @@ describe("MD034 no-bare-urls", () => {
 		DIFFERENTIAL_TIMEOUT,
 	);
 
+	// The class of the pinned divergence above, both ways: micromark's address consumes the `_` run before it, so its
+	// emphasis pairs differently from the kit's, and with it which inline HTML tags are siblings for markdownlint's
+	// tag pairing. Only an address does it (a URL or `www.` literal takes no `_`), and only a `_` run (`*` is no
+	// address character).
+	it(
+		"pins the emphasis-pairing class across inline HTML in both directions",
+		() => {
+			const result = differential(MD034, { extra: emphasisAcrossTags });
+			assert.deepStrictEqual(
+				result.divergences.map((divergence) => divergence.fixture),
+				emphasisAcrossTags.filter((input) => input.name.startsWith("diverges:")).map((input) => input.name),
+			);
+			assert.lengthOf(result.divergences, 8);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_EMPHASIS_ACROSS_TAGS);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
 	it("reads markdownlint's address that takes an emphasis opener inside an html element as the kit's emphasis", () => {
 		const findings = run("<b>_a@b.co._</b> x_\n");
 		assert.deepStrictEqual(findings, []);
@@ -96,6 +139,9 @@ describe("MD034 no-bare-urls", () => {
 
 // markdownlint's MD034 findings over the corpus (LF and CRLF) and the grids.
 const ORACLE_FINDINGS_DEFAULT = 333;
+
+// markdownlint's MD034 findings over the corpus (LF and CRLF) and the emphasis-pairing shapes.
+const ORACLE_FINDINGS_EMPHASIS_ACROSS_TAGS = 102;
 
 // markdownlint's MD034 findings over the corpus (LF and CRLF), the address and math-bracket grids and the readings.
 const ORACLE_FINDINGS_READINGS = 384;
