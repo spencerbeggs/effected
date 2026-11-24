@@ -6,17 +6,17 @@
 
 import type { List, MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
-import { codeNodes, fencedInterior } from "../internal/code-blocks.js";
+import { codeNodes, fencedInterior, indentedEndLine } from "../internal/code-blocks.js";
 import { addRange, firstContentLine } from "../internal/lines.js";
 import { flagSetting, numberSetting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
-// The lines markdownlint leaves to the code: an indented block's every line,
+// The lines markdownlint leaves to the code: an indented block's every line (as micromark's token spans them),
 // and a fenced block's lines between its fences.
 const codeLines = (context: Lint.LintContext): Set<number> => {
 	const lines = new Set<number>();
 	for (const node of codeNodes(context)) {
-		if (node.fenceChar === undefined) addRange(lines, node.position.start.line, node.position.end.line);
+		if (node.fenceChar === undefined) addRange(lines, node.position.start.line, indentedEndLine(context, node));
 		else {
 			const interior = fencedInterior(context, node);
 			addRange(lines, interior.start, interior.end);

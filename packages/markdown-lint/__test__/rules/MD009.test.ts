@@ -12,7 +12,7 @@ import {
 	runRule,
 	settingsDifferential,
 } from "../helpers/differential.js";
-import { unclosedFenceEnds } from "../helpers/link-grid.js";
+import { indentedCodeTails, unclosedFenceEnds } from "../helpers/link-grid.js";
 
 const extra = [
 	{ name: "mixed line endings", source: "a  \r\nb   \nc \r\nd\n" },
@@ -129,6 +129,17 @@ describe("MD009 no-trailing-spaces", () => {
 		},
 		DIFFERENTIAL_TIMEOUT,
 	);
+
+	// Whitespace-only lines after an indented code block, which micromark's token takes in from four columns.
+	it(
+		"agrees with markdownlint on whitespace-only lines after indented code",
+		() => {
+			const result = differential(MD009, { extra: indentedCodeTails });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_CODE_TAILS);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD009 findings over the corpus (LF and CRLF) and the extras.
@@ -136,3 +147,6 @@ const ORACLE_FINDINGS_DEFAULT = 190;
 
 // markdownlint's MD009 findings over the corpus (LF and CRLF) and the unclosed fences ending the source.
 const ORACLE_FINDINGS_UNCLOSED = 178;
+
+// markdownlint's MD009 findings over the corpus (LF and CRLF) and the lines after indented code.
+const ORACLE_FINDINGS_CODE_TAILS = 178;

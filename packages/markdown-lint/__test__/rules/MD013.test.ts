@@ -11,6 +11,7 @@ import {
 	runRule,
 	settingsDifferential,
 } from "../helpers/differential.js";
+import { indentedCodeTails } from "../helpers/link-grid.js";
 
 const long = "word ".repeat(18).trim();
 const extra = [
@@ -240,6 +241,17 @@ describe("MD013 line-length", () => {
 		assert.deepStrictEqual(finding?.range, Option.some([41, 52] as const));
 		assert.isTrue(Option.isNone(finding?.fixInfo ?? Option.none()));
 	});
+
+	// Whitespace-only lines after an indented code block, which micromark's token takes in from four columns.
+	it(
+		"agrees with markdownlint on whitespace-only lines after indented code",
+		() => {
+			const result = differential(MD013, { extra: indentedCodeTails });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_CODE_TAILS);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD013 findings over the corpus (LF and CRLF) and the extras.
@@ -247,3 +259,6 @@ const ORACLE_FINDINGS_DEFAULT = 165;
 
 // The inputs on which a fractional limit's finding differs in its range (see the test above).
 const FRACTIONAL_LIMIT_DIVERGENCES = 29;
+
+// markdownlint's MD013 findings over the corpus (LF and CRLF) and the lines after indented code.
+const ORACLE_FINDINGS_CODE_TAILS = 150;

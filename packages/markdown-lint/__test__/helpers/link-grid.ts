@@ -86,3 +86,17 @@ export const wrappedLinkEnds: ReadonlyArray<import("./differential.js").Differen
 	{ name: "image with a wrapped title", source: '- ![a](/u\n  "t")\n\ntext\n' },
 	{ name: "wrapped title, then a line", source: '- [a](/u\n  "t")\ntext\n' },
 ];
+
+// Whitespace-only lines after an indented code block: micromark's `codeIndented` token takes in each of four columns
+// or more, and the blank lines before one, where the kit's node ends at its last line of text.
+export const indentedCodeTails: ReadonlyArray<import("./differential.js").DifferentialInput> = [
+	{ name: "four spaces after", source: "# H\n\n    code\n    \n# G\n" },
+	{ name: "two spaces after", source: "# H\n\n    code\n  \n# G\n" },
+	{ name: "a tab after", source: "# H\n\n    code\n\t\n# G\n" },
+	{ name: "six spaces after", source: "# H\n\n    code\n      \n# G\n" },
+	{ name: "blank, then four spaces", source: "# H\n\n    code\n\n    \n# G\n" },
+	{ name: "two runs", source: "# H\n\n    code\n    \n    \n\n\n# G\n" },
+	{ name: "in a list item", source: "- a\n\n      code\n      \n- b\n" },
+	{ name: "in a blockquote", source: ">     code\n>     \n> text\n" },
+	{ name: "at the end", source: "    code\n    \n    " },
+];

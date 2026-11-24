@@ -13,6 +13,7 @@ import {
 	settingsAppliedTextDivergences,
 	settingsDifferential,
 } from "../helpers/differential.js";
+import { indentedCodeTails } from "../helpers/link-grid.js";
 import { directiveBlockGrid, directiveListEnds } from "../helpers/table-grid.js";
 
 const extra = [
@@ -170,6 +171,17 @@ describe("MD012 no-multiple-blanks", () => {
 		},
 		DIFFERENTIAL_TIMEOUT,
 	);
+
+	// Whitespace-only lines after an indented code block, which micromark's token takes in from four columns.
+	it(
+		"agrees with markdownlint on whitespace-only lines after indented code",
+		() => {
+			const result = differential(MD012, { extra: indentedCodeTails });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_CODE_TAILS);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD012 findings over the corpus (LF and CRLF) and the extras.
@@ -180,3 +192,6 @@ const NEGATIVE_MAXIMUM_DIVERGENCES = 16;
 
 // markdownlint's MD012 findings over the corpus (LF and CRLF) and the blocks beside directive lines.
 const ORACLE_FINDINGS_DIRECTIVE_BLOCKS = 44;
+
+// markdownlint's MD012 findings over the corpus (LF and CRLF) and the lines after indented code.
+const ORACLE_FINDINGS_CODE_TAILS = 45;

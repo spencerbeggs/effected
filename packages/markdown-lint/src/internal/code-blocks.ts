@@ -48,6 +48,33 @@ export const fencedEndLine = (context: LintContext, node: Code): number => {
 	return quoted ? end : next;
 };
 
+// The columns of a line's leading whitespace, a tab advancing to the next multiple of four.
+const indentColumns = (text: string): number => {
+	let column = 0;
+	for (const char of text) {
+		if (char === " ") column++;
+		else if (char === "\t") column += 4 - (column % 4);
+		else break;
+	}
+	return column;
+};
+
+/**
+ * The 1-based line micromark's `codeIndented` token ends on. The kit's node ends on its last line of text; micromark
+ * takes in each following whitespace-only line of four columns or more past its containers (a further line's prefix
+ * of four columns is all it asks), and the blank lines before one, up to the first line with text or a lazy line.
+ * @internal
+ */
+export const indentedEndLine = (context: LintContext, node: Code): number => {
+	let end = node.position.end.line;
+	for (let lineNumber = end + 1; lineNumber <= context.lines.length; lineNumber++) {
+		const content = contentInContainers(context, lineNumber);
+		if (content === undefined || content.trim() !== "") break;
+		if (indentColumns(content) >= 4) end = lineNumber;
+	}
+	return end;
+};
+
 /**
  * The lines between a fenced code block's fences, as micromark's
  * `codeFenced` token gives them: `startLine + 1` to `endLine - 1`.
@@ -64,14 +91,14 @@ export const codeNodes = (context: LintContext): ReadonlyArray<Code> =>
 
 /**
  * Every line of every code block, fences included, as micromark's
- * `codeFenced` and `codeIndented` tokens span them. Computed once per
+ * `codeFenced` and `codeIndented` tokens span them (see `indentedEndLine`). Computed once per
  * reading and shared: copy it before adding to it.
  * @internal
  */
 export const codeBlockLines: (context: LintContext) => ReadonlySet<number> = perReading((context) => {
 	const lines = new Set<number>();
 	for (const node of codeNodes(context)) {
-		const end = node.fenceChar === undefined ? node.position.end.line : fencedEndLine(context, node);
+		const end = node.fenceChar === undefined ? indentedEndLine(context, node) : fencedEndLine(context, node);
 		addRange(lines, node.position.start.line, end);
 	}
 	return lines;
