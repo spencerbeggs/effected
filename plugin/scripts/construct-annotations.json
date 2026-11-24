@@ -1018,6 +1018,7 @@
 		"MD048": "code-fence-style, consistent code fence style, backtick or tilde",
 		"MD049": "emphasis-style, consistent emphasis marker, asterisk or underscore",
 		"MD050": "strong-style, consistent strong emphasis marker, asterisk or underscore",
+		"MD059": "descriptive-link-text, generic link text such as click here, prohibited texts",
 		"MD060": "table-column-style, table column style, pipe alignment, aligned compact tight",
 		"MarkdownLint": "lint markdown programmatically without markdownlint, run rules over a string or parsed document",
 		"MarkdownlintAdapter": "run a kit lint rule inside markdownlint-cli2 or vs code as a custom rule",

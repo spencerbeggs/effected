@@ -420,7 +420,8 @@ export const codeSpanParts = (context: LintContext, code: MarkdownNode): ReturnT
 /**
  * An inline node or token read from source the kit tree does not carry it
  * in: its type (`emphasis`, `strong`, `data`, `codeData` for a code span's
- * data run, `linkLabel` for a link's bracketed label, or `link` for the whole
+ * data run, `linkLabel` for a link's bracketed label, `linkLabelCoded` for
+ * one holding a code span or inline HTML directly, or `link` for the whole
  * link) and source span, on one line for `data` and `codeData`.
  * @internal
  */
@@ -502,6 +503,10 @@ const readLabel = (
 		const labelClose = labelEnd(source, node.position.start.offset, node.position.end.offset);
 		mapped("linkLabel", node.position.start.offset, labelClose + 1);
 		mapped("link", node.position.start.offset, node.position.end.offset);
+		// A label holding a code span or inline HTML directly, which MD059 passes over.
+		if (childrenOf(node).some((child) => child.type === "inlineCode" || child.type === "html")) {
+			mapped("linkLabelCoded", node.position.start.offset, labelClose + 1);
+		}
 	}
 	for (const node of document.findAll(
 		(each) => each.type === "emphasis" || each.type === "strong",
