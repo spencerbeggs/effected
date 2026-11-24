@@ -922,6 +922,19 @@ describe("hostility: GlobSet and kept numeric ranges", () => {
 		}
 	}, 30_000);
 
+	it("checks a kept range's extglob frames in one pass over its portion", () => {
+		// 64 alternatives, each 15,000 `@(` frames deep and holding 8,000 kept ranges (58,030 characters): the
+		// extglob check at each range is constant time, so the compile reaches its typed failure as fast as before
+		// the check existed (about 0.5 s). Rescanning the open frames at every range took 5.8 s.
+		const pattern = "{a,b}".repeat(6) + "@(".repeat(15_000) + "{0..99}".repeat(4000);
+		const t = cpuNow();
+		const compiled = GlobPattern.compileResult(pattern);
+		const spent = cpuNow() - t;
+		assert.isTrue(Result.isFailure(compiled));
+		if (Result.isFailure(compiled)) assert.strictEqual(compiled.failure.reason, "CompileBudgetExceeded");
+		assert.isBelow(spent, 2000);
+	}, 30_000);
+
 	it("compiles or fails typed, and then matches without throwing, over hostile range mixes", () => {
 		const pieces = [
 			"{$,a}",

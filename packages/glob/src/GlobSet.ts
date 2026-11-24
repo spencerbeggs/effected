@@ -7,7 +7,8 @@
 // own, so a set means the same thing everywhere. Braced patterns classify per
 // expanded alternative, so {tools/cli,packages/*} contributes a literal AND a
 // wildcard; a numeric range of 100 or more values stays one alternative, a
-// wildcard, as minimatch 11 keeps it one portion.
+// wildcard, as minimatch 11 keeps it one portion (outside a repeating or
+// negating extglob, where it expands).
 
 import { Effect, Result, Schema } from "effect";
 import type { GlobPattern } from "./GlobPattern.js";
@@ -190,7 +191,8 @@ export class GlobSet extends Schema.Class<GlobSet>("GlobSet")(
 	// classifies eagerly and hands its result over. Classification is per
 	// expanded alternative: brace-expand each include under default options and
 	// route each alternative by its own magic. A numeric range of 100 or more
-	// values is not expanded (minimatch 11 matches it as one portion), so its
+	// values is not expanded (minimatch 11 matches it as one portion, outside a
+	// repeating or negating extglob), so its
 	// alternative is a wildcard, and an include whose alternatives can not be
 	// written alone as text stays one wildcard.
 	//

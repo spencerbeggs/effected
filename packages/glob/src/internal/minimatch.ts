@@ -164,19 +164,27 @@ interface MarkedExpansion {
 // as the union of one pattern per value: `*({1..100})` would match `510` as `5`
 // then `10`, and `!({1..100})` would not match `5`, where every expanded
 // pattern but `!(5)` does. `@(...)` and `?(...)` pick one value at most.
+//
+// 11.0.9 asks `stack.some(...)` at every mark, which rescans the open frames:
+// marks × depth per portion, at compile, before any nesting guard (64 copies of
+// 15,000 `@(` and 8,000 marks took 5.8 s). The count of open `!`, `*` and `+`
+// frames beside the stack gives the same answer in constant time per mark.
 const inRepeatOrNegExt = (portion: string, mark: string): boolean => {
 	const stack: Array<string> = [];
+	let repeatOrNeg = 0;
 	for (let i = 0; i < portion.length; i++) {
 		const c = portion.charAt(i);
 		if (c === "\\") {
 			i++;
 		} else if (c === mark) {
-			if (stack.some((t) => t !== "@" && t !== "?")) return true;
+			if (repeatOrNeg > 0) return true;
 		} else if (portion.charAt(i + 1) === "(" && "!?+*@".includes(c)) {
 			stack.push(c);
+			if (c !== "@" && c !== "?") repeatOrNeg++;
 			i++;
 		} else if (c === ")") {
-			stack.pop();
+			const closed = stack.pop();
+			if (closed !== undefined && closed !== "@" && closed !== "?") repeatOrNeg--;
 		}
 	}
 	return false;
@@ -224,7 +232,8 @@ const expandMarked = (pattern: string, options: EngineOptions): MarkedExpansion 
  * the caller keeps the pattern whole. Expansion unescapes braces (`\{a,b}`
  * makes `{a,b}`), and an alternative is not expanded again in the whole, so
  * each brace it still has is escaped. A numeric range of 100 or more values
- * stays one `{lo..hi}` portion, as minimatch 11.0.8 keeps it. After a `$` or
+ * stays one `{lo..hi}` portion, as minimatch 11 keeps it, unless it is inside
+ * a `!(...)`, `*(...)` or `+(...)` extglob, where it expands. After a `$` or
  * a literal (escaped) backslash, `{lo..hi}` would not read as a range, so the
  * answer is undefined.
  *
@@ -265,8 +274,8 @@ export const braceAlternatives = (pattern: string, options: EngineOptions = {}):
 /**
  * How many alternatives a compile of `pattern` matches: the distinct results
  * of its brace expansion, after a leading negation is read, with a numeric
- * range of 100 or more values kept whole as one (as minimatch 11.0.8 keeps
- * it). Zero for a comment or an empty pattern, which expand to nothing. It is
+ * range of 100 or more values kept whole as one (as minimatch 11 keeps it),
+ * except inside a `!(...)`, `*(...)` or `+(...)` extglob, where it expands. Zero for a comment or an empty pattern, which expand to nothing. It is
  * the compile's own first two steps, so a count it returns is exact, and it
  * builds no portion: the work is the expansion's, bounded by its own guards,
  * whose trips it throws as a compile does. `braceExpandMax` caps the expansion

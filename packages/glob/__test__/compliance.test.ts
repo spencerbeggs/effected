@@ -1,7 +1,7 @@
 // Task 4, the engine compliance gate (part 1): a deterministic behavioral
 // fixture table across every dialect feature category, where EVERY row asserts
 // both the expected boolean AND agreement with the real upstream minimatch
-// 11.0.8 (the exact-pinned oracle devDependency); plus oracle property tests
+// 11.0.9 (the exact-pinned oracle devDependency); plus oracle property tests
 // sampling the full dialect and option surface.
 //
 // Rule of the gate: if the vendored engine disagrees with the oracle, fix the
@@ -288,7 +288,11 @@ describe("engine compliance: behavioral table", () => {
 			["*({1..100})", "5555", true],
 			["+({1..100})", "510", false],
 			["+({1..100})", "1010", true],
+			// a leading `!` negates the whole pattern, so this one is no extglob; the
+			// one after a literal is, and expands: every `x!(N)` but `x!(5)` takes `x5`
 			["!({1..100})", "5", true],
+			["x!({1..100})", "x5", true],
+			["x!({1..100})", "x", true],
 			["x/!(a{1..100})/y", "x/a5/y", true],
 			// @(...) and ?(...) pick one value at most, so the range stays marked
 			["@({1..100})", "510", false],
@@ -322,8 +326,39 @@ describe("engine compliance: behavioral table", () => {
 				);
 			}
 		}
+		// under noext a `*(` is a star and a literal `(`, no extglob, so the range
+		// stays one portion
+		const noext: EngineOptions = { ...opts, noext: true };
+		for (const [candidate, expected] of [
+			["510", false],
+			["x(50)", true],
+			["*(50)", true],
+		] as const) {
+			assert.strictEqual(new Minimatch("*({1..100})", noext).match(candidate), expected, `noext vs ${candidate}`);
+			assert.strictEqual(
+				oracle(candidate, "*({1..100})", oracleOpts(noext)),
+				expected,
+				`oracle: noext vs ${candidate}`,
+			);
+		}
 		// an unsafe integer end is expanded, so past the budget it fails typed
 		assert.throws(() => new Minimatch("{0..9007199254740993}", opts), GuardExceeded);
+		// so is a range inside a repeating or negating extglob, past the budget,
+		// where 11 truncates it at 100,000 values (it matches 5, not 150000)
+		for (const pattern of ["*({0..200000})"]) {
+			try {
+				new Minimatch(pattern, opts);
+				assert.fail(`${pattern} compiled`);
+			} catch (e) {
+				assert.instanceOf(e, GuardExceeded, pattern);
+				assert.strictEqual((e as GuardExceeded).reason, "ExpansionBudgetExceeded", pattern);
+			}
+		}
+		assert.isTrue(oracle("5", "*({0..200000})", oracleOpts(opts)));
+		assert.isFalse(oracle("150000", "*({0..200000})", oracleOpts(opts)));
+		// 100,000 values is within the budget, so that one still compiles
+		assert.isTrue(new Minimatch("+({0..99999})", opts).match("55"));
+		assert.isTrue(oracle("55", "+({0..99999})", oracleOpts(opts)));
 	});
 });
 
