@@ -6,16 +6,10 @@
 
 import type { Heading } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
-import {
-	contentBlocks,
-	errorContext,
-	frontMatterHasTitle,
-	isBoolean,
-	isHtmlFlowComment,
-	isNumber,
-	lineStarts,
-	setting,
-} from "../internal/rule-helpers.js";
+import { contentBlocks, frontMatterHasTitle } from "../internal/headings.js";
+import { isHtmlFlowComment } from "../internal/html-text.js";
+import { errorContext, lineStarts } from "../internal/lines.js";
+import { isBoolean, isNumber, setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 const headingTagName = /^h[1-6]$/;

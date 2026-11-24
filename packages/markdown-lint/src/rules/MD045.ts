@@ -7,15 +7,10 @@
 // any inside inline or block math; `htmlTextTokens` gives the second.
 
 import type * as Lint from "@effected/markdown-lint";
-import {
-	htmlTagInfo,
-	htmlTextRange,
-	htmlTextTokens,
-	inSpans,
-	lineStarts,
-	mathFlowLines,
-	mathTextSpans,
-} from "../internal/rule-helpers.js";
+import { htmlTagInfo, htmlTextRange, htmlTextTokens } from "../internal/html-text.js";
+import { lineStarts } from "../internal/lines.js";
+import { mathFlowLines } from "../internal/math-flow.js";
+import { inSpans, mathTextSpans } from "../internal/math-text.js";
 import { LintRule } from "../LintRule.js";
 
 // markdownlint's `getHtmlAttributeRe("alt")` and `getHtmlAttributeRe("aria-hidden")`.

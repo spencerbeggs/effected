@@ -8,7 +8,9 @@
 
 import type { Code } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
-import { codeNodes, errorContext, inMathBlock, lineStarts, mathFlowBlocks } from "../internal/rule-helpers.js";
+import { codeNodes } from "../internal/code-blocks.js";
+import { errorContext, lineStarts } from "../internal/lines.js";
+import { inMathBlock, mathFlowBlocks } from "../internal/math-flow.js";
 import { LintRule } from "../LintRule.js";
 
 // An opening fence line from its fence on: the fence, then the info word and the meta after it.

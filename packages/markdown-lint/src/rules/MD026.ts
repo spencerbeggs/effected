@@ -4,7 +4,8 @@
 
 import type { MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
-import { headingNodes, isString, setting } from "../internal/rule-helpers.js";
+import { headingNodes } from "../internal/headings.js";
+import { isString, setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 const allPunctuationNoQuestion = ".,;:!。，；：！";

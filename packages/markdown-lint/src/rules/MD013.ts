@@ -5,16 +5,10 @@
 
 import type { MarkdownNode, Paragraph } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
-import {
-	codeBlockLines,
-	firstContentLine,
-	headingNodes,
-	isBoolean,
-	isNumber,
-	lineStarts,
-	nodeLines,
-	setting,
-} from "../internal/rule-helpers.js";
+import { codeBlockLines } from "../internal/code-blocks.js";
+import { headingNodes } from "../internal/headings.js";
+import { firstContentLine, lineStarts, nodeLines } from "../internal/lines.js";
+import { isBoolean, isNumber, setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 // A line that cannot wrap: optional heading or blockquote markers and space, then one run of non-space.

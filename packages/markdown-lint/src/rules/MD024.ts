@@ -3,7 +3,9 @@
 // direct children's source spans (micromark's heading text token children).
 
 import type * as Lint from "@effected/markdown-lint";
-import { errorContext, headingNodes, headingText, isBoolean, setting } from "../internal/rule-helpers.js";
+import { headingNodes, headingText } from "../internal/headings.js";
+import { errorContext } from "../internal/lines.js";
+import { isBoolean, setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 /**

@@ -8,7 +8,9 @@
 // whitespace. Widths are string-width's, as markdownlint measures them.
 
 import type * as Lint from "@effected/markdown-lint";
-import { contentInContainers, lineStarts, mathFlowLines } from "../internal/rule-helpers.js";
+import { contentInContainers } from "../internal/containers.js";
+import { lineStarts } from "../internal/lines.js";
+import { mathFlowLines } from "../internal/math-flow.js";
 import { stringWidth } from "../internal/string-width.js";
 import { LintRule } from "../LintRule.js";
 

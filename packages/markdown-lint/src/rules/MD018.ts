@@ -4,15 +4,10 @@
 // blocks and math blocks.
 
 import type * as Lint from "@effected/markdown-lint";
-import {
-	codeBlockLines,
-	errorContext,
-	firstContentLine,
-	flowNodes,
-	lineStarts,
-	mathFlowLines,
-	nodeLines,
-} from "../internal/rule-helpers.js";
+import { codeBlockLines } from "../internal/code-blocks.js";
+import { flowNodes } from "../internal/containers.js";
+import { errorContext, firstContentLine, lineStarts, nodeLines } from "../internal/lines.js";
+import { mathFlowLines } from "../internal/math-flow.js";
 import { LintRule } from "../LintRule.js";
 
 /**

@@ -7,13 +7,9 @@
 
 import type { ListItem, MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
-import {
-	errorContext,
-	flowNodesWithAncestors,
-	headingNodes,
-	itemContentColumn,
-	lineStarts,
-} from "../internal/rule-helpers.js";
+import { flowNodesWithAncestors, itemContentColumn } from "../internal/containers.js";
+import { headingNodes } from "../internal/headings.js";
+import { errorContext, lineStarts } from "../internal/lines.js";
 import { LintRule } from "../LintRule.js";
 
 /**

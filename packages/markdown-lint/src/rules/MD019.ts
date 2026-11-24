@@ -4,7 +4,8 @@
 // the heading's source span.
 
 import type * as Lint from "@effected/markdown-lint";
-import { atxParts, errorContext, headingNodes, headingStyle } from "../internal/rule-helpers.js";
+import { atxParts, headingNodes, headingStyle } from "../internal/headings.js";
+import { errorContext } from "../internal/lines.js";
 import { LintRule } from "../LintRule.js";
 
 /**

@@ -2,7 +2,7 @@
 // kit tree's headings, in document order.
 
 import type * as Lint from "@effected/markdown-lint";
-import { frontMatterHasTitle, headingNodes } from "../internal/rule-helpers.js";
+import { frontMatterHasTitle, headingNodes } from "../internal/headings.js";
 import { LintRule } from "../LintRule.js";
 
 /**

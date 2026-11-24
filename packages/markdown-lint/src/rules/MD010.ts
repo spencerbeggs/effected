@@ -4,16 +4,9 @@
 // span — and this module takes those spans from kit node positions.
 
 import type * as Lint from "@effected/markdown-lint";
-import {
-	codeNodes,
-	fencedInterior,
-	firstContentLine,
-	isBoolean,
-	isNumber,
-	isStringArray,
-	lineStarts,
-	setting,
-} from "../internal/rule-helpers.js";
+import { codeNodes, fencedInterior } from "../internal/code-blocks.js";
+import { firstContentLine, lineStarts } from "../internal/lines.js";
+import { isBoolean, isNumber, isStringArray, setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 interface Span {

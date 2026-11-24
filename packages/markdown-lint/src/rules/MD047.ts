@@ -4,7 +4,7 @@
 
 import type * as Lint from "@effected/markdown-lint";
 import { preferredLineEnding } from "../internal/line-endings.js";
-import { firstContentLine, isBlankLine, lineStarts } from "../internal/rule-helpers.js";
+import { firstContentLine, isBlankLine, lineStarts } from "../internal/lines.js";
 import { LintRule } from "../LintRule.js";
 
 /**

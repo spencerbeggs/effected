@@ -4,17 +4,10 @@
 
 import type { Link } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
-import {
-	contentBlocks,
-	errorContext,
-	frontMatterHasTitle,
-	headingNodes,
-	headingStyle,
-	headingText,
-	isHtmlFlowComment,
-	isNumber,
-	setting,
-} from "../internal/rule-helpers.js";
+import { contentBlocks, frontMatterHasTitle, headingNodes, headingStyle, headingText } from "../internal/headings.js";
+import { isHtmlFlowComment } from "../internal/html-text.js";
+import { errorContext } from "../internal/lines.js";
+import { isNumber, setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 /**

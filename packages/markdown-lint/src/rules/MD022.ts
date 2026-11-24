@@ -6,15 +6,10 @@
 
 import type { Heading } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
+import { headingNodes } from "../internal/headings.js";
 import { preferredLineEnding } from "../internal/line-endings.js";
-import {
-	firstContentLine,
-	headingNodes,
-	isBlankLine,
-	isBoolean,
-	lineStarts,
-	setting,
-} from "../internal/rule-helpers.js";
+import { firstContentLine, isBlankLine, lineStarts } from "../internal/lines.js";
+import { isBoolean, setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 const isLinesSetting = (value: unknown): value is number | ReadonlyArray<number> =>

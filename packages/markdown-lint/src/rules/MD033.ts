@@ -4,7 +4,7 @@
 // `htmlTextTokens` reads both from the kit tree.
 
 import type * as Lint from "@effected/markdown-lint";
-import { htmlTagInfo, htmlTextRange, htmlTextTokens } from "../internal/rule-helpers.js";
+import { htmlTagInfo, htmlTextRange, htmlTextTokens } from "../internal/html-text.js";
 import { LintRule } from "../LintRule.js";
 
 // markdownlint's `toLowerCaseStringArray`: an array's items as lowercase strings, or nothing.

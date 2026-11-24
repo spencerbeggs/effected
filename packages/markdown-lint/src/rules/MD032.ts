@@ -7,19 +7,11 @@
 
 import type { Code, Heading, List, MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
+import { blockQuotePrefixText, flowNodesWithAncestors, isLazyLine } from "../internal/containers.js";
 import { preferredLineEnding } from "../internal/line-endings.js";
-import type { LineRange } from "../internal/rule-helpers.js";
-import {
-	blockQuotePrefixText,
-	contentLine,
-	errorContext,
-	flowNodesWithAncestors,
-	inMathBlock,
-	isBlankLine,
-	isLazyLine,
-	lineStarts,
-	mathFlowBlocks,
-} from "../internal/rule-helpers.js";
+import type { LineRange } from "../internal/lines.js";
+import { contentLine, errorContext, isBlankLine, lineStarts } from "../internal/lines.js";
+import { inMathBlock, mathFlowBlocks } from "../internal/math-flow.js";
 import { LintRule } from "../LintRule.js";
 
 // The line a node's last content token ends on: the last line holding its text, not a line break or the blank

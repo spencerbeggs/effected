@@ -4,7 +4,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { Code, Html, MarkdownNode } from "@effected/markdown";
 import { Option } from "effect";
-import { rereadHtmlBlock } from "../../src/internal/rule-helpers.js";
+import { rereadHtmlBlock } from "../../src/internal/html-reread.js";
 import { MarkdownLint } from "../../src/MarkdownLint.js";
 import { MD033 } from "../../src/rules/MD033.js";
 import { differential } from "../helpers/differential.js";

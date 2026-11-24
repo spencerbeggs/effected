@@ -6,7 +6,8 @@
 
 import type { List, MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
-import { inMathBlock, lineStarts, mathFlowBlocks } from "../internal/rule-helpers.js";
+import { lineStarts } from "../internal/lines.js";
+import { inMathBlock, mathFlowBlocks } from "../internal/math-flow.js";
 import { LintRule } from "../LintRule.js";
 
 type Style = "asterisk" | "dash" | "plus";

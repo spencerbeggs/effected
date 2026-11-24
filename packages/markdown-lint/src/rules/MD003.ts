@@ -4,7 +4,8 @@
 // `atxHeadingSequence`).
 
 import type * as Lint from "@effected/markdown-lint";
-import { headingNodes, headingStyle, isString, setting } from "../internal/rule-helpers.js";
+import { headingNodes, headingStyle } from "../internal/headings.js";
+import { isString, setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 /**

@@ -6,16 +6,9 @@
 
 import type { List, MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
-import {
-	addRange,
-	codeNodes,
-	fencedInterior,
-	firstContentLine,
-	isBoolean,
-	isNumber,
-	lineStarts,
-	setting,
-} from "../internal/rule-helpers.js";
+import { codeNodes, fencedInterior } from "../internal/code-blocks.js";
+import { addRange, firstContentLine, lineStarts } from "../internal/lines.js";
+import { isBoolean, isNumber, setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 // The lines markdownlint leaves to the code: an indented block's every line,

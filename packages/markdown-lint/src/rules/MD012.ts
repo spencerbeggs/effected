@@ -3,7 +3,9 @@
 // span, fences included; this module takes those spans from kit code nodes.
 
 import type * as Lint from "@effected/markdown-lint";
-import { codeBlockLines, firstContentLine, isNumber, lineStarts, setting } from "../internal/rule-helpers.js";
+import { codeBlockLines } from "../internal/code-blocks.js";
+import { firstContentLine, lineStarts } from "../internal/lines.js";
+import { isNumber, setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 // The offset the text of the line before `lineNumber` ends at, before its terminator.
