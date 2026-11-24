@@ -61,8 +61,13 @@ const listedExports = (dts: string): ReadonlySet<string> =>
 		),
 	);
 
-/** A Schema class's synthesized base: unexported by design, and suppressed by its own `_base` pattern. */
-const isSchemaBase = (name: string | undefined): boolean => name?.endsWith("_base") ?? false;
+/**
+ * The Schema class bases a rolled-up `.d.ts` declares: a `*_base` const that an exported class
+ * `extends`. Unexported by design, and suppressed by effected.toml's own `_base` pattern; any other
+ * unexported declaration, a stray `*_base` included, still fails the gate.
+ */
+const schemaBases = (dts: string): ReadonlySet<string> =>
+	new Set([...dts.matchAll(/\bextends\s+([A-Za-z_$][\w$]*_base)\b/g)].map((match) => match[1] ?? ""));
 
 /** A top-level declaration in a rolled-up `.d.ts`: whether the line exports it, and its name. */
 const TOP_LEVEL_DECLARATION =
@@ -81,11 +86,12 @@ describe("the built subpaths", () => {
 		for (const { entry, exports } of SUBPATHS) {
 			const dts = readFileSync(join(BUILT, `${entry}.d.ts`), "utf8");
 			const listed = listedExports(dts);
+			const bases = schemaBases(dts);
 			// Every top-level declaration is exported: an unexported one is what the scoped
 			// ae-forgotten-export suppression in effected.toml would otherwise hide.
 			assert.deepStrictEqual(
 				[...dts.matchAll(TOP_LEVEL_DECLARATION)]
-					.filter((match) => !isSchemaBase(match[2]))
+					.filter((match) => !bases.has(match[2] ?? ""))
 					.map((match) => [match[1] !== undefined || listed.has(match[2] ?? ""), match[2]])
 					.sort(),
 				exports.map((name) => [true, name]).sort(),

@@ -58,7 +58,8 @@ const isPlainObject = (value: unknown): value is Lint.LintConfigRecord =>
  *
  * @remarks
  * `reason` says why:
- * - `unreadable`: the file could not be read, or `resolve` was given a file outside its root
+ * - `unreadable`: the file could not be read, is not a regular file, or `resolve` was given a file
+ *   outside its root
  * - `parse`: the content is neither JSONC nor YAML, is a value other than an object (an empty
  *   document reads as `{}`), or has a non-string `extends`
  * - `extends-missing`: an `extends` target does not exist
@@ -138,6 +139,10 @@ const readOne = Effect.fnUntraced(function* (file: string) {
 		return yield* fail("unsupported", file, { detail: "JavaScript and markdownlint-cli2 config files are not read" });
 	}
 	const info = yield* fs.stat(file).pipe(Effect.catch((cause) => fail("unreadable", file, { cause })));
+	// Only a regular file has a size that bounds the read: a device or FIFO reports 0 and reads without end.
+	if (info.type !== "File") {
+		return yield* fail("unreadable", file, { detail: `not a regular file (${info.type})` });
+	}
 	if (info.size > BigInt(MAX_FILE_BYTES)) {
 		return yield* fail("too-large", file, { detail: `${info.size} bytes exceeds ${MAX_FILE_BYTES}` });
 	}

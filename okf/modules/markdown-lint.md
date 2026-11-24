@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-24T01:01:04Z
+  at: 2026-11-24T01:13:36Z
 integrity:
   generated:
-    body: c0cdd2ecdb5d8022
+    body: a86e273334b5afe6
 ---
 
 # `@effected/markdown-lint`
@@ -257,7 +257,16 @@ plain synchronous function; no logging, no metrics.
   directories and its `overrides` are not modelled. Pinned by a test.
 - `./config` parses content as JSONC (trailing commas allowed) and then as
   YAML, whatever the extension, as cli2 does, but without the TOML parser
-  cli2 tries between them.
+  cli2 tries between them: TOML content in a `.markdownlint.json` (or any
+  config) fails `parse`, where cli2 accepts it. No `.markdownlint.toml` is
+  looked for on the walk, in either. Pinned by a test.
+- `./config` detects an `extends` cycle by resolved path, lexically, without
+  following symlinks: a chain that re-enters one file through a symlink
+  alias runs to the 16-link cap and fails `extends-depth` rather than
+  `extends-cycle`.
+- `./config` refuses, as `unreadable`, a config file that is not a regular
+  file (a directory, a FIFO, a device), before reading it: a device or FIFO
+  reports size 0, so the size cap alone would not bound the read.
 - `./config` fails `parse` for a parsed value that is not an object (an
   array, a scalar), where markdownlint reads it as `{}`; an empty document
   (empty, whitespace or comments only, a bare `null` or `~`) reads as `{}`,

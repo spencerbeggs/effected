@@ -210,6 +210,53 @@ describe("MarkdownlintConfigFile.read", () => {
 		),
 	);
 
+	it.effect("refuses a file stat reports as not regular before reading it", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(MarkdownlintConfigFile.read("/c/.markdownlint.json"));
+			assert.strictEqual(error.reason, "unreadable");
+			assert.strictEqual(error.path, "/c/fifo.json");
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath(
+					{ "/c/.markdownlint.json": '{ "extends": "fifo.json" }', "/c/fifo.json": '{ "MD001": false }' },
+					{
+						// A FIFO or device reports size 0; reading one never ends, so it must not be read.
+						faults: (base) => ({
+							stat: (path) =>
+								path === "/c/fifo.json"
+									? base.stat(path).pipe(Effect.map((info) => ({ ...info, type: "FIFO" as const })))
+									: undefined,
+						}),
+					},
+				),
+			),
+		),
+	);
+
+	it.effect("checks the size before reading", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(MarkdownlintConfigFile.read("/c/big.json"));
+			assert.strictEqual(error.reason, "too-large");
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath(
+					{ "/c/big.json": " ".repeat(5 * MAX_FILE_BYTES) },
+					{ faults: { readFile: () => Effect.die("readFile reached before the size check") } },
+				),
+			),
+		),
+	);
+
+	// Named divergence: cli2 tries a TOML parser between JSONC and YAML; this
+	// package does not, so TOML content fails parse.
+	it.effect("fails parse for TOML content, which cli2 would accept", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(MarkdownlintConfigFile.read("/c/.markdownlint.json"));
+			assert.strictEqual(error.reason, "parse");
+			assert.strictEqual(error.path, "/c/.markdownlint.json");
+		}).pipe(Effect.provide(withVolume({ "/c/.markdownlint.json": "MD001 = false\n[MD013]\nline_length = 20\n" }))),
+	);
+
 	it.effect("fails unsupported for a .cjs, and for an extends naming a cli2 options file", () =>
 		Effect.gen(function* () {
 			const cjs = yield* Effect.flip(MarkdownlintConfigFile.read("/c/.markdownlint.cjs"));
@@ -336,8 +383,25 @@ describe("MarkdownlintConfigFile.resolve", () => {
 			assert.strictEqual(error.reason, "unreadable");
 			assert.strictEqual(error.path, "/elsewhere/doc.md");
 			const sibling = yield* Effect.flip(MarkdownlintConfigFile.resolve("/rx/doc.md", { root: "/r" }));
+			assert.strictEqual(sibling.reason, "unreadable");
 			assert.strictEqual(sibling.path, "/rx/doc.md");
 		}).pipe(Effect.provide(layered)),
+	);
+
+	it.effect("refuses a directory named .markdownlint.json found on the walk", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(MarkdownlintConfigFile.resolve("/r/a/doc.md", { root: "/r" }));
+			assert.strictEqual(error.reason, "unreadable");
+			assert.strictEqual(error.path, "/r/a/.markdownlint.json");
+			assert.include(error.message, "not a regular file");
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath({
+					"/r/.markdownlint.json": '{ "MD001": false }',
+					"/r/a/.markdownlint.json": MemoryFileSystem.directory(),
+				}),
+			),
+		),
 	);
 
 	it.effect("fails with the nearest file's own error rather than falling back to an ancestor", () =>
