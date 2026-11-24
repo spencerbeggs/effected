@@ -432,8 +432,37 @@ export interface InlineSpan {
 	readonly end: number;
 }
 
-// markdownlint's `normalizeLinkLabelText`.
-const normalizeLabel = (text: string): string => text.toLowerCase().trim().replace(/\s+/g, " ");
+// The parser's label key (`@effected/markdown`'s `normalizeLabelText`, which keys `MarkdownDocument.definitions`).
+const definitionKey = (label: string): string =>
+	label
+		.trim()
+		.replace(/[ \t\r\n]+/g, " ")
+		.toLowerCase()
+		.toUpperCase();
+
+/**
+ * The definitions an image label's re-parse appends, after a blank line each,
+ * so the references its own brackets name resolve as they do in the reading:
+ * one stand-in (`[label]: x`) per distinct label the document defines, keyed
+ * as the parser keys `definitions`. A definition's destination and title play
+ * no part in how the label parses, so the appended text is bounded by the
+ * label's own length whatever the definitions hold.
+ * @internal
+ */
+export const labelDefinitions = (label: string, definitions: ReadonlyMap<string, unknown>): string => {
+	if (definitions.size === 0) return "";
+	const seen = new Set<string>();
+	let named = "";
+	for (const match of label.matchAll(/\[([^[\]]*)\]/g)) {
+		const written = match[1] ?? "";
+		const key = definitionKey(written);
+		if (seen.has(key) || !definitions.has(key)) continue;
+		seen.add(key);
+		// On one line, so the stand-in is a definition and not paragraph text: the same key.
+		named += `\n\n[${written.trim().replace(/[ \t\r\n]+/g, " ")}]: x`;
+	}
+	return named;
+};
 
 // A view over a re-parsed label's text: no containers, no bare runs (a label's content is merged), its own math.
 const labelView = (document: MarkdownDocument, source: string): TokenView => ({
@@ -452,17 +481,15 @@ const readLabel = (
 	open: number,
 	close: number,
 	inMath: (offset: number) => boolean,
-	definitions: ReadonlyMap<string, string>,
+	definitions: ReadonlyMap<string, unknown>,
 	push: (span: InlineSpan) => void,
 ): void => {
 	// The label is re-parsed after its own `[`, as a paragraph: links cannot nest, so a label holding a link would not
 	// re-parse as a link's label, and the unmatched `[` keeps the label's start as micromark reads it.
-	// The document's definitions follow, after a blank line, so the label's references resolve as they do there.
-	// Only the definitions the label's own brackets name follow, so many images and definitions stay linear.
+	// A stand-in for each definition the label's own brackets name follows (see `labelDefinitions`), so its references
+	// resolve as they do in the reading and many images and definitions stay linear.
 	const label = text.slice(open + 1, close);
-	let named = "";
-	for (const match of label.matchAll(/\[([^[\]]*)\]/g)) named += definitions.get(normalizeLabel(match[1] ?? "")) ?? "";
-	const source = `[${label}${named}`;
+	const source = `[${label}${labelDefinitions(label, definitions)}`;
 	const parsed = MarkdownDocument.parseResult(source, labelOptions);
 	if (!Result.isSuccess(parsed)) return;
 	const document = parsed.success;
@@ -540,13 +567,8 @@ export const imageLabelNodes: (context: LintContext) => ReadonlyArray<InlineSpan
 		(node) => node.type === "image" || node.type === "imageReference",
 	) as ReadonlyArray<MarkdownNode>;
 	if (images.length === 0) return found;
-	// The document's definitions, as written, by normalized label, for a label's references to resolve against.
-	const definitions = new Map<string, string>();
-	for (const node of context.document.findAll("definition") as ReadonlyArray<MarkdownNode>) {
-		const start = node.position.start.offset;
-		const key = normalizeLabel(source.slice(start + 1, labelEnd(source, start, node.position.end.offset)));
-		if (!definitions.has(key)) definitions.set(key, `\n\n${source.slice(start, node.position.end.offset)}`);
-	}
+	// The document's definitions, by the parser's key, for a label's references to resolve against.
+	const definitions = context.document.definitions;
 	for (const image of images) {
 		if (!keep(image)) continue;
 		const open = image.position.start.offset + 1;

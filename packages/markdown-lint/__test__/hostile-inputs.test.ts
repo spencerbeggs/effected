@@ -32,8 +32,10 @@ import { MarkdownLint } from "../src/MarkdownLint.js";
 import { rules } from "../src/rules/all.js";
 import { MD009 } from "../src/rules/MD009.js";
 import { MD034 } from "../src/rules/MD034.js";
+import { MD049 } from "../src/rules/MD049.js";
 import { MD051 } from "../src/rules/MD051.js";
 import { MD052 } from "../src/rules/MD052.js";
+import { MD053 } from "../src/rules/MD053.js";
 import { MD054 } from "../src/rules/MD054.js";
 import { MD055 } from "../src/rules/MD055.js";
 
@@ -113,6 +115,14 @@ const reversedLinksBesideCode = (count: number): string => `# T\n\n${"`c` (a)[b]
 const imagesAndDefinitions = (count: number): string =>
 	`# T\n\n${Array.from({ length: count }, (_, index) => `![a [r${index}] *b*](i${index}.png)`).join("\n\n")}\n\n${Array.from({ length: count }, (_, index) => `[r${index}]: #`).join("\n")}\n`;
 
+// An image's label is re-parsed with the definitions it names: one label naming one definition 8,000 times, whose title
+// is 80 KB, once grew the re-parsed text past the longest string (`RangeError: Invalid string length`).
+const labelNamingOneDefinition = (uses: number, title: number): string =>
+	`# T\n\nSee ![${"[x] ".repeat(uses)}](i.png)\n\n[x]: http://e.com "${"t".repeat(title)}"\n`;
+// Many images naming one definition as long as the document: the definition's source was re-parsed per image.
+const imagesNamingOneLongDefinition = (count: number): string =>
+	`# T\n\n${"![[x]](i.png)\n\n".repeat(Math.ceil(count / 10))}[x]: http://e.com "${"t".repeat(count * 4)}"\n`;
+
 // MD034 checks each literal against the unbalanced label spans before it: one line of 20,000 bracketed addresses.
 const bracketedAddresses = (count: number): string => `# T\n\n${"[a] b@c.de ".repeat(count)}\n`;
 
@@ -182,6 +192,8 @@ const scalingShapes: ReadonlyArray<
 	["re-reads URLs after a bracket in inline math", (count) => urlsAfterMathBracket(count), MD034, {}],
 	["reads undefined references and chains", undefinedReferences, MD052, { shortcut_syntax: true }],
 	["reads alternating images and links", imagesAndLinks, MD052, { shortcut_syntax: true }],
+	["re-parses image labels naming one long definition", imagesNamingOneLongDefinition, MD049, {}],
+	["reads image labels naming one long definition", imagesNamingOneLongDefinition, MD052, { shortcut_syntax: true }],
 	["reads label starts closed in reverse", openersThenClosers, MD052, { shortcut_syntax: true }],
 	["checks fragments against repeated headings", repeatedHeadings, MD051, {}],
 	["reads a tall table's rows", tallTable, MD055, {}],
@@ -210,6 +222,7 @@ const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["one line of 30,000 spaced emphasis-marker pairs", spacedMarkersOnOneLine(30000)],
 	["one line of 20,000 reversed links beside code spans", reversedLinksBesideCode(20000)],
 	["2,000 images holding references, beside 2,000 definitions", imagesAndDefinitions(2000)],
+	["one image label naming one 80 KB definition 8,000 times", labelNamingOneDefinition(8000, 80000)],
 	["one line of 20,000 bracketed spans and addresses", bracketedAddresses(20000)],
 	["one line of 24,000 unclosed inline HTML tags", unclosedInlineTags(24000)],
 	["10,000 URLs in emphasis after a bracket in inline math", urlsAfterMathBracket(10000)],
@@ -231,6 +244,14 @@ describe("hostile inputs", () => {
 			const elapsed = performance.now() - start;
 			assert.isAbove(findings.length, 0);
 			assert.isBelow(elapsed, CEILING_MS, `${name}: ${elapsed.toFixed(0)} ms`);
+		});
+	}
+
+	// The re-parse reads only whether a label is defined, so it stays as long as the label whatever the definition holds.
+	for (const rule of [MD049, MD052, MD053, MD054]) {
+		it(`lints one image label naming one 80 KB definition 8,000 times under ${rule.name} without throwing`, () => {
+			const source = labelNamingOneDefinition(8000, 80000);
+			assert.doesNotThrow(() => MarkdownLint.lint(source, [rule]));
 		});
 	}
 

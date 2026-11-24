@@ -23,7 +23,7 @@ import { Result } from "effect";
 import type { LintContext } from "../LintContext.js";
 import { contentInContainers } from "./containers.js";
 import { paragraphBreaks } from "./directives.js";
-import { characterReference, inMathText, isReference, mathCheck } from "./inline.js";
+import { characterReference, inMathText, isReference, labelDefinitions, mathCheck } from "./inline.js";
 import { mathFlowLines } from "./math-flow.js";
 import { labelEnd } from "./math-text.js";
 import { perReading } from "./memo.js";
@@ -330,14 +330,6 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 	const formed: Array<Formed> = [];
 	const media: Array<Medium> = [];
 
-	// The document's definitions, as written, by normalized label, for an image label's references to resolve against.
-	const definitionSources = new Map<string, string>();
-	for (const node of context.document.findAll("definition") as ReadonlyArray<MarkdownNode>) {
-		const start = node.position.start.offset;
-		const key = normalizeLabel(source.slice(start + 1, labelEnd(source, start, node.position.end.offset)));
-		if (!definitionSources.has(key)) definitionSources.set(key, `\n\n${source.slice(start, node.position.end.offset)}`);
-	}
-
 	const documentView: View = {
 		text: source,
 		toSource: (offset) => offset,
@@ -520,7 +512,8 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 	};
 
 	// An image's label, re-parsed after its own `[` as a paragraph (the kit's image carries its alt as a string), with
-	// the definitions its own brackets name, its continuation lines' container prefixes left out.
+	// a stand-in for each definition its own brackets name (see `labelDefinitions`), its continuation lines' container
+	// prefixes left out.
 	const readAlt = (view: View, events: BlockEvents, open: number, close: number): void => {
 		let label = "";
 		const offsets: Array<number> = [view.toSource(open)];
@@ -533,11 +526,7 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 				if (next > at + 1) at = next - 1;
 			}
 		}
-		let named = "";
-		for (const match of label.matchAll(/\[([^[\]]*)\]/g)) {
-			named += definitionSources.get(normalizeLabel(match[1] ?? "")) ?? "";
-		}
-		const text = `[${label}${named}`;
+		const text = `[${label}${labelDefinitions(label, context.document.definitions)}`;
 		const parsed = MarkdownDocument.parseResult(text, options);
 		if (!Result.isSuccess(parsed)) return;
 		const document = parsed.success;
