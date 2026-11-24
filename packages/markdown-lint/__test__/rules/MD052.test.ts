@@ -20,6 +20,7 @@ import {
 	labelShapes,
 	paragraphBreakShapes,
 	referenceGrid,
+	setextReferenceShapes,
 	tabbedDefinitions,
 } from "../helpers/reference-grid.js";
 
@@ -167,6 +168,17 @@ describe("MD052 reference-links-images", () => {
 		},
 		DIFFERENTIAL_TIMEOUT,
 	);
+
+	// A setext heading's text holds references as a paragraph's does, including past a line micromark ends a block at.
+	it(
+		"agrees with markdownlint on references in setext headings",
+		() => {
+			const result = differential(MD052, { config: { shortcut_syntax: true }, extra: setextReferenceShapes });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_SETEXT);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD052 findings over the corpus (LF and CRLF), the grid and the label shapes.
@@ -183,3 +195,6 @@ const ORACLE_FINDINGS_BREAKS = 258;
 
 // markdownlint's MD052 findings over the corpus (LF and CRLF) and the definitions above tables.
 const ORACLE_FINDINGS_ABOVE_TABLES = 74;
+
+// markdownlint's MD052 findings over the corpus (LF and CRLF) and the setext headings holding references.
+const ORACLE_FINDINGS_SETEXT = 246;

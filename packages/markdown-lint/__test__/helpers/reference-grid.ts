@@ -145,3 +145,47 @@ export const definitionsAboveTables: ReadonlyArray<DifferentialInput> = [
 	{ name: "a definition, then text", source: "[a]: /a\ntext\n| a |\n| - |\n" },
 	{ name: "in a blockquote", source: "> [t]: /t\n> | a |\n> | - |\n> | [x][t] |\n" },
 ];
+
+// Setext headings whose text holds a reference (and, after math, an ATX heading and table cells), in every block position micromark reads one: alone, after a math
+// block, a directive leaf, a container directive's opening, a table and text, at the top level, in a blockquote and in
+// a list item, with the definition for `a` (and `b`) at the document's end.
+export const setextReferenceShapes: ReadonlyArray<DifferentialInput> = (() => {
+	const befores: ReadonlyArray<readonly [string, ReadonlyArray<string>]> = [
+		["alone", []],
+		["after math", ["$$", "m", "$$"]],
+		["after a leaf", ["::leaf"]],
+		["in a container directive", [":::note"]],
+		["after a table", ["| t |", "| - |"]],
+		["after text and a blank", ["text", ""]],
+	];
+	const headings: ReadonlyArray<readonly [string, ReadonlyArray<string>]> = [
+		["collapsed, ===", ["[a][]", "==="]],
+		["shortcut in text, ---", ["See [a]", "---"]],
+		["full on a second line", ["x", "[x][b]", "==="]],
+		["image", ["![a][]", "---"]],
+	];
+	const containers: ReadonlyArray<readonly [string, (index: number) => string]> = [
+		["top level", () => ""],
+		["blockquote", () => "> "],
+		["list item", (index) => (index === 0 ? "- " : "  ")],
+	];
+	const shapes: Array<DifferentialInput> = [];
+	for (const [beforeName, before] of befores) {
+		for (const [headingName, heading] of headings) {
+			for (const [containerName, prefix] of containers) {
+				const lines = [...before, ...heading].map((line, index) => `${prefix(index)}${line}`.trimEnd());
+				shapes.push({
+					name: `${headingName} ${beforeName}, ${containerName}`,
+					source: `${lines.join("\n")}\n\n[a]: /a\n[b]: /b\n`,
+				});
+			}
+		}
+	}
+	// The other blocks whose text holds a reference, after a math block: an ATX heading and a table's cells.
+	shapes.push(
+		{ name: "ATX heading after math", source: "$$\nm\n$$\n# [a][]\n\n[a]: /a\n" },
+		{ name: "table cell after math", source: "$$\nm\n$$\n| [a][] |\n| - |\n| ![b][] |\n\n[a]: /a\n[b]: /b\n" },
+		{ name: "quoted table cell after math", source: "> $$\n> m\n> $$\n> | [a][] |\n> | - |\n\n[a]: /a\n" },
+	);
+	return shapes;
+})();

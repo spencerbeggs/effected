@@ -618,9 +618,11 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 		}
 		const startLine = block.position.start.line;
 		const endLine = block.position.end.line;
-		// The segments of the block micromark reads as paragraphs: runs of lines no break holds.
+		// The segments of the block micromark reads as paragraphs: runs of lines no break holds. A setext heading's text
+		// is paragraph text to both parsers until its underline, and a break inside it splits it as a paragraph's does
+		// (micromark's heading is the last segment).
 		const segments: Array<{ readonly first: number; readonly last: number; readonly opens: boolean }> = [];
-		if (block.type === "paragraph") {
+		if (block.type === "paragraph" || (block as { readonly headingStyle?: string }).headingStyle === "setext") {
 			let first: number | undefined;
 			let opens = false;
 			for (let line = startLine; line <= endLine + 1; line++) {
