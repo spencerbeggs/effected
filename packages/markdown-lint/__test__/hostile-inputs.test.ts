@@ -30,6 +30,7 @@ import { frontMatterLineCount, maskHtmlComments } from "../src/internal/reading.
 import { MarkdownLint } from "../src/MarkdownLint.js";
 import { rules } from "../src/rules/all.js";
 import { MD009 } from "../src/rules/MD009.js";
+import { MD034 } from "../src/rules/MD034.js";
 
 const CEILING_MS = 5_000;
 
@@ -149,6 +150,36 @@ describe("hostile inputs", () => {
 			assert.isBelow(elapsed, CEILING_MS, `${name}: ${elapsed.toFixed(0)} ms`);
 		});
 	}
+
+	// The scaling guard for MD034's math-bracket re-read, as `@effected/markdown`'s pathological suite guards its own
+	// linear scans: a ceiling alone lets a cheaper superlinear rescan through at this size, a ratio does not. CPU time,
+	// not wall time, so load descheduling the process cannot stretch one side; the minimum of five samples, since a
+	// pause only ever adds time. Linear is about 4x for 4x the input, a per-node rescan of the block's rest about 16x.
+	it("re-reads URLs after a bracket in inline math in time linear in the input", { timeout: 60_000 }, () => {
+		const cpuNow = (): number => {
+			const used = process.cpuUsage();
+			return (used.user + used.system) / 1000;
+		};
+		const timeAt = (count: number): number => {
+			const source = urlsAfterMathBracket(count);
+			let best = Number.POSITIVE_INFINITY;
+			for (let pass = 0; pass < 5; pass += 1) {
+				const started = cpuNow();
+				MarkdownLint.lint(source, [MD034]);
+				best = Math.min(best, cpuNow() - started);
+			}
+			return best;
+		};
+		timeAt(500);
+		const small = timeAt(2_500);
+		const large = timeAt(10_000);
+		const ratio = large / Math.max(small, 1);
+		assert.isBelow(
+			ratio,
+			8,
+			`4x the input cost ${ratio.toFixed(1)}x the CPU time (${small.toFixed(1)} ms -> ${large.toFixed(1)} ms); linear is about 4x`,
+		);
+	});
 });
 
 // The readers that run before any rule, each with its own tighter ceiling.
