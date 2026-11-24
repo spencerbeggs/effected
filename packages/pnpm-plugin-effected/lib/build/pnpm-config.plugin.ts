@@ -193,7 +193,7 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					strategy: "lock-minor",
 				},
 				"@effect/tsgo": {
-					range: "^0.73.2",
+					range: "^0.73.4",
 					peer: "^0.73.0",
 					strategy: "lock-minor",
 				},
@@ -221,20 +221,20 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/bundler": {
-					range: "^0.7.2",
+					range: "^0.7.3",
 					peer: "^0.7.0",
 					strategy: "lock-minor",
 					source: "workspace",
 				},
 				"@effected/changesets": {
-					range: "^0.6.2",
-					peer: "^0.6.0",
+					range: "^0.7.0",
+					peer: "^0.7.0",
 					strategy: "lock-minor",
 					source: "workspace",
 				},
 				"@effected/markdown-lint": {
-					range: "^0.2.0",
-					peer: "^0.2.0",
+					range: "^0.3.0",
+					peer: "^0.3.0",
 					strategy: "lock-minor",
 					source: "workspace",
 				},
@@ -251,7 +251,7 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/cli": {
-					range: "^0.33.2",
+					range: "^0.33.3",
 					peer: "^0.33.0",
 					strategy: "lock-minor",
 					source: "workspace",
@@ -293,7 +293,7 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/engine": {
-					range: "^0.20.2",
+					range: "^0.20.3",
 					peer: "^0.20.0",
 					strategy: "lock-minor",
 					source: "workspace",
@@ -377,13 +377,13 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/markdown": {
-					range: "^0.29.0",
+					range: "^0.29.1",
 					peer: "^0.29.0",
 					strategy: "lock-minor",
 					source: "workspace",
 				},
 				"@effected/mcp": {
-					range: "^0.19.2",
+					range: "^0.19.3",
 					peer: "^0.19.0",
 					strategy: "lock-minor",
 					source: "workspace",
@@ -419,7 +419,7 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/plugin": {
-					range: "^0.6.7",
+					range: "^0.6.8",
 					peer: "^0.6.0",
 					strategy: "lock-minor",
 					source: "workspace",
