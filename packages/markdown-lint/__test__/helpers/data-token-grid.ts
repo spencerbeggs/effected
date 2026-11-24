@@ -46,6 +46,7 @@ const cuts: ReadonlyArray<readonly [string, string]> = [
 	["image alt", "![a [b c](u)\n"],
 	["image alt code", "![`x` y](u)\n"],
 	["nested image alt", "![a ![b](j) c](i)\n"],
+	["link in an image alt", "![x [a b](u) y](i)\n"],
 ];
 
 export const dataTokenGrid: ReadonlyArray<DifferentialInput> = [

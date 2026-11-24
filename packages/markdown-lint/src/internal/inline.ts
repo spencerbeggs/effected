@@ -419,8 +419,9 @@ export const codeSpanParts = (context: LintContext, code: MarkdownNode): ReturnT
 
 /**
  * An inline node or token read from source the kit tree does not carry it
- * in: its type (`emphasis`, `strong`, `data`, or `codeData` for a code span's
- * data run) and source span, on one line for `data` and `codeData`.
+ * in: its type (`emphasis`, `strong`, `data`, `codeData` for a code span's
+ * data run, or `linkLabel` for a link's bracketed label) and source span, on
+ * one line for `data` and `codeData`.
  * @internal
  */
 export interface InlineSpan {
@@ -448,12 +449,13 @@ const readLabel = (
 	inMath: (offset: number) => boolean,
 	push: (span: InlineSpan) => void,
 ): void => {
-	const label = text.slice(open + 1, close);
-	const parsed = MarkdownDocument.parseResult(`[${label}](u)`, labelOptions);
+	// The label is re-parsed after its own `[`, as a paragraph: links cannot nest, so a label holding a link would not
+	// re-parse as a link's label, and the unmatched `[` keeps the label's start as micromark reads it.
+	const source = `[${text.slice(open + 1, close)}`;
+	const parsed = MarkdownDocument.parseResult(source, labelOptions);
 	if (!Result.isSuccess(parsed)) return;
 	const document = parsed.success;
-	const source = `[${label}](u)`;
-	// A re-parsed offset to the reading's: past the `[` the re-parse adds, into the label.
+	// A re-parsed offset to the reading's: the `[` is the label's own, the rest the label's characters.
 	const toSource = (offset: number) => offsets[open + offset];
 	const mapped = (type: string, start: number, end: number) => {
 		const first = toSource(start);
@@ -461,12 +463,15 @@ const readLabel = (
 		if (first !== undefined && last !== undefined && !inMath(first)) push({ type, start: first, end: last + 1 });
 	};
 	const view = labelView(document, source);
-	const link = document.findAll("link")[0] as MarkdownNode | undefined;
-	if (link === undefined) return;
+	const paragraph = childrenOf(document.root as MarkdownNode)[0];
+	if (paragraph === undefined) return;
 	blockDataTokens(
 		view,
-		link,
-		(segment) => mapped("data", segment.start, segment.end),
+		paragraph,
+		// The label's own `[` is no token of its content.
+		(segment) => {
+			if (segment.start > 0) mapped("data", segment.start, segment.end);
+		},
 		(node) => {
 			if (node.type === "inlineCode") {
 				if (view.inMath(node.position.start.offset)) return;
@@ -474,12 +479,20 @@ const readLabel = (
 			} else if (node.type === "image" || node.type === "imageReference") {
 				const start = node.position.start.offset;
 				const end = labelEnd(source, start + 1, node.position.end.offset);
-				// Its characters, in the reading's source: past this label's `[`, offset as the outer label's.
+				// Its characters, in the reading's source: offset as this label's.
 				const inner = Array.from({ length: source.length }, (_, index) => offsets[open + index] ?? -1);
 				readLabel(source, inner, start + 1, end, inMath, push);
 			}
 		},
 	);
+	for (const node of document.findAll(
+		(each) =>
+			(each.type === "link" && source.charAt(each.position.start.offset) === "[") || each.type === "linkReference",
+	) as ReadonlyArray<MarkdownNode>) {
+		if (view.inMath(node.position.start.offset)) continue;
+		const labelClose = labelEnd(source, node.position.start.offset, node.position.end.offset);
+		mapped("linkLabel", node.position.start.offset, labelClose + 1);
+	}
 	for (const node of document.findAll(
 		(each) => each.type === "emphasis" || each.type === "strong",
 	) as ReadonlyArray<MarkdownNode>) {
@@ -492,9 +505,11 @@ const readLabel = (
  * PARSER GAP: the inline content of image descriptions. micromark parses an
  * image's label as inline content, where the kit's image carries its alt as a
  * string, so each label (its continuation lines' container prefixes left out)
- * is re-parsed as a link label, which CommonMark parses the same way: its
- * emphasis and strong, its `data` tokens (see {@link splitData}) and its code
- * spans' data runs, mapped back to their source offsets. An image nested in a
+ * is re-parsed after its own `[`, as a paragraph (links cannot nest, so a
+ * label holding a link would not re-parse as a link's label): its emphasis and
+ * strong, its `data` tokens (see {@link splitData}), its code spans' data runs
+ * and its links' labels (`linkLabel`, brackets included), mapped back to their
+ * source offsets. References in a label resolve against no definitions there. An image nested in a
  * label is read the same way, so an outer label's text is re-parsed once with
  * each image it holds. Those micromark reads as math are dropped. Computed
  * once per reading.

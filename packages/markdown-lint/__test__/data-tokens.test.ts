@@ -52,4 +52,4 @@ describe("data tokens", () => {
 	);
 });
 
-const GRID_INPUTS = 1066;
+const GRID_INPUTS = 1067;
