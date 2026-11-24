@@ -7,11 +7,10 @@
 // first and last token padding when both are blank and there is data between,
 // and the rest merged into data runs split at line endings.
 
-import type { MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
 import { contentInContainers } from "../internal/containers.js";
+import { inlineNodes } from "../internal/inline.js";
 import { errorContext } from "../internal/lines.js";
-import { mathFlowLines } from "../internal/math-flow.js";
 import type { LintContext } from "../LintContext.js";
 import { LintRule } from "../LintRule.js";
 
@@ -67,13 +66,11 @@ export const MD038: Lint.LintRule = LintRule.make({
 	tags: ["whitespace", "code"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md038.md",
 	check: (context, report) => {
-		const math = mathFlowLines(context);
-		for (const code of context.document.findAll("inlineCode") as ReadonlyArray<MarkdownNode>) {
-			// Inclusive: on a math opener line, this is the fence's meta (see `mathFlowLines`).
-			if (math.has(code.position.start.line)) continue;
+		for (const code of inlineNodes(context, "inlineCode")) {
 			const spanStart = code.position.start.offset;
 			const spanEnd = code.position.end.offset;
 			const span = context.source.slice(spanStart, spanEnd);
+			// A code span's position starts at its opening backtick run and ends past its closing one.
 			const sequence = (/^`+/.exec(span)?.[0] ?? "").length;
 			const tokens = contentTokens(context, spanStart + sequence, spanEnd - sequence);
 			const first = tokens[0];

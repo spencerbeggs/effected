@@ -53,4 +53,4 @@ describe("MD038 no-space-in-code", () => {
 });
 
 // markdownlint's MD038 findings over the corpus (LF and CRLF) and the grid.
-const ORACLE_FINDINGS_DEFAULT = 814;
+const ORACLE_FINDINGS_DEFAULT = 816;

@@ -8,8 +8,7 @@
 
 import type * as Lint from "@effected/markdown-lint";
 import { htmlTagInfo, htmlTextRange, htmlTextTokens } from "../internal/html-text.js";
-import { mathFlowLines } from "../internal/math-flow.js";
-import { inSpans, mathTextSpans } from "../internal/math-text.js";
+import { outsideMath } from "../internal/inline.js";
 import { LintRule } from "../LintRule.js";
 
 // markdownlint's `getHtmlAttributeRe("alt")` and `getHtmlAttributeRe("aria-hidden")`.
@@ -30,14 +29,12 @@ export const MD045: Lint.LintRule = LintRule.make({
 	tags: ["accessibility", "images"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md045.md",
 	check: (context, report) => {
-		const math = mathFlowLines(context);
-		const mathText = mathTextSpans(context.document, context.source);
+		const keep = outsideMath(context);
 		for (const entry of context.document.links) {
 			const node = entry.node;
 			if (node.type !== "image" && !(node.type === "imageReference" && entry.url !== undefined)) continue;
 			const start = node.position.start.offset;
-			// Inclusive: on a math opener line, this is the fence's meta (see `mathFlowLines`).
-			if (math.has(node.position.start.line) || inSpans(mathText, start)) continue;
+			if (!keep(node)) continue;
 			// The label, as written, is empty: `![]`.
 			if (context.source.charAt(start + 2) !== "]") continue;
 			report(context.diagnostic({ at: node, range: node.position.start.line === node.position.end.line }));
