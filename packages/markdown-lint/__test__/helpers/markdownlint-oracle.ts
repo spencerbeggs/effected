@@ -84,15 +84,10 @@ const micromarkCompanion = {
 	function: () => undefined,
 };
 
-// markdownlint's result (or what it threw) per input, config and companion, for this worker: every differential
-// re-runs the whole corpus, and a rule's file runs several under one config. The key is the config's JSON, so two
-// configs that serialize alike are one; a config is built from literals here, never a function or a symbol.
-const oracleResults = new Map<string, { readonly findings: ReadonlyArray<OracleFinding>; readonly thrown?: unknown }>();
-
 /**
  * Lint `source` with markdownlint's built-in rules under `config`; with `micromark`, beside a rule that makes
- * markdownlint parse with micromark whatever else is enabled. Memoized per worker: a repeat returns a fresh array
- * of the same findings, or throws the same error.
+ * markdownlint parse with micromark whatever else is enabled. Not memoized: repeats are rare across the suite and a
+ * key over a config's JSON would merge configs that serialize alike (`NaN`, `Infinity`, `-0`).
  */
 export const oracleLint = (
 	source: string,
@@ -100,27 +95,15 @@ export const oracleLint = (
 	options?: { readonly micromark?: boolean },
 ): ReadonlyArray<OracleFinding> => {
 	const micromark = options?.micromark === true;
-	const key = `${micromark ? "1" : "0"}${JSON.stringify(config)}\u0000${source}`;
-	const known = oracleResults.get(key);
-	if (known !== undefined) {
-		if (known.thrown !== undefined) throw known.thrown;
-		return [...known.findings];
-	}
-	try {
-		const findings =
-			(micromark
-				? sync.lint({
-						strings: { input: source },
-						config: { ...config, "micromark-companion": true },
-						customRules: [micromarkCompanion],
-					}).input
-				: sync.lint({ strings: { input: source }, config }).input) ?? [];
-		oracleResults.set(key, { findings });
-		return [...findings];
-	} catch (thrown) {
-		oracleResults.set(key, { findings: [], thrown });
-		throw thrown;
-	}
+	return (
+		(micromark
+			? sync.lint({
+					strings: { input: source },
+					config: { ...config, "micromark-companion": true },
+					customRules: [micromarkCompanion],
+				}).input
+			: sync.lint({ strings: { input: source }, config }).input) ?? []
+	);
 };
 
 /**
