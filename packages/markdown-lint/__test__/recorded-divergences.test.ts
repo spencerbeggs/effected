@@ -13,8 +13,9 @@ const cases: ReadonlyArray<readonly [name: string, source: string, markdownlintO
 	["leaf as an item's content", "- ::leaf\ntext\n", "MD032:1", ""],
 	["opening as an item's content", "- :::note\ntext\n", "MD032:1", ""],
 	["opening as an item's content, then a table", "- :::note\n| a |\n| - |\n", "MD032:1,MD058:2", ""],
-	// N-2: open container directives tracked document-wide (a kit limitation): closers, tables, quotes.
+	// A list after nested container directives close: both read the same directive lines; MD032 differs.
 	["nested closers", ":::a\n:::b\n- a\n:::\n- b\n:::\n- c\n:::\n- d\n", "", "MD032:7"],
+	// Open container directives tracked document-wide (a kit limitation): tables, quotes.
 	["quoted opening, table outside", "> :::a\n> x\n\n| a |\n| - |\n:::\n| b |\n", "MD055:6,MD055:6", "MD058:5"],
 	["quoted opening, quoted list after a closing fence", "> :::a\n\n> - x\n:::\n>  y\n", "", "MD032:3"],
 	// N-2: a container directive's content in a blockquote.
@@ -43,6 +44,11 @@ const cases: ReadonlyArray<readonly [name: string, source: string, markdownlintO
 		"",
 		"MD055:16,MD055:16,MD056:16,MD058:13",
 	],
+	// A setext heading directly after a math block or a leaf directive: the kit's heading holds the block.
+	["setext after math", "$$\nm\n$$\nTitle\n===\n", "MD022:4,MD041:1", ""],
+	["setext holding a reference after math", "$$\nm\n$$\n[a][]\n===\n\n[a]: /a\n", "MD022:4,MD041:1", ""],
+	["setext after a leaf", "::leaf\nTitle\n===\n", "MD022:2,MD041:1", ""],
+	["setext after text and math", "text\n\n$$\nm\n$$\nTitle\n---\n", "MD022:6", ""],
 	// M-2: a setext heading after a definition.
 	["setext after a definition", "[d]: /u\nTitle\n---\n", "", "MD022:2"],
 	["setext after an indented definition", " [d]: /u\nTitle\n---\n", "MD023:1", "MD022:2"],
