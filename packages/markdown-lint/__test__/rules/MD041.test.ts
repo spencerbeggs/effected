@@ -32,6 +32,7 @@ const bomExtra = [
 	{ name: "two byte order marks before front matter", source: "\uFEFF\uFEFF---\ntitle: Doc\n---\n\nIntro\n" },
 	{ name: "two byte order marks before a heading", source: "\uFEFF\uFEFF# Title\n\ntext\n" },
 	{ name: "three byte order marks before a heading", source: "\uFEFF\uFEFF\uFEFF# Title\n\ntext\n" },
+	{ name: "three byte order marks before front matter", source: "\uFEFF\uFEFF\uFEFF---\ntitle: Doc\n---\n\nIntro\n" },
 ];
 
 const run = runRule(MD041);
@@ -74,15 +75,19 @@ describe("MD041 first-line-heading", () => {
 		"reads front matter after one leading byte order mark only, and diverges where micromark drops a second",
 		() => {
 			// markdownlint strips exactly one leading byte order mark: a second one is text to its front matter
-			// reader, so a block after it is not front matter and its title does not count. micromark then drops
-			// that second mark before it parses, which the kit does not model: two marks before a heading read as
-			// a heading there and as text here. That one input is a recorded divergence; three marks agree again.
+			// reader, so a block after it is not front matter and its title does not count. micromark then drops one
+			// more before it parses, which the kit does not model, so with two or more marks every token text
+			// markdownlint reads runs one character behind. Two marks before a heading read as a heading there and as
+			// text here; three before a `---` block make its setext underline read as level 1 there, a title. Those
+			// two inputs are recorded divergences; the others agree.
 			const result = differential(MD041, { extra: [...extra, ...bomExtra] });
 			assert.deepStrictEqual(
 				result.divergences.map((divergence) => divergence.fixture),
-				["two byte order marks before a heading"],
+				["two byte order marks before a heading", "three byte order marks before front matter"],
 			);
-			assert.match(result.divergences[0]?.reason ?? "", /^extra finding 1: kit \{"lineNumber":1,"ruleNames":\["MD041"/);
+			for (const divergence of result.divergences) {
+				assert.match(divergence.reason, /^extra finding 1: kit \{"lineNumber":1,"ruleNames":\["MD041"/);
+			}
 			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT + ORACLE_FINDINGS_BOM);
 			for (const { name, source } of bomExtra) {
 				const document = Result.getOrThrow(MarkdownDocument.parseResult(source));
@@ -128,5 +133,6 @@ describe("MD041 first-line-heading", () => {
 const ORACLE_FINDINGS_DEFAULT = 30;
 
 // markdownlint's MD041 findings over the byte order mark inputs: one mark before text, and two before text, before a
-// front matter title and three before a heading (micromark drops only the second, so a third is text).
+// front matter title and three before a heading (micromark drops only the second, so a third is text); none for
+// three before a front matter block, whose setext heading markdownlint reads as a level-1 title.
 const ORACLE_FINDINGS_BOM = 4;

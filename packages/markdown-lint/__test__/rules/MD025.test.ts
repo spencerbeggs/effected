@@ -24,6 +24,15 @@ const extra = [
 
 const run = runRule(MD025);
 
+// A front matter title after one leading byte order mark, and after three.
+const bomExtra = [
+	{ name: "byte order mark before a front matter title", source: "\uFEFF---\ntitle: x\n---\nText\n\n# H\n\n# H2\n" },
+	{
+		name: "three byte order marks before a front matter title",
+		source: "\uFEFF\uFEFF\uFEFF---\ntitle: x\n---\nText\n\n# H\n\n# H2\n",
+	},
+];
+
 describe("MD025 single-title", () => {
 	it(
 		"agrees with markdownlint with default settings",
@@ -57,6 +66,27 @@ describe("MD025 single-title", () => {
 		);
 	}
 
+	it(
+		"diverges from markdownlint where micromark drops a further leading byte order mark",
+		() => {
+			// After one mark the block is front matter and its title counts in both. After three, markdownlint reads no
+			// front matter, and micromark drops one more mark than its text view: every token text runs one character
+			// behind, so the block's setext heading reads as level 1, the document's title, and both later h1s are
+			// reported. The kit reads that heading as level 2 and reports neither.
+			const result = differential(MD025, { extra: [...extra, ...bomExtra] });
+			assert.deepStrictEqual(
+				result.divergences.map((divergence) => divergence.fixture),
+				["three byte order marks before a front matter title"],
+			);
+			assert.match(
+				result.divergences[0]?.reason ?? "",
+				/^missing finding 1: markdownlint \{"lineNumber":6,"ruleNames":\["MD025"/,
+			);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT + ORACLE_FINDINGS_BOM);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
 	it("reads a wrong-typed or invalid setting as its default", () => {
 		for (const settings of [{ level: "2" }, { front_matter_title: 1 }, { front_matter_title: "(" }]) {
 			for (const { source } of extra) {
@@ -85,3 +115,6 @@ describe("MD025 single-title", () => {
 
 // markdownlint's MD025 findings over the corpus (LF and CRLF) and the extras.
 const ORACLE_FINDINGS_DEFAULT = 53;
+
+// markdownlint's MD025 findings over the byte order mark inputs: both later h1s after one mark, and after three.
+const ORACLE_FINDINGS_BOM = 4;

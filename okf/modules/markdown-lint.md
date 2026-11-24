@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-24T03:42:40Z
+  at: 2026-11-24T03:59:14Z
 integrity:
   generated:
-    body: f10aa414bb90eed9
+    body: 68df3f0b0e91c210
 ---
 
 # `@effected/markdown-lint`
@@ -251,17 +251,23 @@ plain synchronous function; no logging, no metrics.
   nothing where markdownlint's delete of that line alone would remove a
   line break. The kit edits still apply to markdownlint's text. Pinned by a
   test (two and three blank lines, 2 inputs).
-- A second leading byte order mark: markdownlint drops one before it
-  reads front matter, and micromark drops one more before it parses, so
-  after two marks the text from line 1 is read as Markdown with neither
-  mark. `@effected/markdown` drops none, and the kit reads the second mark
-  as text: two marks before `# Title` are a heading to markdownlint and a
-  paragraph to the kit (MD041), and two marks before a `---` block give a
-  thematic break and a setext heading on line 2 there, a setext heading on
-  line 1 here (MD022). Matching it needs the parser to drop the mark, since
-  micromark's line-1 columns then skip it while markdownlint's lines keep
-  it. Pinned by a test (MD041 and MD022, 1 input each); one mark, and three,
-  agree.
+- Two or more leading byte order marks: markdownlint drops one before it
+  reads front matter, so a second is text there and no block after it is
+  front matter. micromark then drops one more before it parses, while
+  markdownlint slices each token's text from the text it kept, so every
+  token text it reads runs one character behind: an ATX `#` sequence reads
+  as a line break and a setext underline as a line break and `--`, and
+  markdownlint's `getHeadingLevel` reads both as level 1. `@effected/markdown`
+  drops no mark, so any source opening with two or more marks can diverge
+  wherever a rule reads a heading level, a range or a token's text. Observed
+  against markdownlint 0.42.1 over 1 to 4 marks: two marks before `# Title`
+  are a heading there and text here (MD041); two marks before a `---` block
+  give a thematic break and a setext heading on line 2 there, a setext
+  heading on line 1 here (MD022); three or four marks before a `---` block,
+  with or without a title, make its setext heading markdownlint's level-1
+  title (MD025 reports the later h1s, MD041 nothing) where the kit reports
+  MD041 on line 1. Matching it needs the parser to drop the mark. Pinned by
+  a test (MD041 2 inputs, MD022 1, MD025 1).
 
 - `./config` loads no JavaScript config (`.markdownlint.cjs`, `.mjs`) and
   none of cli2's own options files (`.markdownlint-cli2.*`). A directory
