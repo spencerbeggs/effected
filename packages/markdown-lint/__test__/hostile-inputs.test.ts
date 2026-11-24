@@ -103,6 +103,10 @@ const spacedMarkersOnOneLine = (pairs: number): string => `# T\n\n${"a * b * ".r
 // MD011 checks each reversed link against every code span and math span: one line of 20,000 of each.
 const reversedLinksBesideCode = (count: number): string => `# T\n\n${"`c` (a)[b] ".repeat(count)}\n`;
 
+// Image descriptions are re-parsed with the document's definitions when they can hold a reference.
+const imagesAndDefinitions = (count: number): string =>
+	`# T\n\n${Array.from({ length: count }, (_, index) => `![a [r${index}] *b*](i${index}.png)`).join("\n\n")}\n\n${Array.from({ length: count }, (_, index) => `[r${index}]: #`).join("\n")}\n`;
+
 const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["a 400-column table with CJK cells", wideTable(400, 150)],
 	["2,000 unclosed fences in list items", unclosedFences(2000)],
@@ -118,6 +122,7 @@ const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["one code span of 100,000 words over 10,000 lines", longCodeSpan(100000)],
 	["one line of 30,000 spaced emphasis-marker pairs", spacedMarkersOnOneLine(30000)],
 	["one line of 20,000 reversed links beside code spans", reversedLinksBesideCode(20000)],
+	["2,000 images holding references, beside 2,000 definitions", imagesAndDefinitions(2000)],
 ];
 
 describe("hostile inputs", () => {

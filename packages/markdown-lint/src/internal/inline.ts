@@ -420,8 +420,8 @@ export const codeSpanParts = (context: LintContext, code: MarkdownNode): ReturnT
 /**
  * An inline node or token read from source the kit tree does not carry it
  * in: its type (`emphasis`, `strong`, `data`, `codeData` for a code span's
- * data run, or `linkLabel` for a link's bracketed label) and source span, on
- * one line for `data` and `codeData`.
+ * data run, `linkLabel` for a link's bracketed label, or `link` for the whole
+ * link) and source span, on one line for `data` and `codeData`.
  * @internal
  */
 export interface InlineSpan {
@@ -429,6 +429,9 @@ export interface InlineSpan {
 	readonly start: number;
 	readonly end: number;
 }
+
+// markdownlint's `normalizeLinkLabelText`.
+const normalizeLabel = (text: string): string => text.toLowerCase().trim().replace(/\s+/g, " ");
 
 // A view over a re-parsed label's text: no containers, no bare runs (a label's content is merged), its own math.
 const labelView = (document: MarkdownDocument, source: string): TokenView => ({
@@ -447,11 +450,17 @@ const readLabel = (
 	open: number,
 	close: number,
 	inMath: (offset: number) => boolean,
+	definitions: ReadonlyMap<string, string>,
 	push: (span: InlineSpan) => void,
 ): void => {
 	// The label is re-parsed after its own `[`, as a paragraph: links cannot nest, so a label holding a link would not
 	// re-parse as a link's label, and the unmatched `[` keeps the label's start as micromark reads it.
-	const source = `[${text.slice(open + 1, close)}`;
+	// The document's definitions follow, after a blank line, so the label's references resolve as they do there.
+	// Only the definitions the label's own brackets name follow, so many images and definitions stay linear.
+	const label = text.slice(open + 1, close);
+	let named = "";
+	for (const match of label.matchAll(/\[([^[\]]*)\]/g)) named += definitions.get(normalizeLabel(match[1] ?? "")) ?? "";
+	const source = `[${label}${named}`;
 	const parsed = MarkdownDocument.parseResult(source, labelOptions);
 	if (!Result.isSuccess(parsed)) return;
 	const document = parsed.success;
@@ -481,7 +490,7 @@ const readLabel = (
 				const end = labelEnd(source, start + 1, node.position.end.offset);
 				// Its characters, in the reading's source: offset as this label's.
 				const inner = Array.from({ length: source.length }, (_, index) => offsets[open + index] ?? -1);
-				readLabel(source, inner, start + 1, end, inMath, push);
+				readLabel(source, inner, start + 1, end, inMath, definitions, push);
 			}
 		},
 	);
@@ -492,6 +501,7 @@ const readLabel = (
 		if (view.inMath(node.position.start.offset)) continue;
 		const labelClose = labelEnd(source, node.position.start.offset, node.position.end.offset);
 		mapped("linkLabel", node.position.start.offset, labelClose + 1);
+		mapped("link", node.position.start.offset, node.position.end.offset);
 	}
 	for (const node of document.findAll(
 		(each) => each.type === "emphasis" || each.type === "strong",
@@ -508,7 +518,7 @@ const readLabel = (
  * is re-parsed after its own `[`, as a paragraph (links cannot nest, so a
  * label holding a link would not re-parse as a link's label): its emphasis and
  * strong, its `data` tokens (see {@link splitData}), its code spans' data runs
- * and its links' labels (`linkLabel`, brackets included), mapped back to their
+ * and its links (`link`) and their labels (`linkLabel`, brackets included), mapped back to their
  * source offsets. References in a label resolve against no definitions there. An image nested in a
  * label is read the same way, so an outer label's text is re-parsed once with
  * each image it holds. Those micromark reads as math are dropped. Computed
@@ -523,6 +533,14 @@ export const imageLabelNodes: (context: LintContext) => ReadonlyArray<InlineSpan
 	const images = context.document.findAll(
 		(node) => node.type === "image" || node.type === "imageReference",
 	) as ReadonlyArray<MarkdownNode>;
+	if (images.length === 0) return found;
+	// The document's definitions, as written, by normalized label, for a label's references to resolve against.
+	const definitions = new Map<string, string>();
+	for (const node of context.document.findAll("definition") as ReadonlyArray<MarkdownNode>) {
+		const start = node.position.start.offset;
+		const key = normalizeLabel(source.slice(start + 1, labelEnd(source, start, node.position.end.offset)));
+		if (!definitions.has(key)) definitions.set(key, `\n\n${source.slice(start, node.position.end.offset)}`);
+	}
 	for (const image of images) {
 		if (!keep(image)) continue;
 		const open = image.position.start.offset + 1;
@@ -543,7 +561,7 @@ export const imageLabelNodes: (context: LintContext) => ReadonlyArray<InlineSpan
 		}
 		text += "]";
 		offsets.push(close);
-		readLabel(text, offsets, 0, text.length - 1, inMath, (span) => found.push(span));
+		readLabel(text, offsets, 0, text.length - 1, inMath, definitions, (span) => found.push(span));
 	}
 	return found.sort((a, b) => a.start - b.start);
 });

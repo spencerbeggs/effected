@@ -1009,6 +1009,7 @@
 		"MD039": "no-space-in-links, spaces inside link text brackets",
 		"MD040": "fenced-code-language, fenced code block without a language, allowed languages",
 		"MD041": "first-line-heading, first-line-h1, first line heading, document starts with h1",
+		"MD042": "no-empty-links, empty link destination or hash fragment",
 		"MD043": "required-headings, required heading structure, document outline, heading list pattern",
 		"MD044": "proper-names, proper name capitalization, names list, code blocks and html elements",
 		"MD045": "no-alt-text, image without alternate text, accessibility",
