@@ -11,7 +11,7 @@ generated:
 sources:
   - id: repo
     resource: "https://github.com/spencerbeggs/claude-code-marketplace-manager"
-integrity:
+x-okfit-integrity:
   generated:
     body: 04f3a1f8318fc866
 ---

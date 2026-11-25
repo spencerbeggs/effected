@@ -32,6 +32,7 @@
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
+		"@effected/testing": "workspace:*",
 		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
 		"minimatch": "11.0.9",

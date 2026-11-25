@@ -3,7 +3,7 @@ type: Interface
 title: "@effected/workspaces discovery and detection"
 description: "Root finding, the packages: enumerator, the WorkspacePackage located-member model, and package-manager detection."
 status: stable
-kind: api
+x-okfit-kind: api
 resource: ../../packages/workspaces/src/WorkspaceDiscovery.ts
 tags:
   - architecture
@@ -46,13 +46,15 @@ verified:
     at: 2026-11-10T23:42:17Z
   - by: human:spencer
     at: 2026-11-16T16:59:20Z
-integrity:
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
+x-okfit-integrity:
   generated:
     body: 8370245e358fbaa1
   verified:
     by: human:spencer
-    at: 2026-11-16T16:59:20Z
-    content: 5ea9a24d749828b0
+    at: 2026-11-25T21:38:57Z
+    content: 2b9765e9b275ce9a
 ---
 
 # @effected/workspaces discovery and detection

@@ -16,6 +16,7 @@
 				"$TURBO_ROOT$/packages/*/src/**",
 				"$TURBO_ROOT$/packages/*/public/**",
 				"$TURBO_ROOT$/packages/*/package.json",
+				"!$TURBO_ROOT$/packages/testing/**",
 				"$TURBO_ROOT$/effected.toml",
 				"$TURBO_ROOT$/.config/effected.toml",
 				"README.md",

@@ -48,6 +48,7 @@
 		"@effected/jsonc": "workspace:*",
 		"@effected/markdown": "workspace:*",
 		"@effected/memfs": "workspace:*",
+		"@effected/testing": "workspace:*",
 		"@effected/toml": "workspace:*",
 		"@effected/walker": "workspace:*",
 		"@effected/workspaces": "workspace:*",

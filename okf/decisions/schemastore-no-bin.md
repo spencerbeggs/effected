@@ -13,7 +13,7 @@ sources:
 generated:
   by: "claude-code/opus-5"
   at: 2026-11-05T06:55:47Z
-integrity:
+x-okfit-integrity:
   generated:
     body: b2e04578b3f20289
   verified:

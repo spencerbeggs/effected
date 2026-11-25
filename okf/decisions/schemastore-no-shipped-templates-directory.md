@@ -9,7 +9,7 @@ sources:
 generated:
   by: "claude-code/opus-5"
   at: 2026-11-05T06:55:47Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 9c6831557305973e
   verified:

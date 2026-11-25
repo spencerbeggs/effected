@@ -3,7 +3,7 @@ type: Interface
 title: "The effected schema commands: build, check and validate"
 description: "The contract of effected schema build, check and validate: the config file they load, the drift table and onDrift policy, the flags, the exit codes, the version-mismatch refusal, the catalog slices and merged catalog, and the human, JSON, CI and step-summary reports; the MCP tools return the same verdicts as data."
 status: draft
-kind: cli
+x-okfit-kind: cli
 resource: ../../packages/cli/src/commands/schema
 tags:
   - dx
@@ -27,7 +27,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-05T06:55:47Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 51439ce904e44038
 ---

@@ -11,7 +11,7 @@ generated:
 sources:
   - id: repo
     resource: "https://github.com/savvy-web/silk-sync-action"
-integrity:
+x-okfit-integrity:
   generated:
     body: 7aed87adf66b9640
 ---

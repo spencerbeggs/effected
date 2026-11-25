@@ -3,7 +3,7 @@ type: Limitation
 title: ConstantTime.equal is best-effort constant time
 description: "@effected/crypto compares through core Mac.timingSafeEqual, a JavaScript XOR loop whose timing the JIT does not guarantee; secretsEqual blinds both sides with a keyed MAC first to bound what leaks."
 status: draft
-bounds: ../modules/crypto.md
+x-okfit-bounds: ../modules/crypto.md
 tags:
   - security
   - compat
@@ -15,7 +15,7 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-10-31T19:37:34Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 462ca42ea3313596
 ---

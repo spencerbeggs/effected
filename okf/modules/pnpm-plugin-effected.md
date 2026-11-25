@@ -3,7 +3,7 @@ type: Module
 title: pnpm-plugin-effected
 description: "The kit's companion pnpm config dependency: it serves consumers two catalogs, effected (the Effect family at its exact pins and every @effected/* package at its next release) and effected:build (the kit's build chain and toolchain), each with a :peers twin floored to the minor for peerDependencies, and pins the Effect family graph-wide through derived overrides."
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/pnpm-plugin-effected
 tags:
   - release
@@ -24,7 +24,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-10T21:32:01Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 432dfa9aded5bb09
 ---

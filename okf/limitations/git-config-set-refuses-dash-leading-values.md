@@ -3,7 +3,7 @@ type: Limitation
 title: Git.configSet cannot write a value that begins with a dash
 description: "configSet guards key, value and file through the option-injection guard because git config has no documented -- separator, so a legitimate value starting with - is refused typed before any spawn."
 status: stable
-bounds: ../modules/git.md
+x-okfit-bounds: ../modules/git.md
 tags:
   - security
 sources:
@@ -12,7 +12,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
-integrity:
+x-okfit-integrity:
   generated:
     body: fa67ebb7dcbac1d9
 ---

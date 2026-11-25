@@ -3,7 +3,7 @@ type: Interface
 title: "@effected/workspaces release surface"
 description: PublishabilityDetector, VersioningStrategy, and ReleaseTag — the release-shaped questions the workspace model already holds the facts for.
 status: stable
-kind: api
+x-okfit-kind: api
 resource: ../../packages/workspaces/src/Publishability.ts
 tags:
   - architecture
@@ -23,13 +23,15 @@ verified:
     at: 2026-09-24T00:12:03.300Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
-integrity:
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
+x-okfit-integrity:
   generated:
     body: 60ef126d7f84c6a0
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: e479f1f687f6c2dd
+    at: 2026-11-25T21:38:57Z
+    content: 4fdb267c167e3a95
 ---
 
 # @effected/workspaces release surface

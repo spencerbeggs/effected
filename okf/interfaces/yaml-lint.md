@@ -3,7 +3,7 @@ type: Interface
 title: "@effected/yaml lint system"
 description: The yamllint-class rule engine, public token stream, autofix, config schema and config-inference surface built on the yaml engine.
 status: stable
-kind: api
+x-okfit-kind: api
 resource: ../../packages/yaml/src/YamlLint.ts
 tags: [architecture]
 generated:
@@ -16,13 +16,15 @@ verified:
     at: 2026-10-13T21:42:59Z
   - by: human:spencer
     at: 2026-10-29T00:43:21Z
-integrity:
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
+x-okfit-integrity:
   generated:
     body: 829101ecb4577d16
   verified:
     by: human:spencer
-    at: 2026-10-29T00:43:21Z
-    content: 57926d2dfe984123
+    at: 2026-11-25T21:38:57Z
+    content: 9e2a056a9452b7ff
 ---
 
 # @effected/yaml lint system

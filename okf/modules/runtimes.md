@@ -3,7 +3,7 @@ type: Module
 title: runtimes
 description: Resolves semver-compatible Node.js, Bun and Deno versions from live release feeds, with a bundled offline snapshot as fallback.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/runtimes
 tags:
   - architecture
@@ -11,7 +11,7 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-06T20:09:15Z
-integrity:
+x-okfit-integrity:
   generated:
     body: e4c1681845510042
 ---

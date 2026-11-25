@@ -3,7 +3,7 @@ type: Module
 title: "@effected/mcp"
 description: "The effected-mcp server: a stdio MCP server with an identity tool, the package_build, action_build and action_init tools, and the schema_check, schema_build and schema_validate tools on effect/ai and @effected/mcp-kit, run by a bin that a carrier shim can wrap with its own distribution identity."
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/mcp
 tags:
   - architecture
@@ -11,7 +11,7 @@ tags:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-11-08T17:37:31Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 6e27455adb0e4efe
 ---

@@ -3,7 +3,7 @@ type: Module
 title: "@effected/source"
 description: "Source-text positions as plain values: a LineIndex from offsets to LSP-style zero-based line and character and back, a pure LineDiff of two texts into unified-diff hunks, and the structural range, position and diagnostic shapes the kit's format packages share."
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/source
 tags:
   - architecture
@@ -28,7 +28,7 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-11-21T16:30:44Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 7a553c84d94418b8
 ---

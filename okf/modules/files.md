@@ -3,15 +3,15 @@ type: Module
 title: "@effected/files"
 description: Atomic file and directory replacement over core FileSystem and Path in R. AtomicFile writes a temp file beside the target, syncs it and renames it into place, so a crash never leaves a truncated user file. A symlinked target is followed by default (a link realPath cannot follow is then written through directly) or replaced with links "replace".
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/files
-layer: boundary
+x-okfit-layer: boundary
 tags:
   - architecture
 generated:
   by: "okfit/claude-code"
   at: 2026-11-08T12:10:34Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 01835a12bee8e85a
 ---

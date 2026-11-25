@@ -3,16 +3,6 @@ import { Cause } from "effect";
 import { CliFailure } from "../src/index.js";
 import { splitFrame } from "../src/internal/splitFrame.js";
 
-/**
- * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
- * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
- * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
- */
-const cpuNow = (): number => {
-	const used = process.cpuUsage();
-	return (used.user + used.system) / 1000;
-};
-
 /** The regular expression `splitFrame` replaced, kept here as the oracle for its exact behaviour. */
 const legacy = (raw: string): ReturnType<typeof splitFrame> => {
 	const text = raw.trim().replace(/^at\s+/, "");
@@ -63,22 +53,15 @@ describe("splitFrame", () => {
 		assert.deepStrictEqual(differences, []);
 	});
 
-	it("is linear: 100,000 tabs before an unclosed parenthesis returns at once, with the unsplit shape", () => {
+	// `splitFrame.hostile.test.ts` holds that both of these are linear in the run of tabs.
+	it("returns 100,000 tabs before an unclosed parenthesis with the unsplit shape", () => {
 		const raw = `at x${"\t".repeat(100_000)}(a`;
-		const started = cpuNow();
-		const split = splitFrame(raw);
-		const elapsed = cpuNow() - started;
-		assert.deepStrictEqual(split, { text: raw.slice(3), location: raw.slice(3) });
-		assert.isBelow(elapsed, 500, `took ${elapsed} ms`);
+		assert.deepStrictEqual(splitFrame(raw), { text: raw.slice(3), location: raw.slice(3) });
 	});
 
-	it("is linear through CliFailure.toDoc too", () => {
+	it("renders the same frame through CliFailure.toDoc", () => {
 		const error = new Error("m");
 		error.stack = `Error: m\n    at x${"\t".repeat(100_000)}(a`;
-		const started = cpuNow();
-		const doc = CliFailure.toDoc(Cause.die(error), { stackFrames: "all" });
-		const elapsed = cpuNow() - started;
-		assert.isAbove(doc.length, 0);
-		assert.isBelow(elapsed, 500, `took ${elapsed} ms`);
+		assert.isAbove(CliFailure.toDoc(Cause.die(error), { stackFrames: "all" }).length, 0);
 	});
 });

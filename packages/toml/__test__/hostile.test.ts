@@ -27,24 +27,11 @@ import { TomlDocument } from "../src/TomlDocument.js";
 import { TomlFormat, TomlModificationError } from "../src/TomlFormat.js";
 
 /**
- * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
- * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
- * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
+ * The test timeout of the scale and path-depth rows: Vitest's default 5 s would abort them on a shared CI runner,
+ * which measured about 4x slower than local (5,955 ms for the 2 MB document that takes about 1.4 s here). It is a
+ * deadline, not an assertion: `toml.hostile.test.ts` holds how these inputs' cost grows.
  */
-const cpuNow = (): number => {
-	const used = process.cpuUsage();
-	return (used.user + used.system) / 1000;
-};
-
-/**
- * Elapsed-time ceiling for the scale and path-depth rows. The bound is a
- * hang/quadratic-blowup guard, not a performance target: linear behavior was
- * verified out of band (12.5k->126ms through 100k->762ms key-values locally),
- * and a quadratic parse at these sizes would take minutes. 30s tolerates
- * shared CI runners, which measured ~4x slower than local (5,955ms for the
- * 2MB document that takes ~1.4s here) and flaked the previous 5s bound.
- */
-const ELAPSED_BOUND_MS = 30_000;
+const SCALE_TIMEOUT_MS = 30_000;
 
 /** Flip a failing parse and hand back the typed error. */
 const parseError = (text: string) =>
@@ -248,28 +235,21 @@ describe("hostile input", () => {
 
 	describe("modify — path depth", () => {
 		it.effect(
-			"a 100_000-segment path fails typed promptly, before any parse work",
+			"a 100_000-segment path fails typed, before any parse work",
 			() =>
 				Effect.gen(function* () {
 					const path = Array.from({ length: 100_000 }, (_, i) => `k${i}`);
-					const started = cpuNow();
 					const error = yield* Effect.flip(TomlFormat.modify("a = 1\n", path, 2));
-					const elapsed = cpuNow() - started;
 					assert.instanceOf(error, TomlModificationError);
 					assert.strictEqual((error as TomlModificationError).diagnostic.code, "NestingDepthExceeded");
-					assert.isBelow(elapsed, ELAPSED_BOUND_MS);
 				}),
-			ELAPSED_BOUND_MS,
+			SCALE_TIMEOUT_MS,
 		);
 	});
 
-	// Every row asserting against ELAPSED_BOUND_MS also passes it as the
-	// Vitest test timeout: the default 5s ceiling would abort the test before
-	// the elapsed assertion runs, turning the bound into dead code on a slow
-	// CI runner (this exact document measured ~5,955ms there).
 	describe("scale", () => {
 		it.effect(
-			"a 2MB document of 50_000 key-values parses under the timeout",
+			"a 2MB document of 50_000 key-values parses",
 			() =>
 				Effect.gen(function* () {
 					const lines = Array.from(
@@ -278,14 +258,11 @@ describe("hostile input", () => {
 					);
 					const doc = `${lines.join("\n")}\n`;
 					assert.isAtLeast(doc.length, 2_000_000);
-					const started = cpuNow();
 					const value = (yield* Toml.parse(doc)) as Record<string, unknown>;
-					const elapsed = cpuNow() - started;
 					assert.strictEqual(Object.keys(value).length, 50_000);
 					assert.strictEqual(value.k49999, "x".repeat(28));
-					assert.isBelow(elapsed, ELAPSED_BOUND_MS);
 				}),
-			ELAPSED_BOUND_MS,
+			SCALE_TIMEOUT_MS,
 		);
 
 		it.effect(
@@ -293,26 +270,20 @@ describe("hostile input", () => {
 			() =>
 				Effect.gen(function* () {
 					const payload = "x".repeat(1_048_576);
-					const started = cpuNow();
 					const value = (yield* Toml.parse(`s = "${payload}"\n`)) as Record<string, unknown>;
-					const elapsed = cpuNow() - started;
 					assert.strictEqual(value.s, payload);
-					assert.isBelow(elapsed, ELAPSED_BOUND_MS);
 				}),
-			ELAPSED_BOUND_MS,
+			SCALE_TIMEOUT_MS,
 		);
 
 		it.effect(
-			"a 1MB unterminated string fails typed promptly — no quadratic scan",
+			"a 1MB unterminated string fails typed",
 			() =>
 				Effect.gen(function* () {
-					const started = cpuNow();
 					const error = yield* parseError(`s = "${"x".repeat(1_048_576)}`);
-					const elapsed = cpuNow() - started;
 					assert.strictEqual(codeOf(error), "UnterminatedString");
-					assert.isBelow(elapsed, ELAPSED_BOUND_MS);
 				}),
-			ELAPSED_BOUND_MS,
+			SCALE_TIMEOUT_MS,
 		);
 	});
 

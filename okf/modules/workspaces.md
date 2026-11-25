@@ -3,7 +3,7 @@ type: Module
 title: "@effected/workspaces: monorepo tooling"
 description: The boundary-tier package that finds a workspace root, enumerates its packages, walks the dependency graph, detects the package manager, assembles pnpm catalogs, checks peer dependencies, and reads git-scoped snapshots.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/workspaces
 tags:
   - architecture
@@ -32,7 +32,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-21T19:42:38Z
-integrity:
+x-okfit-integrity:
   generated:
     body: d287a2897e078e54
 ---

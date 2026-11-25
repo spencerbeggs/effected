@@ -3,7 +3,7 @@ type: Interface
 title: "@effected/workspaces catalogs and the config-dependency seam"
 description: WorkspaceCatalogs and CatalogSet assembly, the release-age gate, the ConfigDependencySpec value model, and the ConfigDependencyHooks opt-in replay seam over pnpm config dependencies.
 status: stable
-kind: api
+x-okfit-kind: api
 resource: ../../packages/workspaces/src/WorkspaceCatalogs.ts
 tags:
   - architecture
@@ -26,7 +26,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-21T19:42:38Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 28a3e6077d66c654
 ---

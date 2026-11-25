@@ -3,16 +3,6 @@ import { ErrorText } from "@effected/kit";
 import { Duration } from "effect";
 import { Doc, Fmt, Render } from "../src/index.js";
 
-/**
- * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
- * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
- * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
- */
-const cpuNow = (): number => {
-	const used = process.cpuUsage();
-	return (used.user + used.system) / 1000;
-};
-
 describe("Fmt.duration", () => {
 	const cases: ReadonlyArray<readonly [number, string]> = [
 		[0, "0ms"],
@@ -259,7 +249,7 @@ describe("Fmt.stripAnsi", () => {
 		assert.strictEqual(Fmt.stripAnsi("\u001b(Ba\u001b)0b\u001b$Bc\u001b$(Cd\u001b#8e\u001b Ff"), "abcdef");
 	});
 
-	it("strips an unterminated million-character sequence in linear time (no catastrophic backtracking)", () => {
+	it("returns for an unterminated million-character sequence, never longer than it came in", () => {
 		const long = "a".repeat(1_000_000);
 		for (const input of [
 			`\u001b]${long}`,
@@ -267,11 +257,8 @@ describe("Fmt.stripAnsi", () => {
 			`\u001b[${"1;".repeat(500_000)}`,
 			"\u001b ".repeat(500_000),
 		]) {
-			const started = cpuNow();
-			Fmt.stripAnsi(input);
-			// Linear inputs strip in a few milliseconds; a quadratic regex would take minutes. The bound leaves room for a
-			// loaded machine.
-			assert.isBelow(cpuNow() - started, 500);
+			// `Fmt.hostile.test.ts` holds that this is linear; a quadratic regex would take minutes here.
+			assert.isAtMost(Fmt.stripAnsi(input).length, input.length);
 		}
 	});
 
@@ -477,11 +464,10 @@ describe("Fmt.suggest", () => {
 		assert.isAbove(suggested, 50, "the oracle suggested something for most words");
 	});
 
-	it("a long typed value against short names stays fast", () => {
-		const started = cpuNow();
+	// `Fmt.hostile.test.ts` holds how this grows with the typed value.
+	it("answers a long typed value against short names, and against names as long", () => {
 		const long = "x".repeat(200_000);
 		assert.deepStrictEqual(Fmt.suggest(long, ["build", "test"]), []);
 		assert.deepStrictEqual(Fmt.suggest(long, [`${long}yyy`, long.slice(1)]), [long.slice(1)]);
-		assert.isBelow(cpuNow() - started, 2000);
 	});
 });

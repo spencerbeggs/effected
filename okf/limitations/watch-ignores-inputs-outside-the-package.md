@@ -3,7 +3,7 @@ type: Limitation
 title: A watched build does not rebuild for inputs outside the package
 description: "Under --watch, editing the root pnpm-workspace.yaml, the lockfile, or a tsconfig extends target outside the package triggers no rebuild, although a build reads them; restart the watch after such an edit."
 status: draft
-bounds: ../interfaces/build-commands.md
+x-okfit-bounds: ../interfaces/build-commands.md
 tags:
   - dx
 sources:
@@ -16,7 +16,7 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-11-18T18:13:08Z
-integrity:
+x-okfit-integrity:
   generated:
     body: b1587117618e93e2
 ---

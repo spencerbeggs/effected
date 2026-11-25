@@ -57,7 +57,7 @@
 		["@effected/source"]
 	],
 	"tooling": ["@effected/pnpm-plugin-effected"],
-	"unconstrained": ["effected", "docs", "scratchpad", "@effected/ai-plugins"],
+	"unconstrained": ["effected", "docs", "scratchpad", "@effected/ai-plugins", "@effected/testing"],
 	"fields": ["dependencies", "peerDependencies", "optionalDependencies"],
 	"requiredEdges": [
 		"@effected/lockfiles -> @effected/bun",

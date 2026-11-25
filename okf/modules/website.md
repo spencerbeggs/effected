@@ -3,7 +3,7 @@ type: Module
 title: website
 description: The RSPress docs site, publishing per-package API reference generated from each package's api-extractor model under lib/models/.
 status: stable
-kind: website
+x-okfit-kind: website
 resource: ../../website
 tags:
   - dx
@@ -15,7 +15,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-06T20:09:15Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 418269f719a78d51
 ---

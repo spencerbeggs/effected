@@ -21,7 +21,7 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-11-08T22:56:47Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 3bb1de592ece5a5c
 ---

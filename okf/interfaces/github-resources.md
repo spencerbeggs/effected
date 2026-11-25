@@ -3,13 +3,13 @@ type: Interface
 title: "@effected/github resource services"
 description: One context service per GitHub noun, turning typed endpoints into domain operations.
 status: stable
-kind: api
+x-okfit-kind: api
 resource: ../../packages/github/src
 tags: [bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-10-10T22:41:04Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 241e4c1e25ebc19a
 ---

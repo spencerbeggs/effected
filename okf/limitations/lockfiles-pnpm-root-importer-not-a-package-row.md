@@ -3,13 +3,13 @@ type: Limitation
 title: The pnpm root importer is not represented as a package row
 description: Only non-root pnpm importers become workspace rows in the resolved packages array, so the root importer's own resolution is unrepresented.
 status: stable
-bounds: ../modules/lockfiles.md
+x-okfit-bounds: ../modules/lockfiles.md
 tags:
   - dx
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-integrity:
+x-okfit-integrity:
   generated:
     body: e53a27c2c61da327
 ---

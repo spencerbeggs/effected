@@ -9,7 +9,7 @@ tags:
 generated:
   by: "claude-code/opus-5"
   at: 2026-09-14T04:45:45Z
-integrity:
+x-okfit-integrity:
   generated:
     body: aee51355b9da9099
 ---

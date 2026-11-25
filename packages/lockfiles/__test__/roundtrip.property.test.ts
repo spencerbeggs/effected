@@ -31,6 +31,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { IntegrityHashBrand } from "@effected/npm";
 import { DependencySpecifier } from "@effected/npm";
+import { Depth } from "@effected/testing";
 import { Arbitrary, Effect, Schema } from "effect";
 import { ImporterDependency } from "../src/ImporterDependency.js";
 import { Lockfile } from "../src/Lockfile.js";
@@ -165,29 +166,50 @@ const lockfileArb: Arbitrary.Arbitrary<Lockfile> = Arbitrary.all({
 	importers: arrayOf(lockfileImporterArb, 3),
 }).pipe(Arbitrary.map((r) => Lockfile.make(r)));
 
+/** Fast-check's default hundred cases on a pull request, and ten times that at full depth. */
+const CHECK = { arbitrary: { runs: Depth.pick({ sample: 100, full: 1_000 }) } };
+
 describe("codec round-trips", () => {
-	it.effect.prop("ResolvedPackage: decode ∘ encode is identity", [resolvedPackageArb], ([pkg]) =>
-		roundTrip(ResolvedPackage, pkg),
+	it.effect.prop(
+		"ResolvedPackage: decode ∘ encode is identity",
+		[resolvedPackageArb],
+		([pkg]) => roundTrip(ResolvedPackage, pkg),
+		CHECK,
 	);
 
-	it.effect.prop("WorkspaceDependency: decode ∘ encode is identity", [WorkspaceDependency], ([dep]) =>
-		roundTrip(WorkspaceDependency, dep),
+	it.effect.prop(
+		"WorkspaceDependency: decode ∘ encode is identity",
+		[WorkspaceDependency],
+		([dep]) => roundTrip(WorkspaceDependency, dep),
+		CHECK,
 	);
 
-	it.effect.prop("ImporterDependency: decode ∘ encode is identity", [importerDependencyArb], ([dep]) =>
-		roundTrip(ImporterDependency, dep),
+	it.effect.prop(
+		"ImporterDependency: decode ∘ encode is identity",
+		[importerDependencyArb],
+		([dep]) => roundTrip(ImporterDependency, dep),
+		CHECK,
 	);
 
-	it.effect.prop("LockfileImporter: decode ∘ encode is identity", [lockfileImporterArb], ([importer]) =>
-		roundTrip(LockfileImporter, importer),
+	it.effect.prop(
+		"LockfileImporter: decode ∘ encode is identity",
+		[lockfileImporterArb],
+		([importer]) => roundTrip(LockfileImporter, importer),
+		CHECK,
 	);
 
-	it.effect.prop("Lockfile (with importers): decode ∘ encode is identity", [lockfileArb], ([lockfile]) =>
-		roundTrip(Lockfile, lockfile),
+	it.effect.prop(
+		"Lockfile (with importers): decode ∘ encode is identity",
+		[lockfileArb],
+		([lockfile]) => roundTrip(Lockfile, lockfile),
+		CHECK,
 	);
 
-	it.effect.prop("LockfileIntegrity: decode ∘ encode is identity", [LockfileIntegrity], ([report]) =>
-		roundTrip(LockfileIntegrity, report),
+	it.effect.prop(
+		"LockfileIntegrity: decode ∘ encode is identity",
+		[LockfileIntegrity],
+		([report]) => roundTrip(LockfileIntegrity, report),
+		CHECK,
 	);
 
 	it.effect("a parsed fixture-shaped lockfile survives encode ∘ decode", () =>

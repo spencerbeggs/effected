@@ -84,6 +84,17 @@ const isBinOnly = (manifest: { exports?: Record<string, unknown> }): boolean => 
 	return keys.length > 0 && keys.every((key) => key === "./package.json");
 };
 
+// A package with an import surface that is never published (exports, and no
+// `publishConfig.access: "public"`) is workspace-only: it has no build, so no
+// doc model, and no consumer can import it. The index is written for
+// consumers, so such a package is left out rather than reported as a
+// perpetually missing build. `@effected/testing`, the kit's own test support,
+// is the one. A manifest with no exports at all is not judged by this.
+const isWorkspaceOnly = (manifest: {
+	exports?: Record<string, unknown>;
+	publishConfig?: { access?: string };
+}): boolean => manifest.exports !== undefined && manifest.publishConfig?.access !== "public";
+
 const listPackages = (packagesDir: string): Pkg[] =>
 	readdirSync(packagesDir, { withFileTypes: true })
 		.filter((entry) => entry.isDirectory())
@@ -95,9 +106,10 @@ const listPackages = (packagesDir: string): Pkg[] =>
 			manifest: JSON.parse(readFileSync(join(packagesDir, dir, "package.json"), "utf8")) as {
 				name: string;
 				exports?: Record<string, unknown>;
+				publishConfig?: { access?: string };
 			},
 		}))
-		.filter(({ manifest }) => !isBinOnly(manifest))
+		.filter(({ manifest }) => !isBinOnly(manifest) && !isWorkspaceOnly(manifest))
 		.map(({ dir, manifest }) => ({
 			dir,
 			name: manifest.name,

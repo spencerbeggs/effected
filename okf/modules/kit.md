@@ -3,14 +3,14 @@ type: Module
 title: "@effected/kit"
 description: The platform-free primitives a carrier-pattern tool's own engine package shares across its front ends — distribution stamping, remediation shape, never-throwing error text, launch-context resolution, a one-permit lane for process-global work with scoped restores, a path-containment check that fails closed, and transport-neutral crash guards.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/kit
-layer: pure
+x-okfit-layer: pure
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-11-05T03:48:06Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 518233086bcbfb52
 ---

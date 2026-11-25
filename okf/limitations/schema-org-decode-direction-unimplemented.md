@@ -2,13 +2,13 @@
 type: Limitation
 title: Decoding a JsonLdDocument silently drops the additional catch-all
 description: JsonLdDocument only implements the encode direction; a Schema decode of the wire form succeeds but does not reconstruct which fields were originally flattened from a node's catch-all.
-bounds: ../modules/schema-org.md
+x-okfit-bounds: ../modules/schema-org.md
 status: stable
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 376f250526560eb2
 ---

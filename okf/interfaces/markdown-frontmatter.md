@@ -3,7 +3,7 @@ type: Interface
 title: "@effected/markdown frontmatter"
 description: The frontmatter capture node, its read/write codec contract, the $schema declaration grammar and resolver seam, and the string-level split/join facade.
 status: stable
-kind: api
+x-okfit-kind: api
 resource: ../../packages/markdown/src/Frontmatter.ts
 tags:
   - architecture
@@ -17,13 +17,15 @@ verified:
     at: 2026-10-13T21:42:59Z
   - by: human:spencer
     at: 2026-11-08T18:25:54Z
-integrity:
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
+x-okfit-integrity:
   generated:
     body: 05f269156eb28341
   verified:
     by: human:spencer
-    at: 2026-11-08T18:25:54Z
-    content: e1c9a443a67b49d9
+    at: 2026-11-25T21:38:57Z
+    content: 3aa9383a3c8f7082
 ---
 
 # `@effected/markdown` frontmatter

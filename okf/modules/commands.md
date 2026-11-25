@@ -3,7 +3,7 @@ type: Module
 title: "@effected/commands"
 description: The kit's tool-and-output layer over core's subprocess contract — structured running, CLI tool discovery, run-once serialization across processes, prebuilt-binary resolution, launcher argv parsing, and (behind ./node-sync) anchored module resolution.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/commands
 tags: [bundle, dx]
 sources:
@@ -30,7 +30,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-06T22:24:55Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 54780f1a88f81e5d
 ---

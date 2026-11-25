@@ -3,9 +3,9 @@ type: Module
 title: "@effected/oidc"
 description: The kit's OpenID Connect vocabulary over @effected/jwt — the IdentityToken issuer contract, standard ID-token claims, an unverified decode and a discovery-backed verify.
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/oidc
-layer: L2
+x-okfit-layer: L2
 tags:
   - architecture
   - security
@@ -27,7 +27,7 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-11-08T15:15:33Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 1275200870e484b2
 ---

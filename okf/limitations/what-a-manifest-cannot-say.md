@@ -3,13 +3,13 @@ type: Limitation
 title: A package manifest cannot say who supplied it, who assembled the BOM, or when
 description: SbomMetadataSource refuses to fabricate supplier, BOM-author and timestamp fields a package.json cannot honestly answer.
 status: stable
-bounds: ../modules/sbom.md
+x-okfit-bounds: ../modules/sbom.md
 tags:
   - architecture
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-integrity:
+x-okfit-integrity:
   generated:
     body: feb2bb797da65bbb
 ---

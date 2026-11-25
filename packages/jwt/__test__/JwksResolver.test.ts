@@ -612,6 +612,16 @@ const settle = Effect.gen(function* () {
 	for (let i = 0; i < 50; i++) yield* Effect.yieldNow;
 });
 
+/**
+ * Wait until `ready` holds, looking again after each yield. For a wait on something that must happen: `settle` is
+ * a guess at how many yields that takes, and verifying is real asynchronous crypto, so on a loaded runner the guess
+ * ran out first. What is waited for never happening fails the test at its deadline.
+ */
+const until = (ready: () => boolean) =>
+	Effect.gen(function* () {
+		while (!ready()) yield* Effect.yieldNow;
+	});
+
 /** Hold the Nth JWKS request (1-based) on its own latch; every other request answers at once. */
 const holdingNth = (keys: () => ReadonlyArray<unknown>, held: ReadonlyMap<number, Deferred.Deferred<void>>) => {
 	let seen = 0;
@@ -635,12 +645,12 @@ layer(CryptoLive, { buildPerTest: true })("JwksResolver with coalesce: false", (
 				const token = yield* Jws.sign({}, a.signing);
 				const program = Effect.gen(function* () {
 					const stuck = yield* Effect.forkChild(verify(token));
-					yield* settle;
-					// The second caller fetches for itself and answers while the first is still stuck.
+					yield* until(() => http.count(JWKS_URI) === 1);
+					// The second caller fetches for itself and answers while the first is still stuck. Held up by the
+					// first, it would never finish; the coalesced control below shows that case by name.
 					const second = yield* Effect.forkChild(verify(token));
-					yield* settle;
-					const done = second.pollUnsafe();
-					assert.isTrue(done !== undefined && Exit.isSuccess(done), "B finished on its own");
+					const done = yield* Fiber.await(second);
+					assert.isTrue(Exit.isSuccess(done), "B finished on its own");
 					assert.isUndefined(stuck.pollUnsafe(), "A is still waiting on its own fetch");
 					assert.strictEqual(http.count(JWKS_URI), 2, "each cold caller fetched for itself");
 					// A third caller, alone, is answered from the set the second stored.
@@ -970,11 +980,10 @@ layer(CryptoLive, { buildPerTest: true })("JwksResolver.layerUncoalesced", (it) 
 			const token = yield* Jws.sign({}, a.signing);
 			const program = Effect.gen(function* () {
 				const stuck = yield* Effect.forkChild(verify(token));
-				yield* settle;
+				yield* until(() => http.count(JWKS_URI) === 1);
 				const second = yield* Effect.forkChild(verify(token));
-				yield* settle;
-				const done = second.pollUnsafe();
-				assert.isTrue(done !== undefined && Exit.isSuccess(done), "B finished on its own");
+				const done = yield* Fiber.await(second);
+				assert.isTrue(Exit.isSuccess(done), "B finished on its own");
 				yield* Fiber.interrupt(stuck);
 			});
 			yield* Effect.provide(

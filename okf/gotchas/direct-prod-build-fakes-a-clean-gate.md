@@ -3,6 +3,7 @@ type: Gotcha
 title: Running the bundler script directly fakes a clean build gate
 description: "node savvy.build.ts --target prod skips build:dev, emits no .d.ts, and leaves a truncated issues.json shaped exactly like a passing gate."
 status: deprecated
+superseded_by: ../conventions/build-through-turbo-only.md
 resource: ../../turbo.json
 stale_after: 2027-03-13T00:00:00Z
 tags:
@@ -11,7 +12,7 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-06T20:01:27Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 7e554af27ecfecb4
 ---

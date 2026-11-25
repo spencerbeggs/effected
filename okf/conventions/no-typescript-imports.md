@@ -3,6 +3,7 @@ type: Convention
 title: No @effected/* package imports typescript
 description: "@effected/* packages never import the typescript package, at runtime or as import type; version-coupled TypeScript knowledge is owned by tsconfig-json as data tables, and direct TS-API usage stays confined to external consumers until a TypeScript 7.1 JS-compatible API exists."
 status: deprecated
+superseded_by: typescript-stays-in-the-bundler.md
 stale_after: "2027-03-13T00:00:00Z"
 tags:
   - compat
@@ -15,7 +16,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-06T15:28:18Z
-integrity:
+x-okfit-integrity:
   generated:
     body: de5aa0c0da8126af
 ---

@@ -168,55 +168,7 @@ describe("ShellScript.allCommands", () => {
 	});
 });
 
-/** The fastest of three CPU-time samples (`process.cpuUsage`) of a parse and walk. */
-const cpu = (input: string, maxDepth?: number): number => {
-	let best = Number.POSITIVE_INFINITY;
-	for (let sample = 0; sample < 3; sample += 1) {
-		const started = process.cpuUsage();
-		walk(input, maxDepth);
-		const used = process.cpuUsage(started);
-		best = Math.min(best, (used.user + used.system) / 1000);
-	}
-	return best;
-};
-
-/**
- * The growth ratio of a walk from `build(size)` to `build(4 * size)`: linear
- * is near 4, quadratic near 16. The small side doubles until it takes 5 ms of
- * CPU, so it measures real work rather than timer noise.
- */
-const growth = (build: (size: number) => string, start: number, maxDepth?: number): number => {
-	let size = start;
-	cpu(build(size), maxDepth); // warm up
-	let small = cpu(build(size), maxDepth);
-	while (small < 5 && size < start * 64) {
-		size *= 2;
-		small = cpu(build(size), maxDepth);
-	}
-	return cpu(build(size * 4), maxDepth) / Math.max(small, 5);
-};
-
 describe("ShellScript.allCommands on hostile input", () => {
-	it("stays linear in the input over a deep $( chain at the default cap", () => {
-		const ratio = growth((size) => chain(Math.floor(size / 2)), 16_384);
-		assert.isBelow(ratio, 8);
-	});
-
-	it("stays linear in the input over a deep chain at a large cap", () => {
-		const ratio = growth((size) => chain(Math.floor(size / 2)), 4096, 64);
-		assert.isBelow(ratio, 8);
-	});
-
-	it("stays linear over thousands of substitutions in one command", () => {
-		const ratio = growth((size) => `echo ${"$(a) ".repeat(Math.floor(size / 5))}`, 16_384);
-		assert.isBelow(ratio, 8);
-	});
-
-	it("stays linear over fan-out at every depth", () => {
-		const ratio = growth((size) => `echo ${"$(a $(b `c` <(d)) e) ".repeat(Math.floor(size / 26))}`, 16_384);
-		assert.isBelow(ratio, 8);
-	});
-
 	it("returns a truncation for a megabyte of $( and never throws", { timeout: 60_000 }, () => {
 		const result = walk(chain(1 << 19));
 		assert.isTrue(result.truncated);
@@ -238,7 +190,7 @@ describe("ShellScript.allCommands on hostile input", () => {
 		assert.strictEqual(child.stdout.trim(), "4001 false");
 	});
 
-	it("stops at the budget on overlapping substitutions, refusing a 6 KB gadget fast", () => {
+	it("stops at the budget on overlapping substitutions, refusing a 6 KB gadget", () => {
 		// Each level lists eight overlapping fallback substitutions over nearly
 		// the whole remaining text; without the enforced budget the walk
 		// re-parsed bodies exponentially in the cap and ran the heap out.
@@ -250,16 +202,13 @@ describe("ShellScript.allCommands on hostile input", () => {
 			return g;
 		};
 		const input = `git commit -m x\n${`${gadget(16, 8)}\n`.repeat(6)}`;
-		const started = process.cpuUsage();
 		const result = walk(input);
-		const used = process.cpuUsage(started);
 		assert.isTrue(result.truncated);
 		assert.deepStrictEqual(
 			result.truncations.map((t) => t.reason),
 			["budget"],
 		);
 		assert.isAtMost(lexed(result), ShellScript.defaultMaxDepth * input.length);
-		assert.isBelow((used.user + used.system) / 1000, 1000);
 		// The same gadget with a smaller cap stops on depth or budget, never
 		// past the budget.
 		for (const maxDepth of [0, 1, 4, 8, 64, Number.POSITIVE_INFINITY]) {

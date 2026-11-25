@@ -49,6 +49,7 @@
 		"@effected/markdown-lint": "workspace:*",
 		"@effected/memfs": "workspace:*",
 		"@effected/npm": "workspace:*",
+		"@effected/testing": "workspace:*",
 		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
 		"typescript": "catalog:effected:build"

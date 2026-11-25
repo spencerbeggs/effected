@@ -3,7 +3,7 @@ type: Decision
 title: The sealed box's primitives are copied from noble into @effected/github, with no third-party crypto dependency
 description: "@effected/github builds the libsodium sealed box from in-house copies of audited @noble code (X25519, HSalsa20 and XSalsa20-Poly1305, BLAKE2b), each with a provenance header in core's style; tweetnacl, blakejs and libsodium-wrappers are devDependencies used only as test oracles, libsodium being the authority. The ephemeral secret comes from globalThis.crypto.getRandomValues, and the modules stay confined to RepositorySecret."
 status: stable
-supersedes: sealed-box-home.md
+x-okfit-supersedes: sealed-box-home.md
 tags:
   - architecture
   - security
@@ -24,13 +24,15 @@ verified:
     at: 2026-11-16T16:59:20Z
   - by: human:spencer
     at: 2026-11-16T18:54:03Z
-integrity:
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
+x-okfit-integrity:
   generated:
     body: b1417e0fd29e0783
   verified:
     by: human:spencer
-    at: 2026-11-16T18:54:03Z
-    content: 49e2372e339edfc6
+    at: 2026-11-25T21:38:57Z
+    content: 733bac9d590e6fc4
 generated:
   by: okfit/claude-code
   at: 2026-11-16T17:04:15Z

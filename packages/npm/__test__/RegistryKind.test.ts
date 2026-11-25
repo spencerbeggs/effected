@@ -1,16 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { classifyRegistry, registryDisplayName, registryHost, registryShortLabel } from "../src/RegistryKind.js";
 
-/**
- * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
- * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
- * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
- */
-const cpuNow = (): number => {
-	const used = process.cpuUsage();
-	return (used.user + used.system) / 1000;
-};
-
 describe("classifyRegistry", () => {
 	it("classifies the public npm registry, with or without a scheme or path", () => {
 		assert.strictEqual(classifyRegistry("https://registry.npmjs.org"), "npm");
@@ -62,15 +52,9 @@ describe("registryHost", () => {
 		assert.strictEqual(registryHost("https://registry.example.test:4873/"), "registry.example.test:4873");
 	});
 
-	it("stays linear on a pathological path, with no regex backtracking", () => {
-		// The obvious `.replace(/\/.*$/, "")` is a polynomial-backtracking regex
-		// over a value this package does not control (registry strings come from
-		// npmrc and package.json). CodeQL flagged it on exactly this line. The
-		// scan-based form answers the same thing without the exposure.
-		const pathological = `evil.test/${"/".repeat(20000)}`;
-		const started = cpuNow();
-		assert.strictEqual(registryHost(pathological), "evil.test");
-		assert.isBelow(cpuNow() - started, 250, "must not backtrack");
+	// `RegistryKind.hostile.test.ts` holds that this is linear in the path.
+	it("answers the host of a pathological path", () => {
+		assert.strictEqual(registryHost(`evil.test/${"/".repeat(20000)}`), "evil.test");
 	});
 
 	it("strips the scheme and path from a value that does not parse as a URL", () => {

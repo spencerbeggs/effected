@@ -3,7 +3,7 @@ type: Module
 title: "@effected/plugin"
 description: "The effected tool's carrier: the one package a consumer installs as a root devDependency, declaring the effected and effected-mcp bins as shims that pass its own distribution identity to the CLI and MCP front ends, re-exporting the schemastore config authoring surface, shipping the tsconfig presets as ./tsconfig/*, and publishing a dist that inlines the tool's whole closure and effect."
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/plugin
 tags:
   - architecture
@@ -11,7 +11,7 @@ tags:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-11-12T04:28:39Z
-integrity:
+x-okfit-integrity:
   generated:
     body: b73e0328afe6638d
 ---

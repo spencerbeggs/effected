@@ -3,18 +3,9 @@ import { Arbitrary, Option, Result, Schema } from "effect";
 import { Gitmodules } from "../src/Gitmodules.js";
 import type { GitRemoteForm } from "../src/GitRemote.js";
 import { GitRemote, GitRemotePath, GitRemoteScp, GitRemoteTransport, GitRemoteUrl } from "../src/GitRemote.js";
+import { HOSTILE_REMOTES } from "./hostileRemotes.js";
 
 const parsed = (raw: string): GitRemoteForm => Option.getOrThrow(GitRemote.parse(raw));
-
-/**
- * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
- * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
- * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
- */
-const cpuNow = (): number => {
-	const used = process.cpuUsage();
-	return (used.user + used.system) / 1000;
-};
 
 describe("GitRemote.parse — forms and verbatim parts", () => {
 	const cases: ReadonlyArray<readonly [string, GitRemoteForm]> = [
@@ -268,68 +259,15 @@ describe("GitRemote properties", () => {
 	);
 });
 
-describe("GitRemote hardening — hostile input stays total and linear", () => {
-	const SIZE = 200_000;
-	const hostile: ReadonlyArray<readonly [string, string]> = [
-		["unmatched [", "[".repeat(SIZE)],
-		["unmatched [ then :", `${"[".repeat(SIZE)}:x`],
-		["bracket pairs", "[]".repeat(SIZE)],
-		["@[ runs", "@[".repeat(SIZE)],
-		["@[ runs then :", `${"@[".repeat(SIZE)}:x`],
-		["many @", `https://${"@".repeat(SIZE)}h/x`],
-		["many :", ":".repeat(SIZE)],
-		["many ::", `a${"::".repeat(SIZE)}`],
-		["scheme-like run then ::", `${"a".repeat(SIZE)}::x`],
-		["scheme-like run then ://", `${"a".repeat(SIZE)}://`],
-		["scheme-like run, nothing after", "a".repeat(SIZE)],
-		["many ://", "://".repeat(SIZE)],
-		["many /", "/".repeat(SIZE)],
-		["NUL and C0", "\0\u0001\u001b:\u0007/".repeat(SIZE / 8)],
-	];
-	for (const [label, raw] of hostile) {
-		it(`${label}: returns without throwing, quickly`, () => {
-			const started = cpuNow();
+// `GitRemote.hostile.test.ts` holds that each of these parses in time linear in its length.
+describe("GitRemote hardening — hostile input stays total", () => {
+	for (const [label, make] of HOSTILE_REMOTES) {
+		it(`${label}: returns without throwing`, () => {
+			const raw = make(200_000);
 			const result = GitRemote.parse(raw);
-			const elapsed = cpuNow() - started;
 			if (Option.isSome(result) && !raw.includes("://")) assert.strictEqual(GitRemote.format(result.value), raw);
-			assert.isBelow(elapsed, 500, `${label} took ${elapsed}ms`);
 		});
 	}
-
-	/**
-	 * Linear is ~4x from n to 4n; quadratic would be ~16x. A ratio of CPU time per parse, so hardware cancels and a
-	 * loaded machine can not stretch a sample. Each size repeats the parse until a sample holds 5 ms of real work (a
-	 * parse of a 100k run can take microseconds, whose ratio is timer noise), and keeps the fastest of three samples.
-	 */
-	const assertLinear = (make: (n: number) => string): void => {
-		const perParse = (raw: string): number => {
-			let best = Number.POSITIVE_INFINITY;
-			for (let sample = 0; sample < 3; sample++) {
-				let reps = 0;
-				const started = cpuNow();
-				let elapsed = 0;
-				while (elapsed < 5) {
-					GitRemote.parse(raw);
-					reps++;
-					elapsed = cpuNow() - started;
-				}
-				best = Math.min(best, elapsed / reps);
-			}
-			return best;
-		};
-		const smallRaw = make(100_000);
-		const largeRaw = make(400_000);
-		GitRemote.parse(make(50_000)); // warm up
-		const small = perParse(smallRaw);
-		const large = perParse(largeRaw);
-		assert.isBelow(large / small, 10, `100k=${small}ms 400k=${large}ms`);
-	};
-
-	it("scales linearly on unmatched brackets", () => assertLinear((n) => "[".repeat(n)));
-	it("scales linearly on @[ runs (git's host_end search)", () => assertLinear((n) => `${"@[".repeat(n)}:x`));
-	it("scales linearly on a scheme-character run (the transport probe)", () => assertLinear((n) => "a".repeat(n)));
-	it("scales linearly on @ runs in a URL (the userinfo split)", () =>
-		assertLinear((n) => `https://${"@".repeat(n)}h/x`));
 });
 
 describe("GitRemote — reproducing a persisted host/path key byte for byte (vitest-agent [persisted])", () => {

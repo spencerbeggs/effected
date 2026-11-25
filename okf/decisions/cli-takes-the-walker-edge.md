@@ -3,7 +3,7 @@ type: Decision
 title: CliLinks finds the project root with @effected/walker
 description: "CliLinks locates the nearest ancestor holding .git or pnpm-workspace.yaml with Walker.ascend and Walker.findRoot, taking @effected/walker as a required peer of @effected/cli-kit, rather than a hand-written ascent."
 status: stable
-supersedes: cli-links-inline-ascent.md
+x-okfit-supersedes: cli-links-inline-ascent.md
 tags: [architecture, deps]
 generated:
   by: "okfit/claude-code"
@@ -17,13 +17,15 @@ verified:
     at: 2026-11-02T17:04:46Z
   - by: human:spencer
     at: 2026-11-05T14:25:52Z
-integrity:
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
+x-okfit-integrity:
   generated:
     body: 5efdf00eae2716a8
   verified:
     by: human:spencer
-    at: 2026-11-05T14:25:52Z
-    content: '290221193e481258'
+    at: 2026-11-25T21:38:57Z
+    content: a03e3a63144c9616
 ---
 
 # CliLinks finds the project root with @effected/walker

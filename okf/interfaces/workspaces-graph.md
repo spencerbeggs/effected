@@ -3,7 +3,7 @@ type: Interface
 title: "@effected/workspaces dependency graph"
 description: The pure DependencyGraph value class over the discovered package list — the edge index, cycle detection, topological levels, and Mermaid rendering.
 status: stable
-kind: api
+x-okfit-kind: api
 resource: ../../packages/workspaces/src/DependencyGraph.ts
 tags:
   - architecture
@@ -18,13 +18,15 @@ verified:
     at: 2026-09-24T00:11:46.601Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
-integrity:
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
+x-okfit-integrity:
   generated:
     body: a675cd9d0ab8017e
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 82613aad6783d219
+    at: 2026-11-25T21:38:57Z
+    content: e5bd517d407159da
 ---
 
 # @effected/workspaces dependency graph

@@ -7,7 +7,7 @@ tags: [architecture, deps, security]
 generated:
   by: okfit/claude-code
   at: 2026-11-02T15:53:05Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 69dc787b385eb2e8
   verified:

@@ -3,7 +3,7 @@ type: Interface
 title: "@effected/github App authentication"
 description: The App JWT, installation-token lifecycle, and the seam the GitHub Actions runtime bridges on.
 status: stable
-kind: api
+x-okfit-kind: api
 resource: ../../packages/github/src/GitHubApp.ts
 tags: [bundle, security]
 generated:
@@ -20,13 +20,15 @@ verified:
     at: 2026-11-21T21:05:38Z
   - by: human:spencer
     at: 2026-11-21T21:26:34Z
-integrity:
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
+x-okfit-integrity:
   generated:
     body: 8ffe356e5bf3953d
   verified:
     by: human:spencer
-    at: 2026-11-21T21:26:34Z
-    content: d0bcdf377489f429
+    at: 2026-11-25T21:38:57Z
+    content: 3c1aa404c418399e
 ---
 
 # @effected/github App authentication

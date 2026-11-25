@@ -11,6 +11,7 @@
 // added to a skip list. There is no skip list in this file, by design.
 
 import { assert, describe, it } from "@effect/vitest";
+import { Depth } from "@effected/testing";
 import { Arbitrary, Result, Schema } from "effect";
 import { Markdown } from "../src/Markdown.js";
 import { loadSpecExamples } from "./e2e/support/corpus.js";
@@ -172,7 +173,8 @@ describe("differential oracle: commonmark.js 0.31.2", () => {
 			assert.strictEqual(ours, oracle, `disagreement on input:\n${JSON.stringify(markdown)}`);
 			return true;
 		},
-		{ arbitrary: { runs: 250, size: 12 } },
+		// 250 cases on a pull request, and ten times that at full depth.
+		{ arbitrary: { runs: Depth.pick({ sample: 250, full: 2_500 }), size: 12 } },
 	);
 
 	it("oracle defect tripwire: the empty-paragraph divergence still exists and is still ours-correct", () => {

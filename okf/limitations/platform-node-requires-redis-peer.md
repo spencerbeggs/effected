@@ -3,7 +3,7 @@ type: Limitation
 title: "@effect/platform-node declares redis as a required peer, so every kit package on it brings redis along"
 description: "@effect/platform-node 4.x declares redis as a required peerDependency for its NodeRedis module. Every kit package that depends on platform-node (bundler, engine, cli, mcp, plugin, github-actions) therefore leaves redis unmet. Under pnpm's default autoInstallPeers a consumer's install silently adds redis and five @redis/* packages; under strictPeerDependencies it fails without them. Upstream ruled it intentional in Effect-TS/effect#8554. The kit imports only platform-node subpaths, a rule a root test enforces, so NodeRedis never loads, and the kit declares no redis and sets no ignoreMissing for it."
 status: draft
-bounds: ../conventions/peer-dependency-discipline.md
+x-okfit-bounds: ../conventions/peer-dependency-discipline.md
 tags:
   - deps
   - compat
@@ -16,7 +16,7 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-11-10T01:56:33Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 5bf6391e8a198c5f
 ---

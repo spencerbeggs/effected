@@ -3,7 +3,7 @@ type: Module
 title: sbom
 description: The software-supply-chain artifact half of attestation — a CycloneDX 1.6 SBOM, the NTIA report, SLSA provenance and Sigstore DSSE signing.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/sbom
 tags:
   - architecture
@@ -11,7 +11,7 @@ tags:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-10-24T01:01:34Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 0e4e4139be787e76
 ---

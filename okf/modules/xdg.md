@@ -3,9 +3,9 @@ type: Module
 title: xdg
 description: XDG Base Directory resolution -- turning the environment into namespaced, precedence-ordered application directories and a config-file resolver chain, with no database and no runtime dependencies.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/xdg
-layer: L1
+x-okfit-layer: L1
 tags:
   - architecture
 sources:
@@ -16,7 +16,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-06T20:09:15Z
-integrity:
+x-okfit-integrity:
   generated:
     body: dc1446eb76c1dc8d
 ---

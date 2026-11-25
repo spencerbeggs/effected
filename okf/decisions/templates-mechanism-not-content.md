@@ -7,7 +7,7 @@ tags: [dx]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-integrity:
+x-okfit-integrity:
   generated:
     body: e09427cf7ba1cda6
   verified:

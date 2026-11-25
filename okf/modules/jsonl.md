@@ -3,15 +3,15 @@ type: Module
 title: "@effected/jsonl"
 description: Append-only, schema-validated JSONL journals exposed as a definable Effect service — the file as a live object, not a text format.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/jsonl
-layer: L1
+x-okfit-layer: L1
 tags:
   - architecture
 generated:
   by: "okfit/claude-code"
   at: 2026-11-22T03:59:52Z
-integrity:
+x-okfit-integrity:
   generated:
     body: d4903638004c5dfa
 ---

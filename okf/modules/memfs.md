@@ -3,9 +3,9 @@ type: Module
 title: "@effected/memfs"
 description: An in-memory implementation of core Effect's FileSystem service — an isolated virtual POSIX volume the kit's tests use as their filesystem double.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/memfs
-layer: L1
+x-okfit-layer: L1
 tags:
   - testing
   - architecture
@@ -21,7 +21,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-12T03:18:35Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 972bd8ec62be7587
 ---

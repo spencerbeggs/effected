@@ -3,7 +3,7 @@ type: Decision
 title: The effect family is pinned graph-wide by overrides derived from the catalog
 description: "A permanent overridesFromCatalogs directive derives one line-scoped override per Effect family member from the plugin's effect catalog, pinning effect and every satellite to the catalog's exact version across the whole consumer graph; the catalog's own range is ruled separately."
 status: stable
-supersedes: effect-catalog-locked-exact.md
+x-okfit-supersedes: effect-catalog-locked-exact.md
 tags:
   - deps
   - compat
@@ -31,13 +31,13 @@ sources:
 generated:
   by: okfit/claude-code
   at: 2026-11-10T04:40:05Z
-integrity:
+x-okfit-integrity:
   generated:
     body: f2b137039371a696
   verified:
     by: human:spencer
-    at: 2026-11-10T04:41:33Z
-    content: dd1bb6bbeb13bc12
+    at: 2026-11-25T21:38:57Z
+    content: 77ee7245f6173a8f
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -47,6 +47,8 @@ verified:
     at: 2026-11-08T18:25:54Z
   - by: human:spencer
     at: 2026-11-10T04:41:33Z
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
 ---
 
 # The effect family is pinned graph-wide by overrides derived from the catalog

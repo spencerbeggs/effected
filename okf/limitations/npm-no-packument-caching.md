@@ -3,7 +3,7 @@ type: Limitation
 title: NpmRegistry does not cache repeated packument reads
 description: Several NpmRegistry read paths fetch the same registry document more than once in a single program — most visibly the per-version read's 405 packument fallback — and nothing caches it; the fix is deferred until a consumer's call pattern demonstrates the cost rather than the redundancy alone.
 status: stable
-bounds: ../modules/npm.md
+x-okfit-bounds: ../modules/npm.md
 tags:
   - performance
 sources:
@@ -12,7 +12,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 5ff0da77a9939006
 ---

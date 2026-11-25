@@ -8,7 +8,7 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-13T00:15:32Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 4e8dad13e21d6fcc
   verified:

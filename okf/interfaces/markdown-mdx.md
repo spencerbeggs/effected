@@ -3,7 +3,7 @@ type: Interface
 title: "@effected/markdown MDX vocabulary"
 description: A construction-and-serialization-only extension of the node model for MDX, shaped to three vendored oracle packages, with no MDX parse support.
 status: stable
-kind: api
+x-okfit-kind: api
 resource: ../../packages/markdown/src/MarkdownNode.ts
 tags:
   - architecture
@@ -16,13 +16,15 @@ verified:
     at: 2026-09-24T00:11:40.582Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
-integrity:
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
+x-okfit-integrity:
   generated:
     body: f606ab142ffe8e59
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 6553ac6d1682b42a
+    at: 2026-11-25T21:38:57Z
+    content: 46e79e1db68e216b
 ---
 
 # `@effected/markdown` MDX vocabulary

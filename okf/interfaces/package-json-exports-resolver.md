@@ -3,7 +3,7 @@ type: Interface
 title: The package-json exports resolver
 description: "PackageExports implements Node's PACKAGE_EXPORTS_RESOLVE / PACKAGE_IMPORTS_RESOLVE pure over a structural manifest, adds TypeScript's types reading and enumeration, confines every answer to the package, and leaves the one filesystem step, pattern expansion, to PackageJsonFile.exportedFiles."
 status: stable
-kind: api
+x-okfit-kind: api
 resource: ../../packages/package-json/src/PackageExports.ts
 tags:
   - dx
@@ -20,7 +20,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-28T20:28:13Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 41c05bf28be660d3
 ---

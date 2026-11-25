@@ -3,9 +3,9 @@ type: Module
 title: "@effected/jwt"
 description: Signed-token primitives (JWS, JWT, JWK, JWKS) over WebCrypto that run anywhere WebCrypto does, including Cloudflare workerd.
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/jwt
-layer: L1
+x-okfit-layer: L1
 tags:
   - architecture
   - security
@@ -26,7 +26,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-22T05:03:27Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 1601eff2866a280c
 ---

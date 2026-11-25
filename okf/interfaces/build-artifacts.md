@@ -3,7 +3,7 @@ type: Interface
 title: "The build artifacts: dist/prod, targets.json, issues.json and the journals"
 description: "The on-disk contract of an effected build and who reads each part: dist/prod/<group>/{pkg,meta} for the release action, tsdoctor and the construct generator; targets.json; issues.json, whose buildOk a reader checks first; the append-only .cache/effected journals keyed by package; the __PACKAGE_VERSION__ define; and an action's dist bundles."
 status: draft
-kind: wire
+x-okfit-kind: wire
 resource: ../../packages/bundler/src/Bundler.ts
 tags:
   - observability
@@ -31,7 +31,7 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-11-10T21:32:36Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 33178887b7fbbf76
 ---

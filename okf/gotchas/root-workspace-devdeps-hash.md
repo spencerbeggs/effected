@@ -20,7 +20,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-21T20:11:15Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 3c96572e03f9cf2b
 ---

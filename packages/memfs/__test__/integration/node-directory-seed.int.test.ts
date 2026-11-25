@@ -115,11 +115,26 @@ describe("NodeDirectorySeed.read — what is copied", () => {
 		assert.isTrue(Object.hasOwn(NodeDirectorySeed.read(tree, { mountAt: "///" }), "/crlf.txt"));
 		// A run of slashes that is not trailing: an end-anchored `/\/+$/` rescans
 		// the run from every start position.
-		const mountAt = `/${"/".repeat(1 << 16)}m`;
-		const start = cpuNow();
-		const seed = NodeDirectorySeed.read(join(tree, "empty"), { mountAt });
-		assert.isBelow(cpuNow() - start, 500);
-		assert.deepStrictEqual(Object.keys(seed), [mountAt]);
+		const mount = (run: number): string => `/${"/".repeat(run)}m`;
+		assert.deepStrictEqual(Object.keys(NodeDirectorySeed.read(join(tree, "empty"), { mountAt: mount(1 << 16) })), [
+			mount(1 << 16),
+		]);
+		// A ratio, not a time: four times the run against the run, each the fastest of five. The linear trim reads
+		// about 1x here, since reading the directory outweighs it, and the quadratic one about 16x. This package takes
+		// no `@effected` dependency of any kind, `@effected/testing` included, so the measurement is written out.
+		const fastest = (mountAt: string): number => {
+			let best = Number.POSITIVE_INFINITY;
+			for (let sample = 0; sample < 5; sample += 1) {
+				const start = cpuNow();
+				NodeDirectorySeed.read(join(tree, "empty"), { mountAt });
+				best = Math.min(best, cpuNow() - start);
+			}
+			return best;
+		};
+		fastest(mount(1 << 10));
+		const small = fastest(mount(1 << 14));
+		const large = fastest(mount(1 << 16));
+		assert.isBelow(large / Math.max(small, 0.05), 10, `${small.toFixed(3)} ms -> ${large.toFixed(3)} ms`);
 	});
 
 	it.effect("relative keys seed under layerWith's root", () =>

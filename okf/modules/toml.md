@@ -3,14 +3,14 @@ type: Module
 title: toml
 description: TOML 1.1.0 parsing, editing and formatting as pure Effect Schema classes on a from-scratch engine.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/toml
 tags:
   - dx
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-11-06T20:09:15Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 51dcb611215d4ff8
 ---

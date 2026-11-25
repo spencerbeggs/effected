@@ -3,9 +3,9 @@ type: Module
 title: "@effected/markdown-lint"
 description: "A markdownlint-compatible lint rule shape over @effected/markdown trees: one LintRule definition with markdownlint metadata, a pure programmatic host (MarkdownLint) resolving markdownlint configuration and inline comments, a markdownlint custom-rule adapter (MarkdownlintAdapter), 53 ported built-in rules on ./rules held to markdownlint by a differential harness, and a ./config reader of markdownlint config files; every line, range and fix derived from kit offsets by PositionMapping."
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/markdown-lint
-layer: L2
+x-okfit-layer: L2
 tags:
   - architecture
 sources:
@@ -25,12 +25,18 @@ sources:
     resource: ../../packages/markdown-lint/__test__/config-file.test.ts
   - id: systems-804
     resource: https://github.com/savvy-web/systems/issues/804
+  - id: choose-sample
+    resource: ../../packages/markdown-lint/__test__/helpers/choose-sample.ts
+  - id: corpus-sample-test
+    resource: ../../packages/markdown-lint/__test__/corpus-sample.parity.test.ts
+  - id: hostile-inputs-test
+    resource: ../../packages/markdown-lint/__test__/inputs.hostile.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-25T01:07:31Z
-integrity:
+  at: 2026-11-25T13:41:08Z
+x-okfit-integrity:
   generated:
-    body: 7d72541edcb7c078
+    body: 8ec1a013a6a2fc36
 ---
 
 # `@effected/markdown-lint`
@@ -434,31 +440,77 @@ plain synchronous function; no logging, no metrics.
   bare `\r`, UTF-16 and every `fixInfo` branch.
 - **The differential harness** (`__test__/helpers/differential.ts`) proves
   every rule port: it runs one kit rule and the markdownlint rule of the same
-  name, each alone, over every fixture of the corpus (as written, as LF and as
+  name, each alone, over the corpus (each fixture as written, as LF and as
   CRLF) plus each test's extra inputs, compares the findings as an ordered
   list field by field, then compares the text the two engines' fixes produce
   (`MarkdownLint.applyFixes` against markdownlint's `applyFixes`). Each rule's
   test asserts the exact list of divergences, normally empty, so a divergence
-  that appears or disappears fails. `differential-harness.test.ts` holds the
+  that appears or disappears fails. `differential-harness.parity.test.ts` holds the
   harness to a positive control (a faithful throwaway MD047, zero
   divergences) and negative ones (a late line, a missing finding, a wrong
   fix). The oracle is the exact-pinned `markdownlint` devDependency, 0.42.2.
   `fixesDifferential` applies the fixes of several rules enabled together in
   both engines over the corpus as written, as CRLF and as bare CR, and
-  compares the text: `multi-rule-fixes.test.ts` runs every ported rule
+  compares the text: `multi-rule-fixes.parity.test.ts` runs every ported rule
   together and five pairs whose fixes meet, each at zero divergence.
   `settingsDifferential` runs the same comparison over named settings cases
   and a few probe documents without the corpus: every rule with settings is
   held to zero divergence on non-canonical values (quoted numbers, `0` and
   `1` for booleans, `null`, numbers for strings, per-level items as
-  written), and the residues below are pinned by count.
+  written), and the residues below are pinned by count. Every file that
+  reads the harness is named `.parity.test.ts`, 59 in all: the 53 rule
+  tests and six beside them.
 - **The vendored corpus.** `__test__/fixtures/markdownlint/` holds 437
   byte-identical copies of upstream's `test/*.md` at tag `v0.42.2`, copied
   from the `.repos/markdownlint` submodule by
   `scripts/capture-markdownlint-corpus.mjs` (no arguments, idempotent), whose
   `README.md` records the tag, the commit and the count. Never edit a fixture
   by hand; re-run the script after re-pinning the submodule.
-- **Hostile-input ceilings.** `hostile-inputs.test.ts` lints seven shapes that
+- **The corpus runs as a sample on pull requests and in full for a
+  release.** The harness builds its corpus through `Corpus.select` from
+  [`@effected/testing`](testing.md). At sample depth, which is every pull
+  request and every local run, it is the 11 fixtures
+  `__test__/helpers/corpus-sample.ts` names; at full depth
+  (`EFFECTED_TEST_DEPTH=full`, which
+  `pnpm test:full --project @effected/markdown-lint` sets) it is all 437.
+  Each test's extra inputs run at both depths. The sample is generated,
+  never edited by hand:
+  `pnpm --filter @effected/markdown-lint run corpus:sample --write` rewrites
+  it in two deterministic steps.[^choose-sample] First, every corpus fixture
+  a test names by file name: those are the recorded divergences and the
+  inputs markdownlint itself throws on, and a test that pins what happens on
+  a fixture must find it at every depth. Second, a rule cover, chosen
+  greedily by rules gained per byte with ties by name, in which every rule
+  markdownlint reports anywhere in the corpus reports somewhere; a pass
+  costs time in proportion to the bytes it lints, so a few small fixtures
+  beat one large one. `corpus-sample.parity.test.ts` holds the sample: at
+  every depth all 53 built-in rules must report somewhere in it, and at
+  full depth it must still cover every rule the whole corpus
+  reports.[^corpus-sample-test] A sample name the corpus lacks stops the
+  harness loading, at either depth.
+- **Exact corpus counts are a full-depth fact.** The corpus length, each
+  rule's `ORACLE_FINDINGS_*` count and the fix counts go through
+  `Corpus.pin`, which asserts at full depth and nothing at sample depth. A
+  check that a setting changes the default count runs at full depth only,
+  through `Depth.whenFull`. `deep-image-labels.parity.test.ts` nests 50
+  levels at sample depth and 50 and 300 at full.
+- **The sample is deliberately small, and its coverage is re-measured when
+  it changes.** Each rule's hand-written inputs carry nearly all of the
+  source coverage: this package's source was covered 99.36% by line and
+  93.38% by branch at sample depth, against 99.51% and 94.00% over the whole
+  corpus ([the corpus-sample measurement](../measurements/corpus-sample-test-time.md)).
+  The global coverage thresholds would not notice a drop in one package, so
+  measure both depths when the sample changes, and add fixtures in
+  `choose-sample.ts` if the two drift more than a point apart:
+
+  ```sh
+  VITEST_AGENT_CONSOLE=passthrough CI=true EFFECTED_TEST_TIER=fast pnpm exec vitest run --project @effected/markdown-lint --coverage.reporter=text-summary --coverage.include='packages/markdown-lint/src/**'
+  ```
+
+  That is the sample side; add `EFFECTED_TEST_DEPTH=full` in front for the
+  full side. The vitest-agent plugin suppresses coverage report output in
+  agent mode, and `VITEST_AGENT_CONSOLE=passthrough` restores it.
+- **Hostile-input growth checks.** `inputs.hostile.test.ts` lints seven shapes that
   once made a lint with every rule superlinear (a 400-column table with CJK
   cells, 2,000 unclosed fences in list items, a 9,000-block mixed document,
   3,000 lines in blockquotes 40 deep with inline HTML, one paragraph of
@@ -484,14 +536,23 @@ plain synchronous function; no logging, no metrics.
   re-read, undefined references, alternating images and links, label
   starts closed in reverse, images naming one long definition and images
   nested in one label (MD049 and MD052), `applyFixes` over
-  90,000 fixes, and three settings that drive a loop or a repeat
-  (`lines_above: 1e999` and `spaces_per_tab: 1e9` in a `configure-file`
-  comment, `lines_above: 1e8`), and holds each to a 5,000 ms ceiling: far
-  above the fixed times (under 1 s) and far below the unfixed ones (9 to
-  21 s, or never returning). The reading pass's own ceilings (the comment
-  mask and the front matter count) sit there too, at 1,000 ms. It is in the root `vitest.config.ts`'s `SLOW_TESTS` and
-  `TIMING_TESTS`, so it runs in the timing tier, alone on its runner, and
-  never in the fast tier (see [the test tiers](../decisions/vitest-test-tiers.md)).
+  90,000 fixes, and the settings that drive a loop or a repeat, and holds
+  each to linear growth through `Growth` from
+  [`@effected/testing`](testing.md): four times the input must cost under
+  ten times the CPU time, where linear work reads about four and a per-item
+  rescan about sixteen (the single-rule ratio guards are held under
+  eight).[^hostile-inputs-test] No unit bounds an elapsed time: a ceiling in
+  milliseconds held on the machine that set it and failed on a loaded
+  runner, where a ratio holds on both. The reading pass's own readers (the
+  comment mask and the front matter count) are measured there too. A setting
+  has no input to scale, so the capped ones (`spaces_per_tab`, `indent` and
+  `ul_single` at `1e9`, `lines_above` at `1e8`) are held flat in the setting
+  instead: a setting a million times larger must cost under four times as
+  much, beside the assertion that the fix is capped. `lines_above: 1e999` is
+  infinity and keeps only its answer. The file's suffix places it in the
+  hostile tier, which runs one file at a time and never in the fast tier
+  (see [the test tiers](../decisions/vitest-test-tiers.md)); run it with
+  `pnpm test:hostile --project @effected/markdown-lint`.
 
 ## Known divergences
 
@@ -629,7 +690,7 @@ plain synchronous function; no logging, no metrics.
   `RangeError` at `spaces_per_tab: 1e9`), the blank lines an MD022 fix
   inserts, and the spaces an MD007 or MD030 fix pads (`indent: 1e9`,
   `ul_single: 1e9`). An empty MD044 name, whose pattern matches nothing at
-  every word boundary and loops markdownlint forever, is passed over. No fix differs below the cap. Pinned by ceiling tests.
+  every word boundary and loops markdownlint forever, is passed over. No fix differs below the cap. The capped settings are pinned in `inputs.hostile.test.ts`, the empty name in `MD044.parity.test.ts`.
 - **The kit reads a setting markdownlint throws on.** An invalid
   `front_matter_title` pattern (`"("`) reads as the default pattern in
   MD001, MD025 and MD041, where markdownlint's `new RegExp` throws; a truthy
@@ -800,7 +861,7 @@ plain synchronous function; no logging, no metrics.
   blockquote and reports lines 68 and 69 before 65. With the rule list
   reversed, 64 differ. `MarkdownLint.applyFixes` sorts its findings into
   markdownlint's order itself, so the fixed text does not depend on either.
-  Pinned by a test (`multi-rule-fixes.test.ts`).
+  Pinned by a test (`multi-rule-fixes.parity.test.ts`).
 
 - `./config` loads no JavaScript config (`.markdownlint.cjs`, `.mjs`) and
   none of cli2's own options files (`.markdownlint-cli2.*`). A directory
@@ -876,7 +937,7 @@ plain synchronous function; no logging, no metrics.
   written with escaped parentheses (`[ref]: /u\(v\)`) is fixed to
   `(/u\\(v\\))`, which changes the URL from `/u(v)` to `/u\(v\)`. It is
   kept for parity, not a divergence: both engines apply the same text,
-  pinned in `MD054.test.ts`. The two CodeQL "incomplete string escaping"
+  pinned in `MD054.parity.test.ts`. The two CodeQL "incomplete string escaping"
   alerts on those escaping lines in `MD054.ts` are dismissed for this
   reason; moving the lines could reopen them.
 - Fixes from several findings can meet (MD022's two headings asking for the
@@ -945,3 +1006,6 @@ plain synchronous function; no logging, no metrics.
 [^host-tests]: `packages/markdown-lint/__test__/markdownlint-host.test.ts`.
 [^host-config-tests]: `packages/markdown-lint/__test__/host-config.test.ts`.
 [^config-file-tests]: `packages/markdown-lint/__test__/config-file.test.ts`.
+[^choose-sample]: `packages/markdown-lint/__test__/helpers/choose-sample.ts` — the two steps and the coverage measured when the sample was chosen.
+[^corpus-sample-test]: `packages/markdown-lint/__test__/corpus-sample.parity.test.ts` — the sample's guard at each depth.
+[^hostile-inputs-test]: `packages/markdown-lint/__test__/inputs.hostile.test.ts` — `linear`, `scalingShapes` and `flatInSetting`.

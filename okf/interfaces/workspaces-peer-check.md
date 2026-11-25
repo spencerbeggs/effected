@@ -3,7 +3,7 @@ type: Interface
 title: "@effected/workspaces peer-dependency checking"
 description: PeerCheck — a lockfile-only reproduction of pnpm peers check, returning a report rather than an array and failing closed on what it cannot verify.
 status: stable
-kind: api
+x-okfit-kind: api
 resource: ../../packages/workspaces/src/PeerCheck.ts
 tags:
   - architecture
@@ -16,7 +16,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-13T06:27:13Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 83240b7f783c22fa
 ---

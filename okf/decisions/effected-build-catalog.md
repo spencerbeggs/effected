@@ -28,7 +28,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-10T21:32:01Z
-integrity:
+x-okfit-integrity:
   generated:
     body: d4ffe27d2ede6283
 ---

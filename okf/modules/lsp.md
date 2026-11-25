@@ -3,14 +3,14 @@ type: Module
 title: "@effected/lsp"
 description: Language Server Protocol base-protocol framing as pure functions (Content-Length encode, an incremental byte decoder and a Stream transform), an LspStdio launcher that keeps stdout the wire and exits with the specification's code, plus a ./testing subpath whose LspProbe proves a Language Server bin boots and whose LspProcess drives one frame by frame — the LSP twins of McpStdio, McpProbe and McpProcess.
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/lsp
-layer: boundary
+x-okfit-layer: boundary
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-11-02T15:49:39Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 75d7b8507c37498e
 ---

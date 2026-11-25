@@ -3,9 +3,9 @@ type: Module
 title: "@effected/markdown"
 description: CommonMark 0.31.2 + GFM as pure Effect Schema classes; parse, edit, format, modify, transform and project markdown documents.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/markdown
-layer: L1
+x-okfit-layer: L1
 tags:
   - architecture
 sources:
@@ -51,10 +51,10 @@ sources:
     resource: ../../packages/markdown/__test__/visitor-traverse.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T21:46:39Z
-integrity:
+  at: 2026-11-25T13:41:08Z
+x-okfit-integrity:
   generated:
-    body: 3e7846c4da708e39
+    body: 58b91a51ff08ff49
 ---
 
 # `@effected/markdown`
@@ -605,13 +605,16 @@ pass, stringify recursion and the visitor walk. Iterative surfaces are
 deliberately unguarded, and so are the tree-to-tree recursions
 (`MarkdownTransform` and `Mdast.toText`), which see only trees the guarded
 surfaces already admitted or that a caller built by hand. The cmark
-pathological suite pins the linear-time guarantee against Markdown's
-quadratic emphasis and link-blowup DoS vector, calibrated against a
-same-code-path baseline rather than raw milliseconds so v8 coverage
-instrumentation overhead cannot mask an algorithmic regression; the suite is
-recalibrated after any performance fix. Three of its cases nest past the
-depth cap by construction and are *refused* rather than parsed — a named
-`GUARD_REFUSED` set pins that they trip fast and with the right reason, so
+pathological suite (`__test__/e2e/pathological.hostile.test.ts`, in the
+hostile tier) pins the linear-time guarantee against Markdown's quadratic
+emphasis and link-blowup DoS vector. Its vendored cases are fixed inputs
+that must finish inside the test timeout, and its scaling guards measure a
+growth ratio through `@effected/testing`'s `Growth`, four times the input
+against the input, so neither v8 coverage nor a slow runner can mask an
+algorithmic regression; no case is held to a time in milliseconds. Three of
+its cases nest past the depth cap by construction and are *refused* rather
+than parsed — a named `GUARD_REFUSED` set pins that they trip with the right
+reason, so
 a case newly falling into that branch fails the suite; they are the
 hardening posture working, not failures. The bare link-destination scan is
 capped at a fixed open-paren count — an inherited-not-introduced defect,

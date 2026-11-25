@@ -3,7 +3,7 @@ type: Interface
 title: actions-storage
 description: The Actions cache and artifact protocols, the blob store envelope, cache-key derivation and the tool/package-manager installers.
 status: stable
-kind: api
+x-okfit-kind: api
 resource: ../../packages/github-actions/src
 tags:
   - architecture
@@ -24,13 +24,15 @@ verified:
     at: 2026-11-16T16:59:20Z
   - by: human:spencer
     at: 2026-11-24T06:19:30Z
-integrity:
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
+x-okfit-integrity:
   generated:
     body: 119d0aeb46cb96d8
   verified:
     by: human:spencer
-    at: 2026-11-24T06:19:30Z
-    content: e28f4dbd40bc30c2
+    at: 2026-11-25T21:38:57Z
+    content: 31d15b503fd18faa
 ---
 
 # actions-storage

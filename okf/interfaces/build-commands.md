@@ -3,7 +3,7 @@ type: Interface
 title: "The effected build commands: package build, action build and action init"
 description: "The contract of effected package build, effected action build and effected action init and their MCP tools package_build, action_build and action_init: the flags, the exit codes, what each writes, and the rule that a failed build is a verdict carried as data while a run that could not start or finish is an error or a refusal."
 status: draft
-kind: cli
+x-okfit-kind: cli
 resource: ../../packages/cli/src/commands/package
 tags:
   - dx
@@ -35,7 +35,7 @@ sources:
 generated:
   by: "claude-code/sonnet-5.5"
   at: 2026-11-21T00:16:05Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 40919d6c88456a05
 ---

@@ -5,13 +5,15 @@
 // compared as an ordered list, so a missing or an extra finding diverges, and
 // every field markdownlint reports is compared, then the applied fixes.
 
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { Corpus } from "@effected/testing";
 import { Option } from "effect";
 import { applyFixesCounted } from "../../src/internal/apply-fixes.js";
 import type { LintDiagnostic } from "../../src/LintDiagnostic.js";
 import type { LintRule } from "../../src/LintRule.js";
 import { MarkdownLint } from "../../src/MarkdownLint.js";
+import type { DifferentialInput } from "./corpus-files.js";
+import { fullCorpus } from "./corpus-files.js";
+import { CORPUS_SAMPLE } from "./corpus-sample.js";
 import type { OracleFinding } from "./markdownlint-oracle.js";
 import { oracleApplyFixes, oracleLint } from "./markdownlint-oracle.js";
 
@@ -33,19 +35,13 @@ export interface Divergence {
 	readonly reason: string;
 }
 
-/** A named input to compare on. */
-export interface DifferentialInput {
-	readonly name: string;
-	readonly source: string;
-}
+export type { DifferentialInput } from "./corpus-files.js";
 
-const fixturesDir = join(import.meta.dirname, "..", "fixtures", "markdownlint");
-
-/** The upstream fixture corpus: every `.md` file but the README, by name. */
-export const corpus: ReadonlyArray<DifferentialInput> = readdirSync(fixturesDir)
-	.filter((file) => file.endsWith(".md") && file !== "README.md")
-	.sort()
-	.map((file) => ({ name: file, source: readFileSync(join(fixturesDir, file), "utf8") }));
+/**
+ * The upstream fixtures the differential passes run over: the committed sample at sample depth, which is every pull
+ * request run, and the whole corpus at full depth. A sample name the corpus lacks stops the harness loading.
+ */
+export const corpus: ReadonlyArray<DifferentialInput> = Corpus.select(fullCorpus, { sample: CORPUS_SAMPLE });
 
 // markdownlint's result-level normalization of `detail` and `context`, which it
 // applies to every rule's report: line breaks become spaces, empty is absent.

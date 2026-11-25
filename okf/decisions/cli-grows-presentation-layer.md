@@ -3,7 +3,7 @@ type: Decision
 title: "@effected/cli-kit grows a presentation layer and interactive UI"
 description: "@effected/cli-kit takes on audience, interactivity, theme, status vocabulary, messages, the document IR, failure rendering and logging composition in its React-free root, and interactive screens behind ./ui, replacing the not-a-framework limitation's ban on prompts and spinners."
 status: stable
-supersedes: ../limitations/cli-is-not-a-framework.md
+x-okfit-supersedes: ../limitations/cli-is-not-a-framework.md
 tags: [architecture, dx]
 sources:
   - id: cli-presentation-audit
@@ -19,13 +19,15 @@ verified:
     at: 2026-10-13T21:42:59Z
   - by: human:spencer
     at: 2026-11-02T17:04:46Z
-integrity:
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
+x-okfit-integrity:
   generated:
     body: ef18b1754420003a
   verified:
     by: human:spencer
-    at: 2026-11-02T17:04:46Z
-    content: 5bc6e6ccdba7bb46
+    at: 2026-11-25T21:38:57Z
+    content: 8a2bf295f85bfe50
 ---
 
 # @effected/cli-kit grows a presentation layer and interactive UI

@@ -1,16 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { CommandNeutralizer } from "../src/index.js";
-import { LINE_BREAK, commandLines, isCommand } from "./helpers/runnerCommands.js";
-
-/**
- * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
- * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
- * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
- */
-const cpuNow = (): number => {
-	const used = process.cpuUsage();
-	return (used.user + used.system) / 1000;
-};
+import { commandLines, isCommand } from "./helpers/runnerCommands.js";
 
 const ZWSP = String.fromCodePoint(0x200b);
 /** The marker: U+2800 BRAILLE PATTERN BLANK. */
@@ -96,47 +86,7 @@ describe("CommandNeutralizer: the runner's two parsers", () => {
 });
 
 describe("CommandNeutralizer: exhaustive over a small alphabet, judged by the independent oracle", () => {
-	// Every string up to length 5 over the characters that make or break a command: the colon, the hash, the bracket,
-	// ordinary and .NET whitespace (a space, a tab, NEL), the three line break characters and a letter.
-	//
-	// Length 5 is enough. The longest trigger is three characters (`##[`, or whitespace then `::`), so five holds a
-	// one-character line break, a whole trigger and one character before it: every way a trigger meets a single break
-	// or what precedes it. A CRLF break with a character before it and a three-character trigger needs six; the CRLF
-	// cases in the tests above cover it.
-	// Length 6 was 597,871 strings walked by four tests and ran past the CI runner's 5 s test timeout; length 5 is
-	// 66,430.
-	const ALL = strings([":", "#", "[", " ", "\t", "\u0085", "\r", "\n", "x"], 5);
-
-	it(`no output line is a command, for all ${ALL.length} strings`, () => {
-		for (const text of ALL) {
-			assert.deepStrictEqual(commandLines(CommandNeutralizer.text(text)), [], JSON.stringify(text));
-		}
-	});
-
-	it("only the marker is added: removing it gives back the input's own lines", () => {
-		for (const text of ALL) {
-			const out = CommandNeutralizer.lines(text).map((line) => line.replaceAll(MARK, ""));
-			assert.deepStrictEqual(out, text.split(LINE_BREAK), JSON.stringify(text));
-		}
-	});
-
-	it("a line the oracle does not read as a command is returned exactly as it was", () => {
-		for (const text of ALL) {
-			const inputLines = text.split(LINE_BREAK);
-			const out = CommandNeutralizer.lines(text);
-			inputLines.forEach((line, index) => {
-				if (!isCommand(line)) assert.strictEqual(out[index], line, JSON.stringify(text));
-			});
-		}
-	});
-
-	it("is idempotent for every one of them", () => {
-		for (const text of ALL) {
-			const once = CommandNeutralizer.text(text);
-			assert.strictEqual(CommandNeutralizer.text(once), once, JSON.stringify(text));
-		}
-	});
-
+	// The sweep over every string up to a length is in `CommandNeutralizer.property.test.ts`.
 	it("a string that already carries zero-width spaces, which the runner skips, is still made safe", () => {
 		for (const text of strings([":", "#", "[", ZWSP, "\n"], 6)) {
 			assert.deepStrictEqual(commandLines(CommandNeutralizer.text(text)), [], JSON.stringify(text));
@@ -157,41 +107,26 @@ describe("CommandNeutralizer: exhaustive over a small alphabet, judged by the in
 	});
 });
 
-describe("CommandNeutralizer: matching is linear, so a hostile line cannot stall the job that logs it", () => {
+// `CommandNeutralizer.hostile.test.ts` holds that matching each of these is linear in its length.
+describe("CommandNeutralizer: a long hostile line is still answered", () => {
 	const BOM = String.fromCodePoint(0xfeff);
-	/** Generous: the linear patterns take milliseconds; a backtracking one takes years on these lengths. */
-	const BUDGET_MS = 1000;
 
-	const timed = (text: string): { readonly out: string; readonly ms: number } => {
-		const start = cpuNow();
-		const out = CommandNeutralizer.text(text);
-		return { out, ms: cpuNow() - start };
-	};
-
-	it("a long run of BOMs (both whitespace and a format character) with no command is returned unchanged, fast", () => {
+	it("a long run of BOMs (both whitespace and a format character) with no command is returned unchanged", () => {
 		const text = `${BOM.repeat(10_000)}x`;
-		const { out, ms } = timed(text);
-		assert.strictEqual(out, text);
-		assert.isBelow(ms, BUDGET_MS);
+		assert.strictEqual(CommandNeutralizer.text(text), text);
 	});
 
-	it("the same run in front of a command is neutralized, fast", () => {
-		const { out, ms } = timed(`${BOM.repeat(10_000)}::add-mask::x`);
-		assert.deepStrictEqual(commandLines(out), []);
-		assert.isBelow(ms, BUDGET_MS);
+	it("the same run in front of a command is neutralized", () => {
+		assert.deepStrictEqual(commandLines(CommandNeutralizer.text(`${BOM.repeat(10_000)}::add-mask::x`)), []);
 	});
 
 	it("so is a run mixing every kind of leading character the V2 rule skips", () => {
 		const text = `${` \t\u0085${BOM}${ZWSP}\u0301`.repeat(2_000)}x`;
-		const { out, ms } = timed(text);
-		assert.strictEqual(out, text);
-		assert.isBelow(ms, BUDGET_MS);
+		assert.strictEqual(CommandNeutralizer.text(text), text);
 	});
 
-	it("and a long run of #-and-ignorable pairs with no [ is left alone, fast", () => {
+	it("and a long run of #-and-ignorable pairs with no [ is left alone", () => {
 		const text = `#${ZWSP}`.repeat(5_000);
-		const { out, ms } = timed(text);
-		assert.strictEqual(out, text);
-		assert.isBelow(ms, BUDGET_MS);
+		assert.strictEqual(CommandNeutralizer.text(text), text);
 	});
 });

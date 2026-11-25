@@ -3,16 +3,6 @@ import { assert, describe, it } from "@effect/vitest";
 import { Option, Schema } from "effect";
 import { LaunchContext } from "../src/index.js";
 
-/**
- * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
- * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
- * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
- */
-const cpuNow = (): number => {
-	const used = process.cpuUsage();
-	return (used.user + used.system) / 1000;
-};
-
 const keys = ["OKFIT_PROJECT_DIR", "CLAUDE_PROJECT_DIR"] as const;
 
 // A mix of hostile literals (empty, whitespace-only, unsubstituted placeholders)
@@ -100,11 +90,9 @@ describe("LaunchContext.isUnsubstituted", () => {
 		}
 	});
 
-	it("stays linear on a long run of unclosed openers", () => {
-		const hostile = "${{".repeat(200_000);
-		const started = cpuNow();
-		assert.isFalse(LaunchContext.isUnsubstituted(hostile));
-		assert.isBelow(cpuNow() - started, 100);
+	// `LaunchContext.hostile.test.ts` holds that this is linear in the run.
+	it("answers a long run of unclosed openers", () => {
+		assert.isFalse(LaunchContext.isUnsubstituted("${{".repeat(200_000)));
 	});
 });
 

@@ -3,7 +3,8 @@ type: Limitation
 title: PeerCheck cannot answer yarn
 description: "Deprecated: yarn is an unsupported manager, so PeerCheck never reads a yarn lockfile; the supported false report remains for any lockfile format outside its allowlist."
 status: deprecated
-bounds: ../interfaces/workspaces-peer-check.md
+superseded_by: ../interfaces/workspaces-peer-check.md
+x-okfit-bounds: ../interfaces/workspaces-peer-check.md
 tags:
   - architecture
   - testing
@@ -13,7 +14,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-13T06:27:13Z
-integrity:
+x-okfit-integrity:
   generated:
     body: ff8e1532b960439d
 ---

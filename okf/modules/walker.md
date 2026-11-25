@@ -3,9 +3,9 @@ type: Module
 title: walker
 description: Path traversal as a small, testable library -- upward ascent to a marker via an absorbing search, and downward glob-file expansion with a fail-typed error posture, sharing no state and no error contract between the two directions.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/walker
-layer: L1
+x-okfit-layer: L1
 tags:
   - architecture
 sources:
@@ -16,7 +16,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-10T22:27:38Z
-integrity:
+x-okfit-integrity:
   generated:
     body: a56a6c988217cb2e
 ---

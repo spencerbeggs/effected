@@ -8,7 +8,7 @@ tags: [bundle, dx]
 generated:
   by: "okfit/claude-code"
   at: 2026-11-08T22:56:47Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 199ae28c6b4db45d
 ---

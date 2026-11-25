@@ -3,7 +3,7 @@ type: Limitation
 title: The effected schema command writes tab-indented, fully expanded JSON only
 description: "Every document and catalog `effected schema` writes is CanonicalJson's layout with the default tab indent and no way to change it, so a repository whose JSON formatter collapses arrays fails lint after a build until it scopes Biome's expand always to the generated files; a repository that indents JSON with spaces cannot make the formatter agree at all and must format after the build. Drift is unaffected either way, because check compares parsed content."
 status: draft
-bounds: ../interfaces/schema-commands.md
+x-okfit-bounds: ../interfaces/schema-commands.md
 tags:
   - dx
   - ci
@@ -19,7 +19,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-05T06:55:47Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 76a1b8c33161fa85
 ---

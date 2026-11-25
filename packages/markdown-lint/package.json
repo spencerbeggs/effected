@@ -30,6 +30,7 @@
 	},
 	"scripts": {
 		"build": "effected package build",
+		"corpus:sample": "node __test__/helpers/choose-sample.ts",
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
@@ -40,6 +41,7 @@
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
 		"@effected/memfs": "workspace:*",
+		"@effected/testing": "workspace:*",
 		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
 		"markdownlint": "0.42.2",

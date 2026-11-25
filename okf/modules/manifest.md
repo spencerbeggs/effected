@@ -3,7 +3,7 @@ type: Module
 title: "@effected/manifest"
 description: "The platform-neutral bundle.json manifest as a pure schema: BundleManifest spec 1, its encode and decode boundaries, BundleManifestError and the ManifestSource authoring shape, with effect as its only peer, so a doc-site reader decodes the manifest without installing the bundler."
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/manifest
 tags:
   - architecture
@@ -21,7 +21,7 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-11-08T22:56:47Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 42c2f67256fd6b67
 ---

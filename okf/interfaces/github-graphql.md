@@ -3,7 +3,7 @@ type: Interface
 title: "@effected/github GraphQL"
 description: Typed GraphQL documents over the same client, errors and spans as REST.
 status: stable
-kind: api
+x-okfit-kind: api
 resource: ../../packages/github/src/GraphQL.ts
 tags: [bundle]
 generated:
@@ -16,13 +16,15 @@ verified:
     at: 2026-10-13T21:42:59Z
   - by: human:spencer
     at: 2026-10-29T00:43:21Z
-integrity:
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
+x-okfit-integrity:
   generated:
     body: faa2a9ae1f1a497c
   verified:
     by: human:spencer
-    at: 2026-10-29T00:43:21Z
-    content: f86c5e5288b4111f
+    at: 2026-11-25T21:38:57Z
+    content: 006025fcd1da9672
 ---
 
 # @effected/github GraphQL

@@ -3,13 +3,13 @@ type: Module
 title: "@effected/templates"
 description: A managed-section mechanism — delimited BEGIN/END blocks a tool owns inside a file the user otherwise owns.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/templates
 tags: [dx]
 generated:
   by: "okfit/claude-code"
   at: 2026-11-08T12:10:34Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 1eb674d41bbee127
 ---
