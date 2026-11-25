@@ -11,6 +11,7 @@
 * Updated The vitest suite splits into a fast tier with coverage and slow, hostile and full tiers run beside it
 * Updated lockfiles
 * Updated workspace
+* Updated glob
 
 ## 2026-11-24
 

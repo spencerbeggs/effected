@@ -16,8 +16,9 @@ changing the public API, the dialect, the error set, or the hardening story.
 ## Engine/facade split
 
 `src/internal/` is a **vendored engine** ported with attribution: minimatch
-(BlueOak-1.0.0, Isaac Z. Schlueter), brace-expansion 5.0.13 and balanced-match
-4.0.4 (MIT, Julian Gruber). The minimatch files keep 10.2.5's regexp-and-`AST`
+(BlueOak-1.0.0, Isaac Z. Schlueter), brace-expansion 5.1.0 and balanced-match
+4.0.4 (MIT, Julian Gruber). brace-expansion 5.1.0 differs from 5.0.13 only by a
+default export, so the notes here name 5.0.13, where each part was taken from. The minimatch files keep 10.2.5's regexp-and-`AST`
 shape and take minimatch 11's behaviour up to 11.0.9 (listed below), so their headers
 still say 10.2.5 and their port notes name each change taken; brace-expansion's
 `expand_` follows 5.0.13's iterative scan (one loop over a string's groups,

@@ -1,4 +1,4 @@
-// Ported from brace-expansion@5.0.13 (https://github.com/juliangruber/brace-expansion)
+// Ported from brace-expansion@5.1.0 (https://github.com/juliangruber/brace-expansion)
 // Copyright (c) 2013 Julian Gruber <julian@juliangruber.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -19,7 +19,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-// Port notes. expand_ follows 5.0.13's iterative scan: one loop consumes a
+// Port notes. 5.1.0 differs from 5.0.13 only by a default export of expand, which this module has no use for, so
+// the notes below name 5.0.13, the release each part was taken from. expand_ follows 5.0.13's iterative scan: one loop consumes a
 // string's top-level groups left to right, so the {a},b} rewrite count
 // (EXPANSION_MAX_REWRITES, past which the rest stays literal exactly as upstream
 // leaves it) and the choice to drop empty results are held once per scan, and
