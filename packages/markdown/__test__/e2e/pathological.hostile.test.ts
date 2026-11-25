@@ -118,8 +118,38 @@ describe("pathological inputs", () => {
 
 			assert.isUndefined(caught, `${testCase.name} threw: ${String(caught)}`);
 			assert.match(html, testCase.expectedPattern);
-		}, // A hang is the failure this suite exists to catch: the heaviest case takes about 3 s.
-		120_000);
+		}, // cannot be interrupted, so a case that regressed to tens of seconds fails late, and one that never returns // The heaviest case takes about 3 s. This is a deadline, not a bound on the work: a synchronous parse
+		// runs until the job is stopped. What bounds the work is the growth of each shape, below.
+		30_000);
+	}
+
+	// Every vendored shape that is built by repeating a unit, measured at a count and at four times it. The vendored
+	// cases above are fixed inputs: on their own they would pass a parse that had gone quadratic but still finished.
+	// Left out: the three guard-refused shapes, the two inputs with nothing to repeat, the hash-collision document,
+	// and "backticks", whose input is itself quadratic in its count.
+	const shapes: ReadonlyArray<readonly [name: string, make: (count: number) => string, dialect?: "gfm"]> = [
+		["many emph closers with no openers", (count) => "a_ ".repeat(count)],
+		["many emph openers with no closers", (count) => "_a ".repeat(count)],
+		["many link closers with no openers", (count) => "a]".repeat(count)],
+		["many link openers with no closers", (count) => "[a".repeat(count)],
+		["mismatched openers and closers", (count) => "*a_ ".repeat(count)],
+		["openers and closers multiple of 3", (count) => `a**b${"c* ".repeat(count)}`],
+		["link openers and emph closers", (count) => "[ a_".repeat(count)],
+		["pattern [ (]( repeated", (count) => "[ (](".repeat(count)],
+		["pattern ![[]() repeated", (count) => "![[]()".repeat(count)],
+		["nested brackets", (count) => `${"[".repeat(count)}a${"]".repeat(count)}`],
+		["unclosed links A", (count) => "[a](<b".repeat(count)],
+		["unclosed <!--", (count) => `</${"<!--".repeat(count)}`],
+		["tables", (count) => "aaa\rbbb\n-\u000b\n".repeat(count), "gfm"],
+	];
+	for (const [name, make, dialect] of shapes) {
+		it(`${name} scales linearly`, () => {
+			const { ratio, detail } = scaling((count) => {
+				const input = make(count);
+				return () => (dialect === "gfm" ? parseBlocks(input, "gfm") : parseBlocks(input));
+			}, 5_000);
+			assert.isBelow(ratio, 8, `4x the input cost ${ratio.toFixed(1)}x the CPU time (${detail}); linear is ~4x`);
+		});
 	}
 
 	// The linearity guard for the destination-scan cap (defect 5 above).
@@ -153,8 +183,7 @@ describe("pathological inputs", () => {
 			8,
 			`4x the input cost ${ratio.toFixed(1)}x the CPU time (${detail}); linear is ~4x, the pre-cap quadratic was ~16x`,
 		);
-	}, // The same wall-clock ceiling the vendored cases get (their shared
-	// TIMEOUT_MS is 8000): generous against instrumented linear cost —
+	}, // TIMEOUT_MS is 8000): generous against instrumented linear cost — // The same wall-clock ceiling the vendored cases get (their shared
 	// two orders of magnitude of headroom — while anything worse than
 	// the measured quadratic fails HERE instead of grinding the runner.
 	120_000);

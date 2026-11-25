@@ -154,8 +154,9 @@ describe("hostility: brace expansion", () => {
 });
 
 describe("hostility: the brace-expansion work budget (5.0.13)", () => {
-	// Each shape here answers as the oracle does, inside the step budget that bounds its work: the budget is a count
-	// of steps, so a shape that spent it without stopping would not return at all, and the tier's timeout fails it.
+	// Each shape here answers as the oracle does, inside the step budget that bounds its work. The budget is a count
+	// of steps, and it is what these units hold: no time is asserted, and a test timeout would not bound synchronous
+	// work that cannot be interrupted.
 	// The shapes 5.0.13's own comments name pass `max` results, so they are held to the typed failure instead (the
 	// last test).
 	const parity = (shape: string): Array<string> => {
@@ -661,8 +662,9 @@ describe("hostility: nested quantified extglobs", () => {
 		];
 		for (const [pattern, options, path = pattern] of rows) {
 			const m = new Minimatch(pattern, { platform: "posix", ...options });
-			// Fixed inputs, with no size to grow: the growth unit below carries the bound, and a row that went back to
-			// exponential work would not finish inside the tier's timeout.
+			// Fixed inputs, with no size to grow, so no time is asserted for a row: the growth unit below carries the
+			// bound for this shape. A test timeout is not a bound here. Matching is synchronous and cannot be
+			// interrupted, so a slow row only fails late and a row that never returns runs until the job is stopped.
 			const answer = m.match(path);
 			assert.strictEqual(answer, new oracle.Minimatch(pattern, { platform: "linux", ...options }).match(path), pattern);
 		}
@@ -776,8 +778,8 @@ describe("hostility: stars separated by literals", () => {
 
 	it("answers each as the oracle does", () => {
 		for (const [pattern, path, options = {}] of rows) {
-			// Fixed inputs: the growth units below carry the bound, and a row that went back to the regexp's
-			// backtracking would not finish inside the tier's timeout.
+			// Fixed inputs, so no time is asserted for a row: the growth units below carry the bound for these shapes.
+			// A test timeout is not a bound here, since matching is synchronous and cannot be interrupted.
 			const m = new Minimatch(pattern, { platform: "posix", ...options });
 			assert.strictEqual(m.match(path), new oracle.Minimatch(pattern, options).match(path), pattern);
 		}
