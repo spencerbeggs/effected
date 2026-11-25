@@ -559,16 +559,17 @@ describe("hostility: negations in sequence", () => {
 	it("matches a run of negations in quadratic time, not cubic", () => {
 		// Each !(...) used to try every end from every start: n of them over an
 		// n-character path cost n^3.
+		// Cold, a fresh matcher each run: a warm one answers from the states its first match cached (7.9 ms, then
+		// 0.004 ms on a Linux runner), so timing it again measures the cache and not the match.
 		const at = (n: number) => {
-			const m = new Minimatch(`x${"!(a)".repeat(n)}`, { platform: "posix" });
+			const pattern = `x${"!(a)".repeat(n)}`;
 			const path = `x${"b".repeat(n)}`;
-			return () => m.match(path);
+			return () => new Minimatch(pattern, { platform: "posix" }).match(path);
 		};
 		assert.isTrue(at(200)());
-		// 4x the negations and the path: minimatch 11's matcher steps a cached
-		// state per character, so about 4x (bound 10); the walk it replaced
-		// was quadratic (16x) and, memoized per start, cubic (64x).
-		assert.isBelow(growth(at, 100, 400, 10), 10);
+		// 4x the negations and the path: n negations each stepped over n characters, so quadratic, about 16x
+		// (bound 32; measured 8x to 13x). Memoized per start, the walk this replaced was cubic (64x).
+		assert.isBelow(growth(at, 100, 400, 32), 32);
 	});
 });
 
