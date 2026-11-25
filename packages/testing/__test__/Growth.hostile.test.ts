@@ -90,21 +90,28 @@ describe("Growth.measure", () => {
 });
 
 describe("Growth.measure on work far past its bound", () => {
+	/** Work that takes `ms` of CPU whatever the machine, so the number of runs below does not depend on its speed. */
+	const burn = (ms: number): void => {
+		const until = Growth.cpuNow() + ms;
+		while (Growth.cpuNow() < until) linear(1000);
+	};
+
 	// A regression from linear to exponential can make the large size take seconds a run. Measuring it again cannot
-	// bring a ratio thousands of times the bound back under it, so the measurement stops after the first round and
+	// bring a ratio hundreds of times the bound back under it, so the measurement stops after the first round, and
 	// stops sampling a slow size once it has spent a second on it.
-	it("does not keep re-measuring a ratio no retry could rescue", { timeout: 60_000 }, () => {
+	it("does not keep re-measuring a ratio no retry could rescue", () => {
 		let largeRuns = 0;
 		const result = Growth.measure(
 			(size) => () => {
 				if (size > 1000) largeRuns += 1;
-				linear(size > 1000 ? 100_000_000 : 20_000);
+				burn(size > 1000 ? 400 : 1);
 			},
 			{ from: 1000, bound: 10 },
 		);
-		assert.isAbove(result.ratio, 1000);
-		// One calibration run and one kept sample; three rounds of five would be sixteen.
-		assert.isAtMost(largeRuns, 3);
+		assert.isAbove(result.ratio, 100);
+		// One run to calibrate, then one round of three samples: 400 ms, 800 ms, and the third passes the one-second
+		// sampling budget. Without the budget a round is five samples; without the early exit there are three rounds.
+		assert.strictEqual(largeRuns, 4);
 	});
 });
 
