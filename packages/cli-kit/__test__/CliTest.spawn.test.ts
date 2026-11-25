@@ -92,7 +92,6 @@ describe("CliTest.spawn", () => {
 			Effect.gen(function* () {
 				const sandbox = yield* CliTest.sandbox({ path: process.env.PATH ?? "" });
 				let pid: Option.Option<string> = Option.none();
-				const started = Date.now();
 				yield* Effect.scoped(
 					Effect.gen(function* () {
 						const child = yield* CliTest.spawn(STUBBORN, [], { sandbox, execPath: process.execPath });
@@ -102,9 +101,9 @@ describe("CliTest.spawn", () => {
 				const id = Number(Option.getOrThrow(pid));
 				assert.isAbove(id, 0);
 				assert.throws(() => process.kill(id, 0), /ESRCH/, "the stubborn child outlived its scope");
-				assert.isBelow(Date.now() - started, 8_000);
 			}).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-		{ timeout: 10_000 },
+		// The deadline is the assertion: a scope that waited on the stubborn child would not close inside it.
+		{ timeout: 8_000 },
 	);
 
 	it("a forceKillAfter that is not a finite duration is a programming mistake", () => {

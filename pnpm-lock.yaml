@@ -659,6 +659,9 @@ importers:
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs
+      '@effected/testing':
+        specifier: workspace:*
+        version: link:../testing
       '@effected/toml':
         specifier: workspace:*
         version: link:../toml

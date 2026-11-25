@@ -233,13 +233,9 @@ describe("CliUiTest.render", () => {
 				return createElement(Text, null, `count:${count}`);
 			};
 			const handle = yield* CliUiTest.render(showing(() => createElement(Restless)));
-			const started = Date.now();
-			yield* handle.type("x").pipe(Effect.timeout("2 seconds"));
-			assert.isBelow(
-				Date.now() - started,
-				500,
-				"a key press waits at most about its limit, not until the screen rests",
-			);
+			// A key press waits at most about its limit, not until the screen rests: on a screen that never rests, the
+			// deadline is what fails.
+			yield* handle.type("x").pipe(Effect.timeout("500 millis"));
 		}).pipe(Effect.scoped),
 	);
 
