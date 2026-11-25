@@ -1,15 +1,16 @@
 name: Slow Tests
 
-# The slow tier of the vitest suite: the CPU-heavy property and fuzz sweeps, the packed-install e2es
-# and the reload tests listed in vitest.config.ts's SLOW_TESTS. The Silk workflow's `ci:test` runs
-# everything else (EFFECTED_TEST_TIER=fast, with coverage and its thresholds); this job runs these
-# files alone (EFFECTED_TEST_TIER=slow) with coverage off, beside it rather than after it, so a PR
-# waits for the slower of the two instead of their sum. The TIMING_TESTS among them, which bound a
-# timing growth ratio, run afterwards one file at a time (EFFECTED_TEST_TIER=timing), so no other
-# file shares the runner while they measure (#1387). It runs on every pull request, not on a
-# schedule, because the tier holds security regression suites (shell, glob and lockfile hostility)
-# that must not merge red. Coverage is off because these files exercise code the fast tier already
-# covers, and v8 instrumentation made them two to three times slower.
+# The slow tier of the vitest suite: the packed-install e2es, the reload and bundle tests and the
+# sweeps listed in vitest.config.ts's SLOW_TESTS, then the hostile tier, every *.hostile.test.ts
+# file. The Silk workflow's `ci:test` runs everything else (EFFECTED_TEST_TIER=fast, with coverage
+# and its thresholds); this job runs the slow files alone (EFFECTED_TEST_TIER=slow) with coverage
+# off, beside it rather than after it, so a PR waits for the slower of the two instead of their
+# sum. The hostile files, which bound how work grows with input size, run afterwards one file at a
+# time (EFFECTED_TEST_TIER=hostile), so no other file shares the runner while they measure (#1387).
+# It runs on every pull request, not on a schedule, because the hostile tier holds security
+# regression suites (shell, glob and lockfile hostility) that must not merge red. Coverage is off
+# because these files exercise code the fast tier already covers, and v8 instrumentation made them
+# two to three times slower.
 #
 # Cache trust comes from the job's GitHub token, not from a shared secret. The job signs in to the
 # hosted turbo cache at cache.savvyweb.systems, which reads the token's claims and gives a pull
@@ -48,5 +49,5 @@ jobs:
         with:
           turbo-api: https://cache.savvyweb.systems
 
-      - name: Run the slow tier
+      - name: Run the slow and hostile tiers
         run: pnpm run ci:test:slow

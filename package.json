@@ -26,7 +26,8 @@
 		"changeset:floors:check": "tsx lib/scripts/breaking-floors.ts --check",
 		"ci:build": "CI=\"true\" turbo run build --filter=!docs --log-order=grouped --output-logs=full --log-prefix=none",
 		"ci:test": "CI=\"true\" turbo run build --filter='@effected/plugin...' --filter=@effected/pnpm-plugin-effected --filter=@effected/cli-kit --filter=@effected/config-file --filter=@effected/kit --filter=@effected/commands --output-logs=errors-only --log-prefix=none && CI=\"true\" EFFECTED_TEST_TIER=fast vitest run --passWithNoTests",
-		"ci:test:slow": "CI=\"true\" turbo run build --filter='@effected/plugin...' --filter=@effected/pnpm-plugin-effected --filter=@effected/cli-kit --filter=@effected/config-file --filter=@effected/kit --filter=@effected/commands --output-logs=errors-only --log-prefix=none && CI=\"true\" EFFECTED_TEST_TIER=slow vitest run --coverage.enabled=false && CI=\"true\" EFFECTED_TEST_TIER=timing vitest run --coverage.enabled=false",
+		"ci:test:full": "CI=\"true\" turbo run build --filter='@effected/plugin...' --filter=@effected/pnpm-plugin-effected --filter=@effected/cli-kit --filter=@effected/config-file --filter=@effected/kit --filter=@effected/commands --output-logs=errors-only --log-prefix=none && CI=\"true\" EFFECTED_TEST_TIER=full vitest run --coverage.enabled=false --passWithNoTests",
+		"ci:test:slow": "CI=\"true\" turbo run build --filter='@effected/plugin...' --filter=@effected/pnpm-plugin-effected --filter=@effected/cli-kit --filter=@effected/config-file --filter=@effected/kit --filter=@effected/commands --output-logs=errors-only --log-prefix=none && CI=\"true\" EFFECTED_TEST_TIER=slow vitest run --coverage.enabled=false && CI=\"true\" EFFECTED_TEST_TIER=hostile vitest run --coverage.enabled=false",
 		"claude": "claude --plugin-dir plugin/builds/claude",
 		"claude:debug": "PLUGINFINITY_DEBUG=1 claude --plugin-dir plugin/builds/claude",
 		"copilot": "copilot --plugin-dir plugin/builds/copilot",
@@ -51,6 +52,8 @@
 		"test": "vitest run --passWithNoTests",
 		"test:bats": "bats --recursive plugin/__test__ < /dev/null",
 		"test:coverage": "vitest run --coverage",
+		"test:full": "EFFECTED_TEST_TIER=full vitest run --coverage.enabled=false --passWithNoTests",
+		"test:hostile": "EFFECTED_TEST_TIER=hostile vitest run --coverage.enabled=false --passWithNoTests",
 		"test:watch": "vitest --watch",
 		"typecheck": "turbo run types:check --log-prefix=none --log-order=grouped",
 		"types:check": "tsc --noEmit"
