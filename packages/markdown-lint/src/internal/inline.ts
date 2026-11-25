@@ -481,18 +481,26 @@ const labelView = (document: MarkdownDocument, source: string): TokenView => ({
 	contentStart: (offset) => offset,
 });
 
-// The inline content of the image label in `text` from `open` (its `[`) to `close` (its `]`), whose characters
-// `toSource` maps to the reading's source, pushed in source offsets: its emphasis and strong, its `data` tokens and its code
-// spans' data runs, and those of any image nested in it, read the same way.
+// An image label to read: `text` from `open` (its `[`) to `close` (its `]`), whose character at `index` sits at
+// `offsets[shift + index]` in the reading's source.
+interface PendingLabel {
+	readonly text: string;
+	readonly shift: number;
+	readonly open: number;
+	readonly close: number;
+}
+
+// The inline content of `pending`'s image label, pushed in source offsets: its emphasis and strong, its `data` tokens
+// and its code spans' data runs. An image nested in it is handed to `nest`, to be read the same way.
 const readLabel = (
-	text: string,
-	textToSource: (offset: number) => number | undefined,
-	open: number,
-	close: number,
+	pending: PendingLabel,
+	offsets: ReadonlyArray<number>,
 	inMath: (offset: number) => boolean,
 	definitions: ReadonlyMap<string, unknown>,
 	push: (span: InlineSpan) => void,
+	nest: (label: PendingLabel) => void,
 ): void => {
+	const { text, shift, open, close } = pending;
 	// The label is re-parsed after its own `[`, as a paragraph: links cannot nest, so a label holding a link would not
 	// re-parse as a link's label, and the unmatched `[` keeps the label's start as micromark reads it.
 	// A stand-in for each definition the label's own brackets name follows (see `labelDefinitions`), so its references
@@ -502,9 +510,11 @@ const readLabel = (
 	const parsed = MarkdownDocument.parseResult(source, labelOptions);
 	if (!Result.isSuccess(parsed)) return;
 	const document = parsed.success;
-	// A re-parsed offset to the reading's: the `[` is the label's own, the rest the label's characters. Composed, not
-	// copied, so an image nested in the label costs its own label's length, not this one's.
-	const toSource = (offset: number) => textToSource(open + offset);
+	// A re-parsed offset to the reading's: the `[` is the label's own, the rest the label's characters. A shift into
+	// the reading's one offsets array, not a copy or a chain, so an image nested in the label costs its own label's
+	// length, not this one's, at any depth.
+	const base = shift + open;
+	const toSource = (offset: number): number | undefined => offsets[base + offset];
 	const mapped = (type: string, start: number, end: number) => {
 		const first = toSource(start);
 		const last = toSource(end - 1);
@@ -527,7 +537,7 @@ const readLabel = (
 			} else if (node.type === "image" || node.type === "imageReference") {
 				const start = node.position.start.offset;
 				const end = labelEnd(source, start + 1, node.position.end.offset);
-				readLabel(source, toSource, start + 1, end, inMath, definitions, push);
+				nest({ text: source, shift: base, open: start + 1, close: end });
 			}
 		},
 	);
@@ -597,15 +607,13 @@ export const imageLabelNodes: (context: LintContext) => ReadonlyArray<InlineSpan
 		}
 		text += "]";
 		offsets.push(close);
-		readLabel(
-			text,
-			(offset) => offsets[offset],
-			0,
-			text.length - 1,
-			inMath,
-			definitions,
-			(span) => found.push(span),
-		);
+		// A worklist, not recursion: images nest as deep as the input, past the call stack.
+		const pending: Array<PendingLabel> = [{ text, shift: 0, open: 0, close: text.length - 1 }];
+		const nest = (label: PendingLabel) => pending.push(label);
+		const add = (span: InlineSpan) => found.push(span);
+		for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
+			readLabel(next, offsets, inMath, definitions, add, nest);
+		}
 	}
 	return found.sort((a, b) => a.start - b.start);
 });

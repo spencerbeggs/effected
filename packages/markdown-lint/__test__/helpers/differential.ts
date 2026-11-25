@@ -139,7 +139,8 @@ interface Comparison {
  */
 export const READS_MICROMARK_UNASKED: ReadonlySet<string> = new Set(["MD052", "MD053"]);
 
-const compareOne = (rule: LintRule, config: Record<string, unknown>, input: DifferentialInput): Comparison => {
+/** One input compared under `config` (the whole lint config): what markdownlint found, and why the two differ if they do. */
+export const compareOne = (rule: LintRule, config: Record<string, unknown>, input: DifferentialInput): Comparison => {
 	const found = (reason: string | undefined): Comparison => ({ oracleFindings: oracleFindings.length, reason });
 	let oracleFindings: ReadonlyArray<OracleFinding>;
 	try {

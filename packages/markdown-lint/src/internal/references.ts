@@ -380,7 +380,33 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 		}
 	};
 
+	// `visit` runs on an explicit stack, not the call stack: images nest as deep as the input. A node's step does its
+	// work in order, visiting a child or deferring a closing action (`later`) onto the step's frame; the driver runs the
+	// frame's tasks in that order, each before the task after it, exactly as the recursion did.
+	let frame: Array<() => void> | undefined;
+	const later = (task: () => void): void => {
+		(frame as Array<() => void>).push(task);
+	};
 	const visit = (view: View, events: BlockEvents, node: MarkdownNode): void => {
+		const task = () => step(view, events, node);
+		if (frame !== undefined) {
+			frame.push(task);
+			return;
+		}
+		const stack: Array<() => void> = [task];
+		for (let next = stack.pop(); next !== undefined; next = stack.pop()) {
+			const own: Array<() => void> = [];
+			frame = own;
+			try {
+				next();
+			} finally {
+				frame = undefined;
+			}
+			for (let index = own.length - 1; index >= 0; index--) stack.push(own[index] as () => void);
+		}
+	};
+
+	const step = (view: View, events: BlockEvents, node: MarkdownNode): void => {
 		const { text } = view;
 		const start = node.position.start.offset;
 		const end = node.position.end.offset;
@@ -431,7 +457,7 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 				record(view, node, start, end, close);
 				medium(view, node, start, end, close);
 				for (const child of children) visit(view, events, child);
-				events.formed(label);
+				later(() => events.formed(label));
 				return;
 			}
 			case "image":
@@ -441,7 +467,7 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 				record(view, node, start, end, close);
 				medium(view, node, start, end, close);
 				readAlt(view, events, start + 1, close);
-				events.formed(label);
+				later(() => events.formed(label));
 				return;
 			}
 			default:
@@ -452,7 +478,7 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 				// Emphasis, strong and strikethrough: their delimiters are data (markdownlint reads no strikethrough).
 				scanText(view, events, start, (children[0] as MarkdownNode).position.start.offset);
 				for (const child of children) visit(view, events, child);
-				scanText(view, events, (children[children.length - 1] as MarkdownNode).position.end.offset, end);
+				later(() => scanText(view, events, (children[children.length - 1] as MarkdownNode).position.end.offset, end));
 		}
 	};
 

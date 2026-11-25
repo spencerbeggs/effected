@@ -126,6 +126,10 @@ const imagesNamingOneLongDefinition = (count: number): string =>
 const imagesNestedInOneLabel = (count: number): string =>
 	`# T\n\n![${"![a](b)".repeat(Math.ceil(count / 4))}](i.png)\n`;
 
+// Images nested in one another's labels: each level's label was read by a recursive call, which overflowed the stack
+// (MD049 by 2,000 levels, MD052 by 4,000), where markdownlint reads every level.
+const deeplyNestedImages = (depth: number): string => `# T\n\n${"![".repeat(depth)}a${"](b)".repeat(depth)}\n`;
+
 // MD034 checks each literal against the unbalanced label spans before it: one line of 20,000 bracketed addresses.
 const bracketedAddresses = (count: number): string => `# T\n\n${"[a] b@c.de ".repeat(count)}\n`;
 
@@ -256,6 +260,16 @@ describe("hostile inputs", () => {
 	for (const rule of [MD049, MD052, MD053, MD054]) {
 		it(`lints one image label naming one 80 KB definition 8,000 times under ${rule.name} without throwing`, () => {
 			const source = labelNamingOneDefinition(8000, 80000);
+			assert.doesNotThrow(() => MarkdownLint.lint(source, [rule]));
+		});
+	}
+
+	// Every level is still re-parsed in turn, so the cost grows with depth times the label (see the module concept).
+	for (const rule of [MD049, MD052]) {
+		it(`lints 4,000 images nested in one another's labels under ${rule.name} without throwing`, {
+			timeout: 60_000,
+		}, () => {
+			const source = deeplyNestedImages(4000);
 			assert.doesNotThrow(() => MarkdownLint.lint(source, [rule]));
 		});
 	}
