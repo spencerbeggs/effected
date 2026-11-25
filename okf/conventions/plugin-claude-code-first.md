@@ -3,6 +3,7 @@ type: Convention
 title: Change the Claude Code plugin first, then port to Copilot
 description: Author every skill, agent and hook change in plugins/claude-code/ and prove it there before copying and refactoring it into plugins/copilot/'s format, never the reverse.
 status: deprecated
+superseded_by: author-the-plugin-once.md
 stale_after: "2027-03-13T00:00:00Z"
 tags:
   - dx

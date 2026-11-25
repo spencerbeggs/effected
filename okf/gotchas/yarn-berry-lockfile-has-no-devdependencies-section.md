@@ -3,6 +3,7 @@ type: Gotcha
 title: A yarn Berry lockfile has no devDependencies section
 description: "Deprecated: @effected/lockfiles no longer parses yarn Berry lockfiles, so the resolver this gotcha described does not exist; a yarn repository still discovers its workspaces through package.json#workspaces."
 status: deprecated
+superseded_by: ../conventions/package-manager-support-policy.md
 stale_after: 2027-03-21T00:00:00Z
 tags:
   - dx

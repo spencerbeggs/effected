@@ -3,6 +3,7 @@ type: Gotcha
 title: catalog:build is missing from pnpm-workspace.yaml because it is injected
 description: Grepping pnpm-workspace.yaml for catalog:build finds nothing, which reads as a broken or unconfigured catalog reference rather than the configDependency-injected catalog it actually is.
 status: deprecated
+superseded_by: ../decisions/effected-build-catalog.md
 resource: ../../pnpm-workspace.yaml
 stale_after: 2027-03-13T00:00:00Z
 tags:

@@ -3,6 +3,7 @@ type: Decision
 title: Azure is confined to three modules, not two
 description: The Azure blob client may only be imported by ActionCache, Artifact and BlobStore.githubCache — not by any shared internal helper.
 status: deprecated
+superseded_by: blob-transport-is-internal-httpclient.md
 tags:
   - bundle
   - architecture

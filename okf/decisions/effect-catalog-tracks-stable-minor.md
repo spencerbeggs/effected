@@ -3,6 +3,7 @@ type: Decision
 title: The effect catalog takes caret ranges on the stable line
 description: "With Effect v4 stable, the effect and effect:peers catalogs give effect and every @effect/* package a caret range under lock-minor; the lockfile, not the catalog literal, fixes the exact version, and .repos/effect follows the lockfile."
 status: deprecated
+superseded_by: effect-catalog-minor-lock.md
 tags:
   - architecture
   - compat

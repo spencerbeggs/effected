@@ -3,6 +3,7 @@ type: Gotcha
 title: pnpm add --config silently strips integrity hashes from every config dependency
 description: "Superseded: a configDependencies entry is a plain version, the canonical form, so pnpm add --config writing entries without a +sha512 suffix, and dropping it from the others, loses nothing a consumer is expected to keep; pnpm still honours a suffix that is present."
 status: deprecated
+superseded_by: ../interfaces/workspaces-catalogs.md
 resource: ../../pnpm-workspace.yaml
 tags:
   - security

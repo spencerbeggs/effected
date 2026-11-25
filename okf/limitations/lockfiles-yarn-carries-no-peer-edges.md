@@ -3,6 +3,7 @@ type: Limitation
 title: Yarn carries no resolved peer edges
 description: "Deprecated: @effected/lockfiles no longer parses yarn Berry lockfiles, so there is no yarn row to carry a resolved peer edge."
 status: deprecated
+superseded_by: ../conventions/package-manager-support-policy.md
 x-okfit-bounds: ../modules/lockfiles.md
 tags:
   - dx
