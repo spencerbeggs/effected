@@ -3,16 +3,6 @@ import { assert, describe, it } from "@effect/vitest";
 import type { SgrStyle } from "../src/Sgr.js";
 import { Sgr } from "../src/Sgr.js";
 
-/**
- * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
- * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
- * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
- */
-const cpuNow = (): number => {
-	const used = process.cpuUsage();
-	return (used.user + used.system) / 1000;
-};
-
 const ESC = "\u001b";
 
 describe("Sgr.strip", () => {
@@ -41,13 +31,12 @@ describe("Sgr.strip", () => {
 		for (const sample of samples) assert.strictEqual(Sgr.strip(sample), stripVTControlCharacters(sample));
 	});
 
-	it("is linear on a long parameter run that never ends in m", () => {
+	// `Sgr.hostile.test.ts` holds that both of these strip in time linear in the run.
+	it("leaves a long parameter run that never ends in m as it is", () => {
 		const input = `${ESC}[${"1;".repeat(100_000)}`;
-		const start = cpuNow();
 		assert.strictEqual(Sgr.strip(input), input);
 		const repeated = `${ESC}[1;`.repeat(50_000);
 		assert.strictEqual(Sgr.strip(repeated), repeated);
-		assert.isBelow(cpuNow() - start, 1000);
 	});
 });
 

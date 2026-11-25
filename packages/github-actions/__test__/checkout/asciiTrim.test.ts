@@ -14,11 +14,10 @@ describe("asciiTrim", () => {
 		assert.strictEqual(asciiTrim(" main "), " main ");
 	});
 
-	it("is linear on a long interior whitespace run", () => {
+	// `asciiTrim.hostile.test.ts` holds that both of these trim in time linear in the run.
+	it("keeps a long interior whitespace run and strips a long leading one", () => {
 		const input = `x${" ".repeat(100_000)}y`;
-		const started = performance.now();
 		assert.strictEqual(asciiTrim(input), input);
 		assert.strictEqual(asciiTrim(`${" ".repeat(100_000)}y`), "y");
-		assert.isBelow(performance.now() - started, 250);
 	});
 });

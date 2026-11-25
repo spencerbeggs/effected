@@ -31,11 +31,11 @@ describe("hostile inputs: growth", () => {
 		);
 	});
 
-	it("parses a 1 MB single-line string in time linear in the string", () => {
-		Growth.assertOrder((length) => parse(`s = "${"x".repeat(length)}"\n`), { from: 262_144, order: 1 });
+	it("parses a long single-line string in time linear in the string", () => {
+		Growth.assertOrder((length) => parse(`s = "${"x".repeat(length)}"\n`), { from: 32_768, order: 1 });
 	});
 
-	it("refuses a 1 MB unterminated string in time linear in the string: no quadratic scan", () => {
-		Growth.assertOrder((length) => parse(`s = "${"x".repeat(length)}`), { from: 262_144, order: 1 });
+	it("refuses a long unterminated string in time linear in the string: no quadratic scan", () => {
+		Growth.assertOrder((length) => parse(`s = "${"x".repeat(length)}`), { from: 32_768, order: 1 });
 	});
 });

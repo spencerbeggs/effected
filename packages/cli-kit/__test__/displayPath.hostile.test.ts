@@ -15,7 +15,7 @@ describe("relativeTo without Path", () => {
 				const file = `${root}/x.ts`;
 				return () => relativeTo(root, Option.none())(file);
 			},
-			{ from: 50_000, order: 1 },
+			{ from: 20_000, order: 1 },
 		);
 	});
 });

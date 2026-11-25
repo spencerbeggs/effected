@@ -33,6 +33,7 @@
 		"@changesets/git": "4.0.1",
 		"@effect/platform-node": "catalog:effected",
 		"@effect/vitest": "catalog:effected",
+		"@effected/testing": "workspace:*",
 		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
 		"typescript": "catalog:effected:build"

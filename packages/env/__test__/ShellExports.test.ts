@@ -2,21 +2,10 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { performance } from "node:perf_hooks";
 import { afterAll, assert, describe, it } from "@effect/vitest";
 import { Effect, Result } from "effect";
 import type { ShellExportsErrorReason } from "../src/ShellExports.js";
 import { ShellExports, ShellExportsError } from "../src/ShellExports.js";
-
-/**
- * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
- * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
- * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
- */
-const cpuNow = (): number => {
-	const used = process.cpuUsage();
-	return (used.user + used.system) / 1000;
-};
 
 const ok = (text: string): Record<string, string> => {
 	const parsed = ShellExports.parseResult(text);
@@ -398,34 +387,14 @@ describe("ShellExports: a word that starts with U+FEFF", () => {
 	});
 });
 
-describe("ShellExports performance", () => {
-	const file = (count: number) =>
-		ShellExports.format(
-			Object.fromEntries(Array.from({ length: count }, (_, k) => [`VAR_${k}`, `value ${k} it's $'x'`])),
+// `ShellExports.hostile.test.ts` holds that parsing grows linearly with the file.
+describe("ShellExports at scale", () => {
+	it("parses a 40 000-export file", () => {
+		const text = ShellExports.format(
+			Object.fromEntries(Array.from({ length: 40_000 }, (_, k) => [`VAR_${k}`, `value ${k} it's $'x'`])),
 		);
-	const median = (text: string) => {
-		const times = Array.from({ length: 5 }, () => {
-			const start = cpuNow();
-			const parsed = ShellExports.parseResult(text);
-			const elapsed = cpuNow() - start;
-			assert.isTrue(Result.isSuccess(parsed));
-			return elapsed;
-		}).sort((a, b) => a - b);
-		return times[2] as number;
-	};
-
-	it("parses a 40 000-export file well under a second", () => {
-		const text = file(40_000);
 		const parsed = Result.getOrThrow(ShellExports.parseResult(text));
 		assert.strictEqual(Object.keys(parsed).length, 40_000);
-		assert.isBelow(median(text), 500);
-	});
-
-	it("grows linearly: four times the text takes well under sixteen times as long", () => {
-		const small = median(file(10_000));
-		const large = median(file(40_000));
-		// Linear is about 4x; quadratic would be about 16x. The floor keeps timer noise on a fast small run out of it.
-		assert.isBelow(large / Math.max(small, 1), 8);
 	});
 });
 

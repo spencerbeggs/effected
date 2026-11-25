@@ -34,6 +34,7 @@
 		"@effect/platform-node": "catalog:effected",
 		"@effect/vitest": "catalog:effected",
 		"@effected/memfs": "workspace:*",
+		"@effected/testing": "workspace:*",
 		"@effected/workspaces": "workspace:*",
 		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",

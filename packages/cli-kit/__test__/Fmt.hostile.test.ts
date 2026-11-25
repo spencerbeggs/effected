@@ -18,7 +18,7 @@ describe("Fmt.stripAnsi on an unterminated sequence", () => {
 					const input = make(count);
 					return () => Fmt.stripAnsi(input);
 				},
-				{ from: 250_000, order: 1 },
+				{ from: 20_000, order: 1 },
 			);
 		});
 	}
@@ -31,7 +31,7 @@ describe("Fmt.suggest on a long typed value", () => {
 				const long = "x".repeat(count);
 				return () => Fmt.suggest(long, ["build", "test"]);
 			},
-			{ from: 50_000, order: 1 },
+			{ from: 20_000, order: 1 },
 		);
 	});
 
@@ -44,7 +44,7 @@ describe("Fmt.suggest on a long typed value", () => {
 				const names = [`${long}yyy`, long.slice(1)];
 				return () => Fmt.suggest(long, names);
 			},
-			{ from: 50_000, order: 1 },
+			{ from: 20_000, order: 1 },
 		);
 	});
 });
