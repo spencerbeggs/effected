@@ -16,13 +16,15 @@ x-okfit-integrity:
     body: e685672cc5391450
   verified:
     by: human:spencer
-    at: 2026-11-06T01:54:11Z
+    at: 2026-11-25T21:38:57Z
     content: 951e1207594e2982
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
   - by: human:spencer
     at: 2026-11-06T01:54:11Z
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
 ---
 
 # FORCE_COLOR is honoured, with Node's getColorDepth precedence

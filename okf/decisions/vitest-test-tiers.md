@@ -40,8 +40,8 @@ x-okfit-integrity:
     body: e2831e6dc92a5ae3
   verified:
     by: human:spencer
-    at: 2026-11-25T13:46:34Z
-    content: 5cd54b7a00dcf2a1
+    at: 2026-11-25T21:38:57Z
+    content: 09c1ec30b0f9b8f0
 verified:
   - by: human:spencer
     at: 2026-11-21T19:47:49Z
@@ -51,6 +51,8 @@ verified:
     at: 2026-11-24T06:19:30Z
   - by: human:spencer
     at: 2026-11-25T13:46:34Z
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
 ---
 
 # The vitest suite splits into a fast tier with coverage and slow, hostile and full tiers run beside it

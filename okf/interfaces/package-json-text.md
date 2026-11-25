@@ -24,13 +24,15 @@ verified:
     at: 2026-10-29T00:43:21Z
   - by: human:spencer
     at: 2026-11-05T20:23:04Z
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
 x-okfit-integrity:
   generated:
     body: bdae357cc466e363
   verified:
     by: human:spencer
-    at: 2026-11-05T20:23:04Z
-    content: 404919100810f6ac
+    at: 2026-11-25T21:38:57Z
+    content: fc58edd54f20cd62
 ---
 
 # The package-json decode-free text path

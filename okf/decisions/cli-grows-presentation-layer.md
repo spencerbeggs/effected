@@ -19,13 +19,15 @@ verified:
     at: 2026-10-13T21:42:59Z
   - by: human:spencer
     at: 2026-11-02T17:04:46Z
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
 x-okfit-integrity:
   generated:
     body: ef18b1754420003a
   verified:
     by: human:spencer
-    at: 2026-11-02T17:04:46Z
-    content: 5bc6e6ccdba7bb46
+    at: 2026-11-25T21:38:57Z
+    content: 8a2bf295f85bfe50
 ---
 
 # @effected/cli-kit grows a presentation layer and interactive UI

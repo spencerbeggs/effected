@@ -16,7 +16,7 @@ x-okfit-integrity:
     body: c6fd1f760ef2b7a1
   verified:
     by: human:spencer
-    at: 2026-11-06T01:54:11Z
+    at: 2026-11-25T21:38:57Z
     content: 3e8700eb82b18f98
 verified:
   - by: human:spencer
@@ -25,6 +25,8 @@ verified:
     at: 2026-11-05T14:25:52Z
   - by: human:spencer
     at: 2026-11-06T01:54:11Z
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
 ---
 
 # Schemastore retiers from boundary to integrated for a direct ajv dependency

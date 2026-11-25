@@ -32,8 +32,8 @@ x-okfit-integrity:
     body: bede640a4f40193c
   verified:
     by: human:spencer
-    at: 2026-11-10T04:41:33Z
-    content: 610923b02c768561
+    at: 2026-11-25T21:38:57Z
+    content: 822d18042e195cbc
 verified:
   - by: human:spencer
     at: 2026-10-31T19:39:48Z
@@ -41,6 +41,8 @@ verified:
     at: 2026-11-08T18:25:54Z
   - by: human:spencer
     at: 2026-11-10T04:41:33Z
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
 ---
 
 # The effect catalog holds the Effect family to one minor with tilde ranges

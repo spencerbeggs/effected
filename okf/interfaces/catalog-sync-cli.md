@@ -33,13 +33,15 @@ verified:
     at: 2026-11-10T00:32:33Z
   - by: human:spencer
     at: 2026-11-21T22:48:18Z
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
 x-okfit-integrity:
   generated:
     body: 4c5b5112545bb0e6
   verified:
     by: human:spencer
-    at: 2026-11-21T22:48:18Z
-    content: 9ba014adaefc4e73
+    at: 2026-11-25T21:38:57Z
+    content: 5f651dc28c77b906
 ---
 
 # The catalog:sync / catalog:check CLI

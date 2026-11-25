@@ -16,13 +16,15 @@ verified:
     at: 2026-10-13T21:42:59Z
   - by: human:spencer
     at: 2026-10-29T00:43:21Z
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
 x-okfit-integrity:
   generated:
     body: 34f49d7501bcf81d
   verified:
     by: human:spencer
-    at: 2026-10-29T00:43:21Z
-    content: e18c169ceb5ff17a
+    at: 2026-11-25T21:38:57Z
+    content: 6046409ca69304cb
 ---
 
 # @effected/yaml stringify options

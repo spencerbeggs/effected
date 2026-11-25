@@ -16,13 +16,15 @@ verified:
     at: 2026-10-13T21:42:59Z
   - by: human:spencer
     at: 2026-10-29T00:43:21Z
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
 x-okfit-integrity:
   generated:
     body: 512806020b8c6d47
   verified:
     by: human:spencer
-    at: 2026-10-29T00:43:21Z
-    content: 14e7a779937703b1
+    at: 2026-11-25T21:38:57Z
+    content: e49dedf16ee90d12
 ---
 
 # @effected/github REST client

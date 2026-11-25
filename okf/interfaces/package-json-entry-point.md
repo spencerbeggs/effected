@@ -22,13 +22,15 @@ verified:
     at: 2026-10-13T21:42:59Z
   - by: human:spencer
     at: 2026-10-29T00:43:21Z
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
 x-okfit-integrity:
   generated:
     body: b65591cdc27e644c
   verified:
     by: human:spencer
-    at: 2026-10-29T00:43:21Z
-    content: 33ec65f16365d690
+    at: 2026-11-25T21:38:57Z
+    content: d091a51d72b48ff8
 ---
 
 # The package-json entry-point resolver

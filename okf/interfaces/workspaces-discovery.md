@@ -46,13 +46,15 @@ verified:
     at: 2026-11-10T23:42:17Z
   - by: human:spencer
     at: 2026-11-16T16:59:20Z
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
 x-okfit-integrity:
   generated:
     body: 8370245e358fbaa1
   verified:
     by: human:spencer
-    at: 2026-11-16T16:59:20Z
-    content: 5ea9a24d749828b0
+    at: 2026-11-25T21:38:57Z
+    content: 2b9765e9b275ce9a
 ---
 
 # @effected/workspaces discovery and detection

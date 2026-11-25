@@ -31,8 +31,8 @@ x-okfit-integrity:
     body: f56c84b0ccdf21ab
   verified:
     by: human:spencer
-    at: 2026-11-06T01:54:11Z
-    content: 5c85c89cdfd22fb6
+    at: 2026-11-25T21:38:57Z
+    content: b3787e3f6fe84792
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -40,6 +40,8 @@ verified:
     at: 2026-11-05T14:25:52Z
   - by: human:spencer
     at: 2026-11-06T01:54:11Z
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
 ---
 
 # The ajv engine lives in the effected tool, and the library returns to boundary tier

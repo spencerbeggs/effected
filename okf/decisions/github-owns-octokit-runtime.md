@@ -12,13 +12,15 @@ x-okfit-integrity:
     body: 9a11c882da0ec9ec
   verified:
     by: human:spencer
-    at: 2026-11-16T16:59:20Z
+    at: 2026-11-25T21:38:57Z
     content: 87457a836773ed8d
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
   - by: human:spencer
     at: 2026-11-16T16:59:20Z
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
 ---
 
 # @effected/github owns the octokit runtime

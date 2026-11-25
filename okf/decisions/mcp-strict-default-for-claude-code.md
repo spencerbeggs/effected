@@ -12,13 +12,15 @@ x-okfit-integrity:
     body: 73cc9bc2d878daa4
   verified:
     by: human:spencer
-    at: 2026-11-06T01:54:11Z
+    at: 2026-11-25T21:38:57Z
     content: 9514674ee01e5d89
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
   - by: human:spencer
     at: 2026-11-06T01:54:11Z
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
 ---
 
 # D: strict MCP input default for Claude Code

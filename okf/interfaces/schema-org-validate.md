@@ -14,13 +14,15 @@ verified:
     at: 2026-09-24T00:11:42.785Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
 x-okfit-integrity:
   generated:
     body: ae2a903ac75d1d36
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 04d2042551487e2a
+    at: 2026-11-25T21:38:57Z
+    content: 48ff1d2fee38a795
 ---
 
 # @effected/schema-org validate entrypoint

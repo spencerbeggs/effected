@@ -16,13 +16,15 @@ verified:
     at: 2026-09-24T00:12:22.388Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
 x-okfit-integrity:
   generated:
     body: dd378ac5e27f5d63
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 34473666081e3ed6
+    at: 2026-11-25T21:38:57Z
+    content: 6924114d8704fe38
 ---
 
 # Vendored repos manifest

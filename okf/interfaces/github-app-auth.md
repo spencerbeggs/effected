@@ -20,13 +20,15 @@ verified:
     at: 2026-11-21T21:05:38Z
   - by: human:spencer
     at: 2026-11-21T21:26:34Z
+  - by: human:spencer
+    at: 2026-11-25T21:38:57Z
 x-okfit-integrity:
   generated:
     body: 8ffe356e5bf3953d
   verified:
     by: human:spencer
-    at: 2026-11-21T21:26:34Z
-    content: d0bcdf377489f429
+    at: 2026-11-25T21:38:57Z
+    content: 3c1aa404c418399e
 ---
 
 # @effected/github App authentication
