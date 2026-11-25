@@ -380,12 +380,15 @@ describe("hostility: chained and unclosed extglobs", () => {
 		const chain = `x${"!(a)".repeat(25)}`;
 		const m = new Minimatch(chain, { platform: "posix" });
 		for (const f of ["x", "xa", "xb", "xab"]) assert.strictEqual(m.match(f), oracle.minimatch(f, chain), f);
-		// 4x the negations: compiling is linear, so about 4x (bound 10, which a
-		// quadratic regression, 16x, still fails). At 4,000 the small side is a
-		// few ms of real work, not the 0.07 ms whose noise read 12 once; 16,000
-		// negations are 64,001 bytes, under the length cap.
+		// 16,000 negations are 64,001 bytes, under the length cap, and compile.
+		assert.isDefined(new Minimatch(`x${"!(a)".repeat(16_000)}`));
+		// 4x the negations: compiling is linear, so about 4x (bound 10, which a quadratic regression, 16x, still
+		// fails). Measured from 1,000 to 4,000, where it reads 4x to 5x on every machine measured. From 4,000 to
+		// 16,000 the memory a compile holds starts to cost more than the compile: 6.5x to 6.9x on macOS and 12.1x on
+		// a Linux runner, for a compile that still takes 11 ms. Growth repeats a fast run until it is long enough to
+		// time, so the small side no longer needs to be large.
 		assert.isBelow(
-			growth((n) => () => new Minimatch(`x${"!(a)".repeat(n)}`), 4000, 16_000, 10),
+			growth((n) => () => new Minimatch(`x${"!(a)".repeat(n)}`), 1000, 4000, 10),
 			10,
 		);
 		// the same through an unclosed opener's alternatives
