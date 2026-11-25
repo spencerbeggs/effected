@@ -44,11 +44,20 @@ const cpuNow = (): number => {
 	return (used.user + used.system) / 1000;
 };
 
+/**
+ * Where every run's result goes. A call whose result nothing reads is one the optimizer may drop once the loop is
+ * hot, and a dropped call times as nothing: the check then reads a ratio of noise, or cannot measure at all. A
+ * result stored where the rest of the program could read it has to be computed.
+ */
+const kept: Array<unknown> = new Array<unknown>(8).fill(undefined);
+
 /** CPU milliseconds of `repetitions` runs. */
 const batch = (run: () => unknown, repetitions: number): number => {
 	const started = cpuNow();
-	for (let index = 0; index < repetitions; index += 1) run();
-	return cpuNow() - started;
+	for (let index = 0; index < repetitions; index += 1) kept[index & 7] = run();
+	const elapsed = cpuNow() - started;
+	kept.fill(undefined);
+	return elapsed;
 };
 
 /** The repetition count at which one batch of `run` reaches the floor. */
@@ -147,6 +156,11 @@ const assertOrder = (
  * rounds. A size that takes over a second is sampled once, and a ratio eight times its bound is not measured again,
  * so a regression to exponential work fails in about the time of two runs of it. A test file that reads this is
  * named `.hostile.test.ts`, which runs it one file at a time.
+ *
+ * The work `make` returns should return what it computed: its result is kept, so the optimizer cannot drop the
+ * call. Choose the smallest `from` whose run does real work, tens of thousands of characters for a scan: a short run is
+ * repeated until it can be timed, so a larger input adds no accuracy, and it makes a quadratic regression take
+ * minutes to report where a small one fails in seconds.
  */
 export const Growth: {
 	/** CPU milliseconds this process has used: user plus system. */
