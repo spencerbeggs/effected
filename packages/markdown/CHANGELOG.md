@@ -1,5 +1,19 @@
 # @effected/markdown
 
+## 0.30.0
+
+### Bug Fixes
+
+- Tabs are accepted as whitespace around a link reference definition's destination and title and around an inline link's, as CommonMark allows. Documents that used them now parse to the link or definition rather than paragraph text.
+- Link reference definitions directly above a table's header row are read as definitions rather than paragraph text.
+- A literal-autolink email that follows a backslash escape or an entity has its position corrected to its source end.
+
+* A GFM footnote definition's position now ends at its last child, or just past the `[^label]:` marker when it has none, instead of running on through the blank line that closed it.
+
+### Performance
+
+- Mapping email literals back to the source, splitting a paragraph's link reference definitions, and parsing a long paragraph of many inline nodes all run in linear time. Output is unchanged.
+
 ## 0.29.0
 
 ### Dependencies
