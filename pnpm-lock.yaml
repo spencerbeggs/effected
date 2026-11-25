@@ -1294,6 +1294,9 @@ importers:
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs
+      '@effected/testing':
+        specifier: workspace:*
+        version: link:../testing
       '@types/node':
         specifier: catalog:effected:build
         version: 26.6.6
