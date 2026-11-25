@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { CommandNeutralizer } from "../src/index.js";
-import { LINE_BREAK, commandLines, isCommand } from "./helpers/runnerCommands.js";
+import { commandLines, isCommand } from "./helpers/runnerCommands.js";
 
 const ZWSP = String.fromCodePoint(0x200b);
 /** The marker: U+2800 BRAILLE PATTERN BLANK. */

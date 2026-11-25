@@ -16,8 +16,7 @@ const select = <A extends CorpusEntry>(
 	}
 	const wanted = new Set(options.sample);
 	if (wanted.size !== options.sample.length) {
-		const seen = new Set<string>();
-		const repeated = options.sample.filter((name) => (seen.has(name) ? true : (seen.add(name), false)));
+		const repeated = options.sample.filter((name, index) => options.sample.indexOf(name) !== index);
 		throw new Error(`Corpus.select: duplicate sample names: ${[...new Set(repeated)].join(", ")}`);
 	}
 	const present = new Set(all.map((entry) => entry.name));

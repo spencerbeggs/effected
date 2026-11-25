@@ -87,6 +87,9 @@ const GUARD_REFUSED: ReadonlySet<string> = new Set([
 const scaling = (make: (count: number) => () => unknown, from: number): { ratio: number; detail: string } =>
 	Growth.measure(make, { from, bound: 8 });
 
+/** The deadline of a scaling guard: far above what one takes, so a guard fails on its ratio and not on this. */
+const GUARD_DEADLINE_MS = 120_000;
+
 describe("pathological inputs", () => {
 	it("carries the whole vendored suite", () => {
 		// The silently-empty-walk guard: an import that resolved to nothing
@@ -94,33 +97,40 @@ describe("pathological inputs", () => {
 		assert.isAtLeast(PATHOLOGICAL_CASES.length, 20);
 	});
 
-	for (const testCase of PATHOLOGICAL_CASES) {
-		it(testCase.name, () => {
-			let caught: unknown;
-			let html = "";
-			try {
-				// A case's dialect defaults to the commonmark substrate;
-				// upstream's GFM-extension cases parse and render under gfm.
-				html =
-					testCase.dialect === "gfm"
-						? renderHtml(parseBlocks(testCase.input, "gfm").root, { gfm: true })
-						: renderHtml(parseBlocks(testCase.input).root);
-			} catch (error) {
-				caught = error;
-			}
-			if (GUARD_REFUSED.has(testCase.name)) {
-				assert.isTrue(
-					isGuardExceeded(caught),
-					`${testCase.name} is listed as guard-refused but did not trip the guard`,
-				);
-				return;
-			}
+	// The heaviest vendored case takes about 3 s. This is a deadline, not a bound on the work: a synchronous parse
+	// cannot be interrupted, so a case that regressed to tens of seconds fails late, and one that never returns runs
+	// until the job is stopped. What bounds the work is the growth of each shape, further down.
+	const VENDORED_DEADLINE_MS = 30_000;
 
-			assert.isUndefined(caught, `${testCase.name} threw: ${String(caught)}`);
-			assert.match(html, testCase.expectedPattern);
-		}, // cannot be interrupted, so a case that regressed to tens of seconds fails late, and one that never returns // The heaviest case takes about 3 s. This is a deadline, not a bound on the work: a synchronous parse
-		// runs until the job is stopped. What bounds the work is the growth of each shape, below.
-		30_000);
+	for (const testCase of PATHOLOGICAL_CASES) {
+		it(
+			testCase.name,
+			() => {
+				let caught: unknown;
+				let html = "";
+				try {
+					// A case's dialect defaults to the commonmark substrate;
+					// upstream's GFM-extension cases parse and render under gfm.
+					html =
+						testCase.dialect === "gfm"
+							? renderHtml(parseBlocks(testCase.input, "gfm").root, { gfm: true })
+							: renderHtml(parseBlocks(testCase.input).root);
+				} catch (error) {
+					caught = error;
+				}
+				if (GUARD_REFUSED.has(testCase.name)) {
+					assert.isTrue(
+						isGuardExceeded(caught),
+						`${testCase.name} is listed as guard-refused but did not trip the guard`,
+					);
+					return;
+				}
+
+				assert.isUndefined(caught, `${testCase.name} threw: ${String(caught)}`);
+				assert.match(html, testCase.expectedPattern);
+			},
+			VENDORED_DEADLINE_MS,
+		);
 	}
 
 	// Every vendored shape that is built by repeating a unit, measured at a count and at four times it. The vendored
@@ -173,54 +183,63 @@ describe("pathological inputs", () => {
 	// no other test's CPU lands in this one. The threshold of 8 sits between
 	// linear and the ~16x quadratic with margin on both sides. Watched red
 	// against the uncapped scan.
-	it("unclosed links B scales linearly", () => {
-		const { ratio, detail } = scaling((count) => {
-			const input = "[a](b".repeat(count);
-			return () => parseBlocks(input);
-		}, 20_000);
-		assert.isBelow(
-			ratio,
-			8,
-			`4x the input cost ${ratio.toFixed(1)}x the CPU time (${detail}); linear is ~4x, the pre-cap quadratic was ~16x`,
-		);
-	}, // TIMEOUT_MS is 8000): generous against instrumented linear cost — // The same wall-clock ceiling the vendored cases get (their shared
-	// two orders of magnitude of headroom — while anything worse than
-	// the measured quadratic fails HERE instead of grinding the runner.
-	120_000);
+	it(
+		"unclosed links B scales linearly",
+		() => {
+			const { ratio, detail } = scaling((count) => {
+				const input = "[a](b".repeat(count);
+				return () => parseBlocks(input);
+			}, 20_000);
+			assert.isBelow(
+				ratio,
+				8,
+				`4x the input cost ${ratio.toFixed(1)}x the CPU time (${detail}); linear is ~4x, the pre-cap quadratic was ~16x`,
+			);
+		},
+		GUARD_DEADLINE_MS,
+	);
 
 	// The linearity guard for definition extraction (defect 8). A paragraph's leading definitions were split off one
 	// at a time, each re-slicing the paragraph's per-line segments, re-scanning them for its source offsets and
 	// splicing its node in by a search of the parent's children: O(definitions) per definition. 20k consecutive
 	// definitions took 1.5s, ~14x per input quadrupling. One pass with a forward segment cursor and one splice makes
 	// it linear. Same method and threshold as the guards above.
-	it("consecutive link reference definitions scale linearly", () => {
-		const { ratio, detail } = scaling((count) => {
-			const input = Array.from({ length: count }, (_, index) => `[r${index}]: /u${index}\n`).join("");
-			return () => parseBlocks(input, "gfm");
-		}, 2_500);
-		assert.isBelow(
-			ratio,
-			8,
-			`4x the input cost ${ratio.toFixed(1)}x the CPU time (${detail}); linear is ~4x, the per-definition re-slice was ~16x`,
-		);
-	}, 120_000);
+	it(
+		"consecutive link reference definitions scale linearly",
+		() => {
+			const { ratio, detail } = scaling((count) => {
+				const input = Array.from({ length: count }, (_, index) => `[r${index}]: /u${index}\n`).join("");
+				return () => parseBlocks(input, "gfm");
+			}, 2_500);
+			assert.isBelow(
+				ratio,
+				8,
+				`4x the input cost ${ratio.toFixed(1)}x the CPU time (${detail}); linear is ~4x, the per-definition re-slice was ~16x`,
+			);
+		},
+		GUARD_DEADLINE_MS,
+	);
 
 	// The linearity guard for the email-literal postprocess (defect 7). The postprocess maps each match's offsets in a
 	// merged run of text nodes back to source; that lookup walked the run's nodes from the start on every call, so a
 	// run that brackets or escapes split into many nodes cost O(nodes) per address: 20k reps of `[a] b@c.de ` took
 	// 5.6s, ~16x per input quadrupling. A forward cursor over the nodes makes the mapping linear. Same method and
 	// threshold as the guard above.
-	it("email literals in a run of many text nodes scale linearly", () => {
-		const { ratio, detail } = scaling((count) => {
-			const input = "[a] b@c.de ".repeat(count);
-			return () => parseBlocks(input, "gfm");
-		}, 2_500);
-		assert.isBelow(
-			ratio,
-			8,
-			`4x the input cost ${ratio.toFixed(1)}x the CPU time (${detail}); linear is ~4x, the per-call node walk was ~16x`,
-		);
-	}, 120_000);
+	it(
+		"email literals in a run of many text nodes scale linearly",
+		() => {
+			const { ratio, detail } = scaling((count) => {
+				const input = "[a] b@c.de ".repeat(count);
+				return () => parseBlocks(input, "gfm");
+			}, 2_500);
+			assert.isBelow(
+				ratio,
+				8,
+				`4x the input cost ${ratio.toFixed(1)}x the CPU time (${detail}); linear is ~4x, the per-call node walk was ~16x`,
+			);
+		},
+		GUARD_DEADLINE_MS,
+	);
 
 	// The linearity guard for one long paragraph of inline nodes, two paths of it. Each node's position maps its
 	// index in the paragraph's content back to the source through the paragraph's segments, one per line, and a scan
@@ -229,15 +248,19 @@ describe("pathological inputs", () => {
 	// base, every earlier line's emphasis delimiters still open there. Before both fixes 4x the lines cost 14.7x here
 	// under coverage (61/212/727ms at 4k/8k/16k lines uninstrumented for the first path alone). Same clock, sampling
 	// and threshold as the guard above.
-	it("a long paragraph of inline nodes scales linearly", () => {
-		const { ratio, detail } = scaling((count) => {
-			const input = "*a* [b](/u) c\n".repeat(count);
-			return () => Markdown.parseResult(input);
-		}, 4_000);
-		assert.isBelow(
-			ratio,
-			8,
-			`4x the input cost ${ratio.toFixed(1)}x the CPU time (${detail}); linear is ~4x, the quadratic paths were ~15x`,
-		);
-	}, 120_000);
+	it(
+		"a long paragraph of inline nodes scales linearly",
+		() => {
+			const { ratio, detail } = scaling((count) => {
+				const input = "*a* [b](/u) c\n".repeat(count);
+				return () => Markdown.parseResult(input);
+			}, 4_000);
+			assert.isBelow(
+				ratio,
+				8,
+				`4x the input cost ${ratio.toFixed(1)}x the CPU time (${detail}); linear is ~4x, the quadratic paths were ~15x`,
+			);
+		},
+		GUARD_DEADLINE_MS,
+	);
 });
