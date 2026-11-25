@@ -165,6 +165,10 @@ const repeatedHeadings = (count: number): string =>
 const tallTable = (count: number): string => `# T\n\n| a | b |\n| - | - |\n${"| c | d\n".repeat(count)}\ntext\n`;
 const pipeRun = (count: number): string => `# T\n\n| a | b |\n| - | - |\n${"|".repeat(count)}\n`;
 
+// The kit's bound for linear work: under 10, where a quadratic rule reads 16. It was 8 here, and the costliest rule
+// read 7.0x on a Linux runner where it reads 4.5x to 6.5x on macOS.
+const LINEAR_BOUND = 10;
+
 // 10,000 against 2,500 of `make`'s unit under `rule` alone, as `Growth.measure` times it.
 const scalingRatio = (
 	make: (count: number) => string,
@@ -176,7 +180,7 @@ const scalingRatio = (
 			const source = make(count);
 			return () => MarkdownLint.lint(source, [rule], { config: { default: false, [rule.name]: config } });
 		},
-		{ from: 2_500, bound: 8 },
+		{ from: 2_500, bound: LINEAR_BOUND },
 	);
 	return { value: ratio, detail };
 };
@@ -285,7 +289,7 @@ describe("hostile inputs", () => {
 			const ratio = scalingRatio(make, rule, config);
 			assert.isBelow(
 				ratio.value,
-				8,
+				LINEAR_BOUND,
 				`4x the input cost ${ratio.value.toFixed(1)}x the CPU time (${ratio.detail}); linear is about 4x`,
 			);
 		});

@@ -13,8 +13,8 @@ const MEGABYTE = 1 << 20;
 const repeatTo = (unit: string, length: number): string =>
 	unit.repeat(Math.ceil(length / unit.length)).slice(0, length);
 
-/** The size growth is measured to: a quarter megabyte, from a quarter of that. */
-const MEASURED = MEGABYTE / 4;
+/** The size growth is measured to: 64 KiB, from a quarter of that. */
+const MEASURED = MEGABYTE / 16;
 
 /**
  * The growth ratio of a parse from `build(MEASURED / 4)` to `build(MEASURED)`, as `Growth.measure` times it: linear
@@ -23,8 +23,9 @@ const MEASURED = MEGABYTE / 4;
  * measured again, up to three rounds, so one pause cannot fail a linear parse, while a quadratic one fails every
  * round. `full.script` is the parse of the whole megabyte, for the units that read it.
  *
- * Growth is measured to a quarter megabyte, not to the megabyte the unit parses. Every unit is linear there on
- * every machine measured (3.7x to 4.7x), and a quadratic scan reads 16x at any size. Past about a megabyte the
+ * Growth is measured to 64 KiB, not to the megabyte the unit parses: a quadratic scan reads 16x at any size, and a
+ * short parse is repeated until it can be timed. To a quarter megabyte every unit read 3.7x to 4.7x on macOS, but
+ * the worst of the 86 read 8.6x on a Linux runner, against the bound of 10. Past about a megabyte the
  * memory a parse holds starts to cost more than the parse: `$((` read 4.2x from a quarter megabyte to one and 7.6x
  * to 11.6x from one to four on macOS, and 11.9x from a quarter megabyte to one on a Linux runner. That knee moves
  * with the machine, so a ratio taken across it measures the machine (#1387 found the same for `((`).

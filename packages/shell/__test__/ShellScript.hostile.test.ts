@@ -16,33 +16,39 @@ const chain = (depth: number, inner = "git commit"): string => `echo ${"$(".repe
  * 16. `Growth.measure` times each size as the fastest of five CPU-time samples and repeats a run shorter than 5 ms,
  * so the small side measures real work and not timer noise.
  */
+/**
+ * The kit's bound for linear work: under 10, where a quadratic scan reads 16. It was 8 here, and the deep chain read
+ * 5.7x on a Linux runner where it reads 4.5x on macOS, which left a linear walk a quarter of its bound from failing.
+ */
+const LINEAR = 10;
+
 const growth = (build: (size: number) => string, start: number, maxDepth?: number): number =>
 	Growth.measure(
 		(size) => {
 			const input = build(size);
 			return () => walk(input, maxDepth);
 		},
-		{ from: start, bound: 8 },
+		{ from: start, bound: LINEAR },
 	).ratio;
 
 describe("ShellScript.allCommands on hostile input", () => {
 	it("stays linear in the input over a deep $( chain at the default cap", () => {
 		const ratio = growth((size) => chain(Math.floor(size / 2)), 16_384);
-		assert.isBelow(ratio, 8);
+		assert.isBelow(ratio, LINEAR);
 	});
 
 	it("stays linear in the input over a deep chain at a large cap", () => {
 		const ratio = growth((size) => chain(Math.floor(size / 2)), 4096, 64);
-		assert.isBelow(ratio, 8);
+		assert.isBelow(ratio, LINEAR);
 	});
 
 	it("stays linear over thousands of substitutions in one command", () => {
 		const ratio = growth((size) => `echo ${"$(a) ".repeat(Math.floor(size / 5))}`, 16_384);
-		assert.isBelow(ratio, 8);
+		assert.isBelow(ratio, LINEAR);
 	});
 
 	it("stays linear over fan-out at every depth", () => {
 		const ratio = growth((size) => `echo ${"$(a $(b `c` <(d)) e) ".repeat(Math.floor(size / 26))}`, 16_384);
-		assert.isBelow(ratio, 8);
+		assert.isBelow(ratio, LINEAR);
 	});
 });

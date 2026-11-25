@@ -83,9 +83,15 @@ const GUARD_REFUSED: ReadonlySet<string> = new Set([
 // and fails on a loaded one. The guards at the bottom measure a ratio instead,
 // both sides under the same conditions, through `Growth.measure` (#1415).
 
+/**
+ * The kit's bound for linear work: under 10, where a quadratic parse reads 16. It was 8 here, and the costliest shape
+ * read 7.1x on a Linux runner where it reads 4x to 6x on macOS.
+ */
+const LINEAR_BOUND = 10;
+
 /** 4x `from` of `make`'s unit against `from`: the growth ratio of the work `make` returns. */
 const scaling = (make: (count: number) => () => unknown, from: number): { ratio: number; detail: string } =>
-	Growth.measure(make, { from, bound: 8 });
+	Growth.measure(make, { from, bound: LINEAR_BOUND });
 
 /** The deadline of a scaling guard: far above what one takes, so a guard fails on its ratio and not on this. */
 const GUARD_DEADLINE_MS = 120_000;
@@ -158,7 +164,11 @@ describe("pathological inputs", () => {
 				const input = make(count);
 				return () => (dialect === "gfm" ? parseBlocks(input, "gfm") : parseBlocks(input));
 			}, 5_000);
-			assert.isBelow(ratio, 8, `4x the input cost ${ratio.toFixed(1)}x the CPU time (${detail}); linear is ~4x`);
+			assert.isBelow(
+				ratio,
+				LINEAR_BOUND,
+				`4x the input cost ${ratio.toFixed(1)}x the CPU time (${detail}); linear is ~4x`,
+			);
 		});
 	}
 
@@ -192,7 +202,7 @@ describe("pathological inputs", () => {
 			}, 20_000);
 			assert.isBelow(
 				ratio,
-				8,
+				LINEAR_BOUND,
 				`4x the input cost ${ratio.toFixed(1)}x the CPU time (${detail}); linear is ~4x, the pre-cap quadratic was ~16x`,
 			);
 		},
@@ -213,7 +223,7 @@ describe("pathological inputs", () => {
 			}, 2_500);
 			assert.isBelow(
 				ratio,
-				8,
+				LINEAR_BOUND,
 				`4x the input cost ${ratio.toFixed(1)}x the CPU time (${detail}); linear is ~4x, the per-definition re-slice was ~16x`,
 			);
 		},
@@ -234,7 +244,7 @@ describe("pathological inputs", () => {
 			}, 2_500);
 			assert.isBelow(
 				ratio,
-				8,
+				LINEAR_BOUND,
 				`4x the input cost ${ratio.toFixed(1)}x the CPU time (${detail}); linear is ~4x, the per-call node walk was ~16x`,
 			);
 		},
@@ -257,7 +267,7 @@ describe("pathological inputs", () => {
 			}, 4_000);
 			assert.isBelow(
 				ratio,
-				8,
+				LINEAR_BOUND,
 				`4x the input cost ${ratio.toFixed(1)}x the CPU time (${detail}); linear is ~4x, the quadratic paths were ~15x`,
 			);
 		},

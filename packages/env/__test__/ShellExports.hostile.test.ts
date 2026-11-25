@@ -17,8 +17,9 @@ describe("ShellExports.parseResult on a long file", () => {
 				const text = file(count);
 				return () => ShellExports.parseResult(text);
 			},
-			{ from: 10_000, bound: 8 },
+			// The kit's bound for linear work. It was 8, and this read 5.9x on a Linux runner.
+			{ from: 10_000, bound: 10 },
 		);
-		assert.isBelow(ratio, 8, detail);
+		assert.isBelow(ratio, 10, detail);
 	});
 });
