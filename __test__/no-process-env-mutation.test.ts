@@ -211,7 +211,9 @@ describe("test suites never mutate process.env", () => {
 
 	// biome-ignore-end lint/suspicious/noTemplateCurlyInString: fixtures end
 
-	it("finds no direct process.env mutation under packages/*/__test__/", () => {
+	// A scan of every test file in the repository: beside a thousand other test files on a four-core runner the
+	// five-second default timed it out. The deadline is not a claim about its speed.
+	it("finds no direct process.env mutation under packages/*/__test__/", { timeout: 120_000 }, () => {
 		const files = governedFiles();
 		assert.isAbove(files.length, 300, "the scan must reach the tree it guards");
 		const offences = files.flatMap((file) =>

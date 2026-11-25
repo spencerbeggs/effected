@@ -13,12 +13,21 @@ const MEGABYTE = 1 << 20;
 const repeatTo = (unit: string, length: number): string =>
 	unit.repeat(Math.ceil(length / unit.length)).slice(0, length);
 
+/** The size growth is measured to: a quarter megabyte, from a quarter of that. */
+const MEASURED = MEGABYTE / 4;
+
 /**
- * The growth ratio of a parse from `build(quarterLength)` to `build(4 * quarterLength)`, as `Growth.measure` times
- * it: linear is near 4, quadratic near 16. Each size is the fastest of five CPU-time samples, a sample shorter than
- * 5 ms is a batch of repeats, so a fast parse is measured on real work and not on timer noise, and a ratio of 10 or
- * more is measured again, up to three rounds, so one pause in the full run cannot fail a linear parse, while a
- * quadratic one fails every round. `full.script` is the parse of the full size, for the units that read it.
+ * The growth ratio of a parse from `build(MEASURED / 4)` to `build(MEASURED)`, as `Growth.measure` times it: linear
+ * is near 4, quadratic near 16. Each size is the fastest of five CPU-time samples, a sample shorter than 5 ms is a
+ * batch of repeats, so a fast parse is measured on real work and not on timer noise, and a ratio of 10 or more is
+ * measured again, up to three rounds, so one pause cannot fail a linear parse, while a quadratic one fails every
+ * round. `full.script` is the parse of the whole megabyte, for the units that read it.
+ *
+ * Growth is measured to a quarter megabyte, not to the megabyte the unit parses. Every unit is linear there on
+ * every machine measured (3.7x to 4.7x), and a quadratic scan reads 16x at any size. Past about a megabyte the
+ * memory a parse holds starts to cost more than the parse: `$((` read 4.2x from a quarter megabyte to one and 7.6x
+ * to 11.6x from one to four on macOS, and 11.9x from a quarter megabyte to one on a Linux runner. That knee moves
+ * with the machine, so a ratio taken across it measures the machine (#1387 found the same for `((`).
  *
  * The ratio is the whole bound: no unit asserts an absolute time. A ceiling of 10 s of CPU on the full run measured the
  * machine, not the parse. CPU time here is the process's, GC helper threads included (about 1.4x the wall time of a
@@ -28,22 +37,20 @@ const repeatTo = (unit: string, length: number): string =>
  */
 const measure = (
 	build: (length: number) => string,
-	quarterLength: number = MEGABYTE / 4,
 ): {
 	readonly full: { readonly script: ShellScript };
 	readonly ratio: number;
 	readonly detail: string;
 	readonly length: number;
 } => {
-	const length = quarterLength * 4;
 	const { ratio, detail } = Growth.measure(
 		(size) => {
 			const input = build(size);
 			return () => ShellSyntax.parse(input);
 		},
-		{ from: quarterLength, bound: 10 },
+		{ from: MEASURED / 4, bound: 10 },
 	);
-	return { full: { script: ShellSyntax.parse(build(length)) }, ratio, detail, length };
+	return { full: { script: ShellSyntax.parse(build(MEGABYTE)) }, ratio, detail, length: MEGABYTE };
 };
 
 // Each unit is a construct whose naive handling is quadratic or recursive:
@@ -157,20 +164,10 @@ const UNITS: ReadonlyArray<string> = [
 	"declare y[[[=( ",
 ];
 
-/**
- * Units whose quarter-megabyte run takes about 5 ms, right at the floor: the
- * doubling loop can stop at a small side whose timing is noise, and one GC
- * pause in the full run then reads as growth. They start at a 1 MB quarter.
- */
-const LARGE_START: ReadonlySet<string> = new Set(["$[a<<b "]);
-
 describe("hostile input", () => {
 	for (const unit of UNITS) {
 		it(`a megabyte of ${JSON.stringify(unit)} parses in linear time`, { timeout: 60_000 }, () => {
-			const { full, ratio, detail, length } = measure(
-				(size) => repeatTo(unit, size),
-				LARGE_START.has(unit) ? MEGABYTE : MEGABYTE / 4,
-			);
+			const { full, ratio, detail, length } = measure((size) => repeatTo(unit, size));
 			assert.strictEqual(full.script.source.length, length);
 			assert.isBelow(ratio, 10, `${JSON.stringify(unit)}: ${detail}`);
 		});

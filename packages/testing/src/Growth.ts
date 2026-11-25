@@ -122,6 +122,9 @@ const measure = (
 	for (let round = 0; round < ROUNDS; round += 1) {
 		smallMs = Math.min(smallMs, fastest(small, smallRepetitions));
 		largeMs = Math.min(largeMs, fastest(large, largeRepetitions));
+		// Again, now that the large size has run: both sizes usually share their code, which is still warming up
+		// while the small size is first timed. Timed only then, the small side reads slow and the ratio low.
+		smallMs = Math.min(smallMs, fastest(small, smallRepetitions));
 		ratio = largeMs / smallMs;
 		if (!Number.isFinite(ratio) || !(smallMs > 0)) throw new Error(`Growth: ${UNMEASURED}`);
 		for (const [firstMs, laterMs] of [
@@ -135,9 +138,9 @@ const measure = (
 				);
 			}
 		}
-		// A larger input at under half the cost of the smaller is not growth being measured: the two sizes did
-		// different things.
-		if (ratio < 0.5) {
+		// A larger input at under a quarter of the cost of the smaller is not growth being measured: the two sizes
+		// did different things. (Work that costs the same at both sizes reads about one, and noise moves it.)
+		if (ratio < 0.25) {
 			throw new Error(
 				`Growth: the workload could not be measured: ${factor}x the size cost ${ratio.toFixed(2)}x the time ` +
 					`(${smallMs.toFixed(3)} ms -> ${largeMs.toFixed(3)} ms), so the sizes are not doing the same work.`,
@@ -191,7 +194,7 @@ const assertOrder = (
  *
  * The work `make` returns should return what it computed: its result is kept, so the optimizer cannot drop the
  * call. It must do its work on every run: work cached after the first run is refused, as is a larger size that
- * costs under half the smaller. `make` is called once more than the two sizes measured, for a warm-up run on an
+ * costs under a quarter of the smaller. `make` is called once more than the two sizes measured, for a warm-up run on an
  * input of its own that takes the process's one-time start-up cost. Choose the smallest `from` whose run does real work, tens of thousands of characters for a scan: a short run is
  * repeated until it can be timed, so a larger input adds no accuracy, and it makes a quadratic regression take
  * minutes to report where a small one fails in seconds.

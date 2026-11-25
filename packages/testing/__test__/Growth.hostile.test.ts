@@ -95,7 +95,30 @@ describe("Growth.assertOrder", () => {
 		assert.isBelow(result.ratio, 10);
 	});
 
-	// A larger input that costs less than half the smaller one is not a measurement of growth at all.
+	// Both sizes often run the same code, and that code gets faster as the process warms up. Measured first and only
+	// once, the small size would be timed while it was still slow and the large size after, which understates the
+	// ratio: on a Linux runner a check of work that costs the same at both sizes read 0.22x. The small size is timed
+	// again after the large one, so both have been timed warm.
+	it("times the small size again after the large, so warm-up does not understate the ratio", {
+		timeout: 60_000,
+	}, () => {
+		let calls = 0;
+		const result = Growth.measure(
+			() => () => {
+				calls += 1;
+				// The same work at both sizes, four times slower for the first seventy calls in the process: long enough
+				// that every first timing of the small size is slow, and the large size's later timings are not.
+				const until = Growth.cpuNow() + (calls <= 70 ? 1 : 0.25);
+				while (Growth.cpuNow() < until) linear(100);
+				return calls;
+			},
+			{ from: 1000, bound: 4 },
+		);
+		assert.isAbove(result.ratio, 0.6);
+		assert.isBelow(result.ratio, 1.7);
+	});
+
+	// A larger input that costs less than a quarter of the smaller one is not a measurement of growth at all.
 	it("fails when the larger size reads as cheaper than the smaller", { timeout: 60_000 }, () => {
 		assert.throws(
 			() => Growth.assertOrder((size) => () => linear(size > 100_000 ? 20_000 : 400_000), { from: 100_000, order: 1 }),

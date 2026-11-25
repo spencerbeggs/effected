@@ -195,6 +195,7 @@ const reachOf = (
 	file: string,
 	read: (file: string) => string | undefined,
 	exists: (file: string) => boolean,
+	tokensOf: (file: string, text: string) => ReadonlyArray<Token>,
 	seen: Set<string> = new Set(),
 ): Reach => {
 	if (seen.has(file)) return { growth: false, depth: false };
@@ -203,7 +204,7 @@ const reachOf = (
 	if (text === undefined) return { growth: false, depth: false };
 	let growth = false;
 	let depth = false;
-	for (const entry of importsOf(tokenize(text))) {
+	for (const entry of importsOf(tokensOf(file, text))) {
 		if (entry.from === TESTING) {
 			if (entry.names.includes("Growth") || entry.names.includes("*")) growth = true;
 			if (entry.names.includes("Depth") || entry.names.includes("Corpus") || entry.names.includes("*")) depth = true;
@@ -214,7 +215,7 @@ const reachOf = (
 		const target = [`${base}.ts`, `${base}.tsx`].find(exists);
 		// Only helpers: a test's `src` imports are the code under test, which never imports the test kit.
 		if (target === undefined || !target.includes("/__test__/")) continue;
-		const inner = reachOf(target, read, exists, seen);
+		const inner = reachOf(target, read, exists, tokensOf, seen);
 		growth ||= inner.growth;
 		depth ||= inner.depth;
 	}
@@ -231,12 +232,28 @@ export const offences = (
 ): ReadonlyArray<string> => {
 	const known = new Set(files);
 	const exists = (file: string): boolean => known.has(file);
+	// Each file is read and tokenized once, however many test files reach it: a shared harness is reached by
+	// dozens, and tokenizing it for each of them was most of this scan's time.
+	const texts = new Map<string, string | undefined>();
+	const readOnce = (file: string): string | undefined => {
+		if (!texts.has(file)) texts.set(file, read(file));
+		return texts.get(file);
+	};
+	const parsed = new Map<string, ReadonlyArray<Token>>();
+	const tokensOf = (file: string, text: string): ReadonlyArray<Token> => {
+		let tokens = parsed.get(file);
+		if (tokens === undefined) {
+			tokens = tokenize(text);
+			parsed.set(file, tokens);
+		}
+		return tokens;
+	};
 	const found: Array<string> = [];
 	for (const file of files) {
-		const text = read(file);
+		const text = readOnce(file);
 		if (text === undefined) continue;
 		if (!file.startsWith("packages/testing/") && allowedClocks[file] === undefined) {
-			const reads = clockReads(tokenize(text));
+			const reads = clockReads(tokensOf(file, text));
 			if (reads.length > 0) {
 				const names = [...new Set(reads.map((each) => each.name))].join(", ");
 				found.push(
@@ -246,7 +263,7 @@ export const offences = (
 			}
 		}
 		if (!isTestFile(file) || file.startsWith("packages/testing/")) continue;
-		const reach = reachOf(file, read, exists);
+		const reach = reachOf(file, readOnce, exists, tokensOf);
 		if (reach.growth && !isHostile(file)) {
 			found.push(`${file}: reaches Growth but is not named .hostile.test.ts, so it would run beside other files.`);
 		}
@@ -411,7 +428,9 @@ describe("a test file's name says its kind, and no test reads a clock to bound a
 		}
 	});
 
-	it("finds no offence under packages/*/__test__/", () => {
+	// A scan of every test file in the repository: seconds alone, and longer beside a thousand other test files on a
+	// four-core runner, where the five-second default timed it out. The deadline is not a claim about its speed.
+	it("finds no offence under packages/*/__test__/", { timeout: 120_000 }, () => {
 		const files = governedFiles();
 		// A walk that found nothing would pass everything.
 		assert.isAbove(files.length, 1000);
