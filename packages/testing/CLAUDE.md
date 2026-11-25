@@ -6,7 +6,7 @@ Concept → `okf/modules/testing.md`. Tier and depth rules → `okf/decisions/vi
 
 ## Rules
 
-- **Zero `@effected/*` dependencies of any kind.** Every package takes this one as a devDependency (`workspace:*`), and turbo's `^types:check` graph must stay acyclic.
+- **Zero `@effected/*` dependencies of any kind.** Any package whose tests need it takes this one as a devDependency (`workspace:*`), and turbo's `^types:check` graph must stay acyclic. `@effected/memfs` is the one package that never may: its own law allows no `@effected` edge, dev included.
 - **No assertion library.** `Corpus.pin` and `Growth.assertOrder` throw through `node:assert/strict`; callers keep using `assert.*` from `@effect/vitest` for everything else.
 - It is distinct from the `./testing` subpaths other packages export (`@effected/cli-kit/testing` and the like), which are consumer-facing helpers for those packages.
 

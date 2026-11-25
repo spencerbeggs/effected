@@ -1,4 +1,4 @@
-// Choosing the corpus sample: which upstream fixtures a pull request run compares on. The full corpus is 438
+// Choosing the corpus sample: which upstream fixtures a pull request run compares on. The full corpus is 437
 // fixtures in two line endings, in two engines, per rule and per settings case; the sample is a fixed list small
 // enough to run on every pull request, chosen so every rule markdownlint reports anywhere in the corpus still
 // reports somewhere in the sample.

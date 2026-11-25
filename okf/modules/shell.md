@@ -27,10 +27,10 @@ sources:
     title: "GNU Bash Reference Manual: shell syntax, quoting, expansions, redirections"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-10T21:52:07Z
+  at: 2026-11-25T13:41:08Z
 integrity:
   generated:
-    body: 6b63ddf7415a08e0
+    body: 0502d0046699760e
 ---
 
 # @effected/shell
@@ -373,10 +373,10 @@ Decisions (#1288, 2026-11-10, measured on Apple silicon, Node 26,
   gates at 256 KB before `parse`, and the plugin's shell reference tells
   guards to.
 
-`__test__/ShellScript.test.ts` holds the walk to a growth ratio below 8 over
-a deep chain (at cap 16 and 64), a wide fan-out and fan-out at every depth;
-refuses the 6 KB gadget under a second of CPU and within its character
-budget; stops at the record limit; fuzzes 2,000 shell-dense strings at five
+`__test__/ShellScript.hostile.test.ts` holds the walk to a growth ratio below
+8 over a deep chain (at cap 16 and 64), a wide fan-out and fan-out at every
+depth. `__test__/ShellScript.test.ts` refuses the 6 KB gadget within its
+character budget; stops at the record limit; fuzzes 2,000 shell-dense strings at five
 caps for no throw, the budget, and every top-level substitution reached;
 returns a truncation for half a million `$(`; and walks a 4,000-deep chain at
 `Infinity` in a child `node --stack-size=200`, which a recursive walk cannot.

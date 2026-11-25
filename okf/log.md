@@ -4,6 +4,13 @@
 
 * Updated @effected/markdown-lint
 * Added @effected/testing
+* Updated @effected/markdown
+* Updated @effected/shell
+* Added Sampling markdown-lint's corpus cut its local file time from 1,675 s to 160 s, short of the 240 s CI gate's proportion
+* Updated Testing standards
+* Updated The vitest suite splits into a fast tier with coverage and slow, hostile and full tiers run beside it
+* Updated lockfiles
+* Updated workspace
 
 ## 2026-11-24
 

@@ -9,10 +9,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-16T17:46:03Z
+  at: 2026-11-25T13:41:08Z
 integrity:
   generated:
-    body: 70569b8905b7f429
+    body: 66913fe7a547dd90
 ---
 
 # lockfiles
@@ -128,7 +128,7 @@ Measured at both ceilings (darwin-arm64, node 26.13.0, CPU time, best of three):
 - **Brace expansion at the 256-alternative budget**, `p/**` plus 31 negations of eight alternatives each over about 1 MB: 432 / 366 / 333 ms at depth 12 / 42 / 120, and up to 507 ms with an extglob prefix on each.
 - **Without the budget**, a 14 KB field of 64 negations of 8^4 alternatives beside 936 literal positives, with no link rows, took 8.0 s.
 
-Before the ceilings, the memo and the literal lookups, 999 wildcard negations over 1 MB took 2.4–6.1 s, and the reviewer's 592 KB case 88 s. `hostile.test.ts` pins both shapes with growth ratios in CPU time, the minimum of five samples. The transforms still owe: prototype-pollution discipline (key-bearing intermediates stay `Map`s and `Set`s, records are built with own-property semantics rather than manual assignment); total string surgery (the `name@version` splitters are total — malformed keys are skipped, never thrown on); and scope honesty (a yarn lockfile is not a lockfile format here — it must exit through the typed parse error and never mis-normalize).
+Before the ceilings, the memo and the literal lookups, 999 wildcard negations over 1 MB took 2.4–6.1 s, and the reviewer's 592 KB case 88 s. `lockfiles.hostile.test.ts` pins both shapes with growth ratios in CPU time, the minimum of five samples. The transforms still owe: prototype-pollution discipline (key-bearing intermediates stay `Map`s and `Set`s, records are built with own-property semantics rather than manual assignment); total string surgery (the `name@version` splitters are total — malformed keys are skipped, never thrown on); and scope honesty (a yarn lockfile is not a lockfile format here — it must exit through the typed parse error and never mis-normalize).
 
 ## Observability
 
