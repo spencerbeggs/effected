@@ -11,6 +11,13 @@ import { corpus } from "./helpers/differential.js";
 import { ruleCovers, uncovered } from "./helpers/sample-cover.js";
 
 describe("the corpus sample", () => {
+	// The full tier is only worth its name if the depth reaches the workers. If it stopped reaching them, every exact
+	// count and every full-depth check would be skipped and the run would still be green: this is the one check that
+	// would not be.
+	it("is read at full depth whenever the full tier runs", () => {
+		if (process.env.EFFECTED_TEST_TIER === "full") assert.strictEqual(Depth.current, "full");
+	});
+
 	it("is what the harness reads at sample depth, and the whole corpus at full depth", () => {
 		assert.strictEqual(corpus.length, Depth.pick({ sample: CORPUS_SAMPLE.length, full: fullCorpus.length }));
 		assert.isBelow(CORPUS_SAMPLE.length, fullCorpus.length);

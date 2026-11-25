@@ -57,21 +57,74 @@ const CLOCKS: ReadonlyArray<readonly [receiver: string, member: string]> = [
 	["Date", "now"],
 ];
 
-/** The clock reads in `tokens`, as `receiver.member` with the offset of each. */
+/** Names the global object goes by: `globalThis.performance.now()` is the global's clock, not some other object's. */
+const GLOBALS: ReadonlySet<string> = new Set(["globalThis", "global", "window", "self"]);
+
+/** The modules a clock can be imported from by name. */
+const CLOCK_MODULES: ReadonlySet<string> = new Set(["node:process", "process"]);
+
+const isClock = (receiver: string, member: string): boolean => CLOCKS.some(([r, m]) => r === receiver && m === member);
+
+/**
+ * The clock reads in `tokens`, as `receiver.member` with the offset of each: a member access (`performance.now`,
+ * `globalThis.Date.now`), a string key (`performance["now"]`), a destructure (`const { now } = performance`) and a
+ * named import (`import { hrtime } from "node:process"`).
+ */
 export const clockReads = (
 	tokens: ReadonlyArray<Token>,
 ): ReadonlyArray<{ readonly name: string; readonly start: number }> => {
 	const reads: Array<{ readonly name: string; readonly start: number }> = [];
-	for (let index = 0; index + 2 < tokens.length; index += 1) {
+	for (let index = 0; index < tokens.length; index += 1) {
 		const receiver = tokens[index];
-		const dot = tokens[index + 1];
+		if (receiver?.kind !== SyntaxKind.Identifier) continue;
+		// `x.process.cpuUsage` is some other object's member, not the global's, unless `x` is the global object.
+		const before = tokens[index - 1]?.kind;
+		if (before === SyntaxKind.DotToken || before === SyntaxKind.QuestionDotToken) {
+			const owner = tokens[index - 2];
+			if (owner?.kind !== SyntaxKind.Identifier || !GLOBALS.has(owner.value)) continue;
+		}
+		const next = tokens[index + 1];
 		const member = tokens[index + 2];
-		if (receiver?.kind !== SyntaxKind.Identifier || member?.kind !== SyntaxKind.Identifier) continue;
-		if (dot?.kind !== SyntaxKind.DotToken && dot?.kind !== SyntaxKind.QuestionDotToken) continue;
-		// `x.process.cpuUsage` is some other object's member, not the global's.
-		if (tokens[index - 1]?.kind === SyntaxKind.DotToken) continue;
-		if (CLOCKS.some(([r, m]) => r === receiver.value && m === member.value)) {
-			reads.push({ name: `${receiver.value}.${member.value}`, start: receiver.start });
+		if (next?.kind === SyntaxKind.DotToken || next?.kind === SyntaxKind.QuestionDotToken) {
+			if (member?.kind === SyntaxKind.Identifier && isClock(receiver.value, member.value)) {
+				reads.push({ name: `${receiver.value}.${member.value}`, start: receiver.start });
+			}
+			continue;
+		}
+		if (next?.kind === SyntaxKind.OpenBracketToken) {
+			if (
+				(member?.kind === SyntaxKind.StringLiteral || member?.kind === SyntaxKind.NoSubstitutionTemplateLiteral) &&
+				isClock(receiver.value, member.value)
+			) {
+				reads.push({ name: `${receiver.value}.${member.value}`, start: receiver.start });
+			}
+			continue;
+		}
+		// `const { now } = performance`: the names taken out of the braces that close just before the `=`.
+		if (before === SyntaxKind.EqualsToken && tokens[index - 2]?.kind === SyntaxKind.CloseBraceToken) {
+			let depth = 0;
+			for (let cursor = index - 2; cursor >= 0; cursor -= 1) {
+				const token = tokens[cursor];
+				if (token?.kind === SyntaxKind.CloseBraceToken) depth += 1;
+				else if (token?.kind === SyntaxKind.OpenBraceToken) {
+					depth -= 1;
+					if (depth === 0) break;
+				} else if (
+					depth === 1 &&
+					token?.kind === SyntaxKind.Identifier &&
+					// A property name, not the local a `name: local` pair binds it to.
+					tokens[cursor - 1]?.kind !== SyntaxKind.ColonToken &&
+					isClock(receiver.value, token.value)
+				) {
+					reads.push({ name: `${receiver.value}.${token.value}`, start: token.start });
+				}
+			}
+		}
+	}
+	for (const entry of importsOf(tokens)) {
+		if (!CLOCK_MODULES.has(entry.from)) continue;
+		for (const name of entry.names) {
+			if (isClock("process", name)) reads.push({ name: `process.${name}`, start: 0 });
 		}
 	}
 	return reads;
@@ -85,9 +138,17 @@ export const importsOf = (
 	for (let index = 0; index < tokens.length; index += 1) {
 		const kind = tokens[index]?.kind;
 		if (kind !== SyntaxKind.ImportKeyword && kind !== SyntaxKind.ExportKeyword) continue;
-		// `import("x")` and `import.meta` are not declarations.
 		const next = tokens[index + 1]?.kind;
-		if (next === SyntaxKind.OpenParenToken || next === SyntaxKind.DotToken) continue;
+		// `import.meta` is not an import.
+		if (next === SyntaxKind.DotToken) continue;
+		// `import("x")` takes the whole module, whatever is read off it afterwards.
+		if (next === SyntaxKind.OpenParenToken) {
+			const specifier = tokens[index + 2];
+			if (kind === SyntaxKind.ImportKeyword && specifier?.kind === SyntaxKind.StringLiteral) {
+				found.push({ from: specifier.value, names: ["*"] });
+			}
+			continue;
+		}
 		const names: Array<string> = [];
 		let braces = 0;
 		for (let cursor = index + 1; cursor < tokens.length; cursor += 1) {
@@ -107,7 +168,14 @@ export const importsOf = (
 				break;
 			} else if (braces === 0 && kind === SyntaxKind.ExportKeyword && token.kind !== SyntaxKind.TypeKeyword) {
 				// `export const`, `export function`, `export interface`: a declaration, not a re-export.
-				if (token.kind !== SyntaxKind.FromKeyword && token.kind !== SyntaxKind.CommaToken) break;
+				// `export * as ns from "x"` and `export { a } from "x"` carry on to their specifier.
+				if (
+					token.kind !== SyntaxKind.FromKeyword &&
+					token.kind !== SyntaxKind.CommaToken &&
+					token.kind !== SyntaxKind.AsKeyword
+				) {
+					break;
+				}
 			}
 		}
 	}
@@ -221,6 +289,47 @@ describe("a test file's name says its kind, and no test reads a clock to bound a
 			const { files, read: reader } = sources({ "packages/a/__test__/a.test.ts": `const t = ${read};\n` });
 			assert.lengthOf(offences(files, reader, {}), 1, read);
 		}
+	});
+
+	it("flags a clock reached another way: through the global object, a destructure, a named import or a string key", () => {
+		for (const spelling of [
+			"const t = globalThis.performance.now();",
+			"const t = globalThis.Date.now();",
+			"const { now } = performance;",
+			"const { cpuUsage, pid } = process;",
+			"const { hrtime: clock } = process;",
+			'import { hrtime } from "node:process";',
+			'import { cpuUsage as used } from "node:process";',
+			'const t = performance["now"]();',
+			'const t = process["cpuUsage"]();',
+		]) {
+			const { files, read } = sources({ "packages/a/__test__/a.test.ts": `${spelling}\n` });
+			assert.lengthOf(offences(files, read, {}), 1, spelling);
+		}
+	});
+
+	it("passes a destructure or a named import that takes no clock", () => {
+		for (const spelling of [
+			"const { pid, platform } = process;",
+			'import { argv } from "node:process";',
+			'const mark = performance["mark"]("a");',
+		]) {
+			const { files, read } = sources({ "packages/a/__test__/a.test.ts": `${spelling}\n` });
+			assert.deepStrictEqual(offences(files, read, {}), [], spelling);
+		}
+	});
+
+	it("follows a dynamic import and a namespace re-export to what they reach", () => {
+		const dynamic = sources({
+			"packages/a/__test__/a.test.ts": 'const kit = await import("@effected/testing");\n',
+		});
+		assert.lengthOf(offences(dynamic.files, dynamic.read, {}), 2);
+		const reexported = sources({
+			"packages/a/__test__/a.test.ts": 'import { kit } from "./helpers/kit.js";\n',
+			"packages/a/__test__/helpers/kit.ts": 'export * as kit from "./inner.js";\n',
+			"packages/a/__test__/helpers/inner.ts": 'export { Growth } from "@effected/testing";\n',
+		});
+		assert.match(offences(reexported.files, reexported.read, {})[0] ?? "", /a\.test\.ts: reaches Growth/);
 	});
 
 	it("passes a clock named in a comment, a string or another object's member, and an allowed file", () => {
