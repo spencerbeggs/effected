@@ -44,7 +44,7 @@ export const extractDefinitions = (block: BlockNode): void => {
 	// One pass over the paragraph's text, never sliced per definition: each definition parses at `pos`, its offsets
 	// come from a cursor over the segments that only moves forward, and the nodes and the paragraph's remainder are
 	// spliced once. Splitting them off one at a time re-sliced and re-scanned every segment and searched the parent's
-	// children per definition, quadratic in a run of them (`pathological.e2e.test.ts`).
+	// children per definition, quadratic in a run of them (`pathological.hostile.test.ts`).
 	const text = block.stringContent;
 	const segments = block.segments;
 	let segment = 0;

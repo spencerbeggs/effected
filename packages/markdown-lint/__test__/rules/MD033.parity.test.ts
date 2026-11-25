@@ -227,10 +227,9 @@ describe("MD033 no-inline-html", () => {
 			4,
 		],
 	] as const) {
-		it(`settles the re-read of ${name} quickly`, () => {
-			const started = Date.now();
+		// The bound is the pass count: each pass reads the block once, so a few passes is a few readings.
+		it(`settles the re-read of ${name} in a few passes`, () => {
 			const reread = rereadHtmlBlock(lines, 1);
-			assert.isBelow(Date.now() - started, 5_000);
 			assert.isTrue(reread.settled);
 			assert.isFalse(reread.swept);
 			assert.isAtMost(reread.passes, passes);

@@ -1260,6 +1260,9 @@ importers:
       '@effected/jsonc':
         specifier: workspace:*
         version: link:../jsonc
+      '@effected/testing':
+        specifier: workspace:*
+        version: link:../testing
       '@effected/toml':
         specifier: workspace:*
         version: link:../toml

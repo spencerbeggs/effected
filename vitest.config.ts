@@ -35,8 +35,6 @@ const SLOW_TESTS: ReadonlyArray<string> = [
 	"packages/commands/__test__/RunOnce.model.test.ts",
 	"packages/engine/__test__/schema/ConfigLoader.reload.test.ts",
 	"packages/lockfiles/__test__/hostile.test.ts",
-	"packages/markdown-lint/__test__/hostile-inputs.test.ts",
-	"packages/markdown/__test__/e2e/pathological.e2e.test.ts",
 	"packages/mcp/__test__/schema-tools.reload.test.ts",
 	"packages/plugin/__test__/e2e/packed-install.e2e.test.ts",
 	"packages/walker/__test__/PatternBoundsSweep.test.ts",
@@ -52,7 +50,7 @@ const SLOW_TESTS: ReadonlyArray<string> = [
  * A file that measures time takes the suffix instead of an entry here (#1415). Every entry must also be in
  * `SLOW_TESTS`, or the config refuses to load. The list is deleted when it is empty.
  */
-const TIMING_TESTS: ReadonlyArray<string> = ["packages/markdown-lint/__test__/hostile-inputs.test.ts"];
+const TIMING_TESTS: ReadonlyArray<string> = [];
 
 export default async () => {
 	const root = fileURLToPath(new URL(".", import.meta.url));
@@ -143,6 +141,10 @@ export default async () => {
 					agent: "agent",
 				},
 				coverageTargets: AgentPlugin.COVERAGE_LEVELS.basic.coverageTargets,
+				// The same strategy discovery used, so the transform that tags each test file knows the kinds a file's
+				// name gives it: left out, the plugin tags with its own default strategy, and a hostile file never gets
+				// the `hostile` tag or its timeout.
+				discoverStrategy: strategy,
 				// CI runners are ephemeral: nothing reads the SQLite history there, and persisting it plus the
 				// follow-on scan cost about 24 s per run (vitest-agent#568). `persist` is opt-out by design and
 				// never reads CI itself, so the decision lives here. Console summary, job summary, coverage

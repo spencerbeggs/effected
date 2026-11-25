@@ -1,5 +1,5 @@
-// Inputs that once made a lint with every rule superlinear, each held to a
-// wall-clock ceiling. The shared document facts were recomputed by every
+// Inputs that once made a lint with every rule superlinear, each held to
+// linear growth: four times the input costs about four times the CPU time. The shared document facts were recomputed by every
 // rule, the container and fence readers walked the whole tree per line or
 // per fence, inline math searched its atomic spans per character, the
 // math-block scan re-stripped every container prefix at every depth, and
@@ -19,13 +19,14 @@
 // - `applyFixes` over 90,000 MD009 fixes: 12.4 to 18.3 s rebuilding the text per fix (three runs), 27 to 38 ms
 //   joining the pieces once.
 //
-// The ceiling is far above the fixed times, so a busy runner does not fail
-// it, and far below the unfixed ones, so a regression to any of them does. It
-// runs in the timing tier (vitest.config.ts), alone on its runner. The math
-// scan's child cursor and single prefix strip are not guarded here: unfixed,
-// that scan costs about 53 ms at 40 deep, under any useful ceiling.
+// Each unit measures a ratio, not a time: a ceiling in milliseconds held on the
+// machine above and failed on a loaded runner, where a ratio holds on both
+// (#1415). The file runs in the hostile tier (vitest.config.ts), one file at a
+// time. The math scan's child cursor and single prefix strip are not guarded
+// here: unfixed, that scan costs about 53 ms at 40 deep.
 
 import { assert, describe, it } from "@effect/vitest";
+import { Growth } from "@effected/testing";
 import { frontMatterLineCount, maskHtmlComments } from "../src/internal/reading.js";
 import type { LintRule } from "../src/LintRule.js";
 import { MarkdownLint } from "../src/MarkdownLint.js";
@@ -38,8 +39,6 @@ import { MD052 } from "../src/rules/MD052.js";
 import { MD053 } from "../src/rules/MD053.js";
 import { MD054 } from "../src/rules/MD054.js";
 import { MD055 } from "../src/rules/MD055.js";
-
-const CEILING_MS = 5_000;
 
 const wideTable = (columns: number, rows: number): string => {
 	const row = (cell: (column: number) => string) =>
@@ -166,31 +165,28 @@ const repeatedHeadings = (count: number): string =>
 const tallTable = (count: number): string => `# T\n\n| a | b |\n| - | - |\n${"| c | d\n".repeat(count)}\ntext\n`;
 const pipeRun = (count: number): string => `# T\n\n| a | b |\n| - | - |\n${"|".repeat(count)}\n`;
 
-const cpuNow = (): number => {
-	const used = process.cpuUsage();
-	return (used.user + used.system) / 1000;
-};
-
-// 10,000 against 2,500 of `make`'s unit under `rule` alone: the ratio of their best CPU times.
+// 10,000 against 2,500 of `make`'s unit under `rule` alone, as `Growth.measure` times it.
 const scalingRatio = (
 	make: (count: number) => string,
 	rule: LintRule,
 	config: Record<string, unknown>,
 ): { readonly value: number; readonly detail: string } => {
-	const timeAt = (count: number): number => {
-		const source = make(count);
-		let best = Number.POSITIVE_INFINITY;
-		for (let pass = 0; pass < 5; pass += 1) {
-			const started = cpuNow();
-			MarkdownLint.lint(source, [rule], { config: { default: false, [rule.name]: config } });
-			best = Math.min(best, cpuNow() - started);
-		}
-		return best;
-	};
-	timeAt(500);
-	const small = timeAt(2_500);
-	const large = timeAt(10_000);
-	return { value: large / Math.max(small, 1), detail: `${small.toFixed(1)} ms -> ${large.toFixed(1)} ms` };
+	const { ratio, detail } = Growth.measure(
+		(count) => {
+			const source = make(count);
+			return () => MarkdownLint.lint(source, [rule], { config: { default: false, [rule.name]: config } });
+		},
+		{ from: 2_500, bound: 8 },
+	);
+	return { value: ratio, detail };
+};
+
+/**
+ * `make(size)` costs about four times `make(size / 4)`: linear work. No unit here bounds an elapsed time, since a
+ * ceiling in milliseconds holds on one machine and fails on a loaded runner, while a ratio holds on both (#1415).
+ */
+const linear = (make: (count: number) => () => unknown, size: number): void => {
+	Growth.assertOrder(make, { from: size / 4, order: 1 });
 };
 
 const scalingShapes: ReadonlyArray<
@@ -215,44 +211,50 @@ const scalingShapes: ReadonlyArray<
 	],
 ];
 
-const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
-	["a 400-column table with CJK cells", wideTable(400, 150)],
-	["2,000 unclosed fences in list items", unclosedFences(2000)],
-	["an ordinary document of 9,000 blocks", ordinary(9000)],
-	["3,000 lines in blockquotes 40 deep with inline HTML", deepQuote(3000, 40)],
-	["a paragraph of 60,000 code spans, links and lone dollar signs", atomicDollars(60000)],
-	["a 198 KB line holding an inline data-URI image", dataUriLine(18000)],
-	["one line of 16,000 HTML comments", commentsOnOneLine(16000)],
-	["2,000 HTML blocks each holding an emphasis line", htmlBlocksOfEmphasis(2000)],
-	["a paragraph of 40,000 emphasis spans", emphasisSpans(20000)],
-	["a blockquote of 20,000 one-item lists", quotedListsOfTwoMarkers(20000)],
-	["a list nested 40 deep in a blockquote, then 20,000 quoted blank lines", deepQuotedListThenBlanks(40, 20000)],
-	["one code span of 100,000 words over 10,000 lines", longCodeSpan(100000)],
-	["one line of 30,000 spaced emphasis-marker pairs", spacedMarkersOnOneLine(30000)],
-	["one line of 20,000 reversed links beside code spans", reversedLinksBesideCode(20000)],
-	["2,000 images holding references, beside 2,000 definitions", imagesAndDefinitions(2000)],
-	["one image label naming one 80 KB definition 8,000 times", labelNamingOneDefinition(8000, 80000)],
-	["one line of 20,000 bracketed spans and addresses", bracketedAddresses(20000)],
-	["one line of 24,000 unclosed inline HTML tags", unclosedInlineTags(24000)],
-	["10,000 URLs in emphasis after a bracket in inline math", urlsAfterMathBracket(10000)],
-	["one line of 20,000 undefined references, collapsed and full", undefinedReferences(20000)],
-	["20,000 uses of one label beside 20,000 duplicate definitions", usesOfOneLabel(20000)],
-	["20,000 unused definitions", unusedDefinitions(20000)],
-	// Sized for a shared runner, this costs about 600 ms alone, so the ceiling only catches a gross blowup: the guard on
-	// MD051's lookups is its ratio twin in `scalingShapes`, which fails the quadratic lookup at 9.5x.
-	["5,000 repeated headings and 20,000 fragments in another case", repeatedHeadings(5000)],
-	["a table of 20,000 rows", tallTable(20000)],
-	["a table row of 50,000 pipes", pipeRun(50000)],
+// Each shape with the size its name gives: `make(size)` is the input, and `make(size / 4)` the small side its growth
+// is measured from.
+const inputs: ReadonlyArray<readonly [name: string, make: (count: number) => string, size: number]> = [
+	["a 400-column table with CJK cells", (rows) => wideTable(400, rows), 152],
+	["2,000 unclosed fences in list items", unclosedFences, 2000],
+	["an ordinary document of 9,000 blocks", ordinary, 9000],
+	["3,000 lines in blockquotes 40 deep with inline HTML", (lines) => deepQuote(lines, 40), 3000],
+	["a paragraph of 60,000 code spans, links and lone dollar signs", atomicDollars, 60000],
+	["a 198 KB line holding an inline data-URI image", dataUriLine, 18000],
+	["one line of 16,000 HTML comments", commentsOnOneLine, 16000],
+	["2,000 HTML blocks each holding an emphasis line", htmlBlocksOfEmphasis, 2000],
+	["a paragraph of 40,000 emphasis spans", emphasisSpans, 20000],
+	["a blockquote of 20,000 one-item lists", quotedListsOfTwoMarkers, 20000],
+	[
+		"a list nested 40 deep in a blockquote, then 20,000 quoted blank lines",
+		(blanks) => deepQuotedListThenBlanks(40, blanks),
+		20000,
+	],
+	["one code span of 100,000 words over 10,000 lines", longCodeSpan, 100000],
+	["one line of 30,000 spaced emphasis-marker pairs", spacedMarkersOnOneLine, 30000],
+	["one line of 20,000 reversed links beside code spans", reversedLinksBesideCode, 20000],
+	["2,000 images holding references, beside 2,000 definitions", imagesAndDefinitions, 2000],
+	["one image label naming one 80 KB definition 8,000 times", (uses) => labelNamingOneDefinition(uses, 80000), 8000],
+	["one line of 20,000 bracketed spans and addresses", bracketedAddresses, 20000],
+	["one line of 24,000 unclosed inline HTML tags", unclosedInlineTags, 24000],
+	["10,000 URLs in emphasis after a bracket in inline math", urlsAfterMathBracket, 10000],
+	["one line of 20,000 undefined references, collapsed and full", undefinedReferences, 20000],
+	["20,000 uses of one label beside 20,000 duplicate definitions", usesOfOneLabel, 20000],
+	["20,000 unused definitions", unusedDefinitions, 20000],
+	// Under every rule together the lookups are a small share of the work; the guard on MD051's lookups alone is this
+	// shape's twin in `scalingShapes`, which fails the quadratic lookup at 9.5x.
+	["5,000 repeated headings and 20,000 fragments in another case", repeatedHeadings, 5000],
+	["a table of 20,000 rows", tallTable, 20000],
+	["a table row of 50,000 pipes", pipeRun, 50000],
 ];
 
 describe("hostile inputs", () => {
-	for (const [name, source] of inputs) {
-		it(`lints ${name} with every rule under the ceiling`, { timeout: 30_000 }, () => {
-			const start = performance.now();
-			const findings = MarkdownLint.lint(source, rules);
-			const elapsed = performance.now() - start;
-			assert.isAbove(findings.length, 0);
-			assert.isBelow(elapsed, CEILING_MS, `${name}: ${elapsed.toFixed(0)} ms`);
+	for (const [name, make, size] of inputs) {
+		it(`lints ${name} with every rule, in time linear in the input`, () => {
+			assert.isAbove(MarkdownLint.lint(make(size), rules).length, 0);
+			linear((count) => {
+				const source = make(count);
+				return () => MarkdownLint.lint(source, rules);
+			}, size);
 		});
 	}
 
@@ -292,120 +294,122 @@ describe("hostile inputs", () => {
 
 // The readers that run before any rule, each with its own tighter ceiling.
 describe("hostile inputs to the reading pass", () => {
-	const READING_CEILING_MS = 1_000;
-
-	it("masks a long run of comments, one per line, under the ceiling", () => {
+	it("masks a long run of comments, one per line, in time linear in the run", () => {
 		const text = "<!-- a -->\n".repeat(50_000);
-		const started = performance.now();
-		const masked = maskHtmlComments(text);
-		assert.isBelow(performance.now() - started, READING_CEILING_MS);
-		assert.strictEqual(masked.length, text.length);
+		assert.strictEqual(maskHtmlComments(text).length, text.length);
+		linear((count) => {
+			const run = "<!-- a -->\n".repeat(count);
+			return () => maskHtmlComments(run);
+		}, 200_000);
 	});
 
-	it("counts a long unterminated front matter block under the ceiling", () => {
-		const text = `---\n${"x\n".repeat(100_000)}`;
-		const started = performance.now();
-		assert.strictEqual(frontMatterLineCount(text), 0);
-		assert.isBelow(performance.now() - started, READING_CEILING_MS);
+	it("counts a long unterminated front matter block in time linear in the block", () => {
+		assert.strictEqual(frontMatterLineCount(`---\n${"x\n".repeat(100_000)}`), 0);
+		linear((count) => {
+			const text = `---\n${"x\n".repeat(count)}`;
+			return () => frontMatterLineCount(text);
+		}, 400_000);
 	});
 
-	it("counts a long run of fence-like lines under the ceiling", () => {
-		const text = `---\n${"--- x\n".repeat(100_000)}`;
-		const started = performance.now();
-		assert.strictEqual(frontMatterLineCount(text), 0);
-		assert.isBelow(performance.now() - started, READING_CEILING_MS);
+	it("counts a long run of fence-like lines in time linear in the run", () => {
+		assert.strictEqual(frontMatterLineCount(`---\n${"--- x\n".repeat(100_000)}`), 0);
+		linear((count) => {
+			const text = `---\n${"--- x\n".repeat(count)}`;
+			return () => frontMatterLineCount(text);
+		}, 400_000);
 	});
 });
 
 describe("hostile inputs to applyFixes", () => {
-	// One MD009 fix per paragraph: the splice once rebuilt the whole text per fix. Each paragraph is one line, so the
-	// parse meets no run of hard line breaks.
-	it("applies 90,000 fixes under the ceiling", { timeout: 60_000 }, () => {
+	it("applies 90,000 fixes in time linear in the fixes", () => {
 		const source = `# T\n\n${"trailing spaces   \n\n".repeat(90_000)}`;
 		const findings = MarkdownLint.lint(source, [MD009]);
 		assert.strictEqual(findings.length, 90_000);
-		const start = performance.now();
-		const fixed = MarkdownLint.applyFixes(source, findings);
-		const elapsed = performance.now() - start;
-		assert.strictEqual(fixed, `# T\n\n${"trailing spaces\n\n".repeat(90_000)}`);
-		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
+		assert.strictEqual(MarkdownLint.applyFixes(source, findings), `# T\n\n${"trailing spaces\n\n".repeat(90_000)}`);
+		linear((count) => {
+			const text = `# T\n\n${"trailing spaces   \n\n".repeat(count)}`;
+			const found = MarkdownLint.lint(text, [MD009]);
+			return () => MarkdownLint.applyFixes(text, found);
+		}, 90_000);
 	});
 });
 
-// Settings are document content (an inline `configure-file` comment), so a count or a width that drives a loop or a
-// `repeat` is input too. markdownlint hangs on the first (it counts virtual blank lines past the document's top to
-// `Infinity`) and throws on the second (a billion spaces per tab); the kit bounds both. Before the bounds the first
-// never returned (killed at 20 s) and the second threw `RangeError: Invalid string length`.
 describe("hostile settings", () => {
-	it("lints a heading under lines_above: 1e999 under the ceiling", { timeout: 30_000 }, () => {
+	/**
+	 * A setting a million times larger costs about the same: the fix it sizes is capped, so the work does not follow
+	 * the setting. Work that did follow it would read as a ratio near a million.
+	 */
+	const flatInSetting = (lintUnder: (setting: number) => () => unknown, from: number): void => {
+		const { ratio, detail } = Growth.measure(lintUnder, { from, factor: 1_000_000, bound: 4 });
+		assert.isBelow(ratio, 4, `a setting 1,000,000x larger: ${detail}`);
+	};
+
+	// No size to grow: `1e999` is infinity. The lint returns, and returns no MD022 finding.
+	it("lints a heading under lines_above: 1e999", () => {
 		const source = '<!-- markdownlint-configure-file {"MD022":{"lines_above":1e999}} -->\n\n# T\n\nx\n';
-		const start = performance.now();
-		const findings = MarkdownLint.lint(source, rules);
-		const elapsed = performance.now() - start;
-		// Every line above the heading reads as blank, as markdownlint reads the lines past the top: no MD022 finding.
 		assert.deepStrictEqual(
-			findings.filter((finding) => finding.ruleNames[0] === "MD022"),
+			MarkdownLint.lint(source, rules).filter((finding) => finding.ruleNames[0] === "MD022"),
 			[],
 		);
-		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
 	});
 
-	it("lints a tab under spaces_per_tab: 1e9 under the ceiling, its fix capped", { timeout: 30_000 }, () => {
-		const source = '<!-- markdownlint-configure-file {"MD010":{"spaces_per_tab":1e9}} -->\n\n# T\n\n\tx\n';
-		const start = performance.now();
+	it("lints a tab under spaces_per_tab: 1e9 at the cost of 1e3, its fix capped", () => {
+		const under = (setting: number): string =>
+			`<!-- markdownlint-configure-file {"MD010":{"spaces_per_tab":${setting}}} -->\n\n# T\n\n\tx\n`;
+		const source = under(1e9);
 		const findings = MarkdownLint.lint(source, rules).filter((finding) => finding.ruleNames[0] === "MD010");
-		const elapsed = performance.now() - start;
 		assert.lengthOf(findings, 1);
 		assert.strictEqual(MarkdownLint.applyFixes(source, findings).split("\n")[4], `${" ".repeat(1_000)}x`);
-		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
+		flatInSetting((setting) => () => MarkdownLint.lint(under(setting), rules), 1_000);
 	});
 
-	it("lints a sublist under indent: 1e9 under the ceiling, its fix capped", { timeout: 30_000 }, () => {
-		const source = '<!-- markdownlint-configure-file {"MD007":{"indent":1e9}} -->\n\n# T\n\n- a\n  - b\n';
-		const start = performance.now();
+	it("lints a sublist under indent: 1e9 at the cost of 1e3, its fix capped", () => {
+		const under = (setting: number): string =>
+			`<!-- markdownlint-configure-file {"MD007":{"indent":${setting}}} -->\n\n# T\n\n- a\n  - b\n`;
+		const source = under(1e9);
 		const findings = MarkdownLint.lint(source, rules).filter((finding) => finding.ruleNames[0] === "MD007");
-		const elapsed = performance.now() - start;
 		assert.lengthOf(findings, 1);
 		assert.strictEqual(MarkdownLint.applyFixes(source, findings).split("\n")[5], `${" ".repeat(1_002)}- b`);
-		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
+		flatInSetting((setting) => () => MarkdownLint.lint(under(setting), rules), 1_000);
 	});
 
-	it("lints a list under ul_single: 1e9 under the ceiling, its fix capped", { timeout: 30_000 }, () => {
-		const source = '<!-- markdownlint-configure-file {"MD030":{"ul_single":1e9}} -->\n\n# T\n\n- a\n';
-		const start = performance.now();
+	it("lints a list under ul_single: 1e9 at the cost of 1e3, its fix capped", () => {
+		const under = (setting: number): string =>
+			`<!-- markdownlint-configure-file {"MD030":{"ul_single":${setting}}} -->\n\n# T\n\n- a\n`;
+		const source = under(1e9);
 		const findings = MarkdownLint.lint(source, rules).filter((finding) => finding.ruleNames[0] === "MD030");
-		const elapsed = performance.now() - start;
 		assert.lengthOf(findings, 1);
 		assert.strictEqual(MarkdownLint.applyFixes(source, findings).split("\n")[4], `-${" ".repeat(1_000)}a`);
-		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
+		flatInSetting((setting) => () => MarkdownLint.lint(under(setting), rules), 1_000);
 	});
 
-	it("lints proper names under a list of 1,000 names under the ceiling", { timeout: 30_000 }, () => {
+	it("lints proper names under a list of 1,000 names, in time linear in the text", () => {
 		const names = Array.from({ length: 1_000 }, (_, index) => `Name${index}`);
-		const source = `${Array.from({ length: 2_000 }, (_, index) => `name${index % 1_000} and www.name${index}.com and \`name1\``).join("\n\n")}\n`;
-		const start = performance.now();
-		const findings = MarkdownLint.lint(source, rules, { config: { default: false, MD044: { names } } });
-		const elapsed = performance.now() - start;
-		assert.isAbove(findings.length, 0);
-		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
+		const text = (lines: number): string =>
+			`${Array.from({ length: lines }, (_, index) => `name${index % 1_000} and www.name${index}.com and \`name1\``).join("\n\n")}\n`;
+		const config = { default: false, MD044: { names } };
+		assert.isAbove(MarkdownLint.lint(text(2_000), rules, { config }).length, 0);
+		linear((lines) => {
+			const source = text(lines);
+			return () => MarkdownLint.lint(source, rules, { config });
+		}, 2_000);
 	});
 
-	it("lints a one-letter proper name matching 100,000 words under the ceiling", { timeout: 30_000 }, () => {
-		const source = `${"a ".repeat(100_000)}\n`;
-		const start = performance.now();
-		const findings = MarkdownLint.lint(source, rules, { config: { default: false, MD044: { names: ["A", "A B"] } } });
-		const elapsed = performance.now() - start;
-		assert.isAbove(findings.length, 0);
-		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
+	it("lints a one-letter proper name matching 100,000 words, in time linear in the words", () => {
+		const config = { default: false, MD044: { names: ["A", "A B"] } };
+		assert.isAbove(MarkdownLint.lint(`${"a ".repeat(100_000)}\n`, rules, { config }).length, 0);
+		linear((words) => {
+			const source = `${"a ".repeat(words)}\n`;
+			return () => MarkdownLint.lint(source, rules, { config });
+		}, 100_000);
 	});
 
-	it("lints a heading under lines_above: 1e8 under the ceiling, its fix capped", { timeout: 30_000 }, () => {
+	it("lints a heading under lines_above: 1e8 at the cost of 1e2, its fix capped", () => {
 		const source = "text\n# T\n";
-		const start = performance.now();
-		const findings = MarkdownLint.lint(source, rules, { config: { default: false, MD022: { lines_above: 1e8 } } });
-		const elapsed = performance.now() - start;
+		const under = (setting: number) => ({ default: false, MD022: { lines_above: setting } });
+		const findings = MarkdownLint.lint(source, rules, { config: under(1e8) });
 		assert.lengthOf(findings, 1);
 		assert.strictEqual(MarkdownLint.applyFixes(source, findings), `text\n${"\n".repeat(1_000)}# T\n`);
-		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
+		flatInSetting((setting) => () => MarkdownLint.lint(source, rules, { config: under(setting) }), 100);
 	});
 });

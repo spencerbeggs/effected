@@ -3,6 +3,7 @@
 // fails and says so, instead of a parser's check failing (or passing) for a reason that is not the parser.
 
 import { assert, describe, it } from "@effect/vitest";
+import { it as plainIt } from "vitest";
 import { Growth } from "../src/index.js";
 
 // Module-level, so the loops below have an effect the optimizer cannot drop.
@@ -25,6 +26,15 @@ const cubic = (size: number): void => {
 		}
 	}
 };
+
+// A growth check repeats its workload until it can be timed, which can outlast vitest's five-second default. The
+// root config gives every `.hostile.test.ts` file the `hostile` tag and its one-minute timeout; this pins that the
+// tag reaches the file, because without it a check fails on a slow run for a reason that is not its ratio.
+describe("the hostile tag", () => {
+	plainIt("gives a test in a hostile file a one-minute timeout", ({ task }) => {
+		assert.strictEqual(task.timeout, 60_000);
+	});
+});
 
 describe("Growth.assertOrder", () => {
 	it("passes a linear workload at order 1", { timeout: 60_000 }, () => {
