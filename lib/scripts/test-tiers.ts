@@ -52,11 +52,10 @@ export const parseDepth = (raw: string | undefined): "sample" | "full" => {
 /**
  * Refuses lists that would drop a file from every tier or run it in two.
  *
- * @throws When a slow path does not exist, a slow path is a hostile file, or a legacy timing path is not a slow path.
+ * @throws When a slow path does not exist, or a slow path is a hostile file.
  */
 export const validateLists = (input: {
 	readonly slow: ReadonlyArray<string>;
-	readonly legacyTiming: ReadonlyArray<string>;
 	readonly exists: (path: string) => boolean;
 }): void => {
 	const missing = input.slow.filter((file) => !input.exists(file));
@@ -68,10 +67,6 @@ export const validateLists = (input: {
 		throw new Error(
 			`vitest.config.ts SLOW_TESTS names hostile files, which their suffix already places:\n  ${hostile.join("\n  ")}`,
 		);
-	}
-	const strays = input.legacyTiming.filter((file) => !input.slow.includes(file));
-	if (strays.length > 0) {
-		throw new Error(`vitest.config.ts TIMING_TESTS names files missing from SLOW_TESTS:\n  ${strays.join("\n  ")}`);
 	}
 };
 
@@ -85,25 +80,22 @@ export interface ProjectSelection {
 /**
  * What one project runs under `tier`, or `null` to drop the project from the run.
  *
- * @param input - `slow` is the project's `SLOW_TESTS` files with the legacy timing files removed, `legacyTiming`
- *   its `TIMING_TESTS` files, and `files` every test file it has; all absolute paths.
+ * @param input - `slow` is the project's `SLOW_TESTS` files and `files` every test file it has; all absolute paths.
  */
 export const projectSelection = (input: {
 	readonly tier: Tier | undefined;
 	readonly slow: ReadonlyArray<string>;
-	readonly legacyTiming: ReadonlyArray<string>;
 	readonly files: ReadonlyArray<string>;
 }): ProjectSelection | null => {
-	const alone = [HOSTILE_GLOB, ...input.legacyTiming];
 	switch (input.tier) {
 		case undefined:
-			return { exclude: alone };
+			return { exclude: [HOSTILE_GLOB] };
 		case "fast":
-			return { exclude: [...alone, ...input.slow] };
+			return { exclude: [HOSTILE_GLOB, ...input.slow] };
 		case "slow":
 			return input.slow.length === 0 ? null : { include: [...input.slow] };
 		case "hostile": {
-			const include = [...input.files.filter(isHostile), ...input.legacyTiming];
+			const include = input.files.filter(isHostile);
 			return include.length === 0 ? null : { include };
 		}
 		case "full": {

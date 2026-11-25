@@ -40,24 +40,9 @@ const SLOW_TESTS: ReadonlyArray<string> = [
 	"packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts",
 ];
 
-/**
- * The legacy timing list, being drained: slow files that measure time and are not yet renamed to
- * `.hostile.test.ts`. They run in the `hostile` tier beside the files that suffix selects, one file at a time
- * (#1387), and nowhere else.
- *
- * @remarks
- * A file that measures time takes the suffix instead of an entry here (#1415). Every entry must also be in
- * `SLOW_TESTS`, or the config refuses to load. The list is deleted when it is empty.
- */
-const TIMING_TESTS: ReadonlyArray<string> = [];
-
 export default async () => {
 	const root = fileURLToPath(new URL(".", import.meta.url));
-	validateLists({
-		slow: SLOW_TESTS,
-		legacyTiming: TIMING_TESTS,
-		exists: (file) => existsSync(join(root, file)),
-	});
+	validateLists({ slow: SLOW_TESTS, exists: (file) => existsSync(join(root, file)) });
 	// Read here so a mistyped depth stops every run, including one whose files never read it.
 	parseDepth(process.env.EFFECTED_TEST_DEPTH);
 	const tier = parseTier(process.env.EFFECTED_TEST_TIER);
@@ -93,11 +78,7 @@ export default async () => {
 			if (inherited === null) return null;
 			const selection = projectSelection({
 				tier,
-				slow: ownedBy(
-					SLOW_TESTS.filter((file) => !TIMING_TESTS.includes(file)),
-					input.path,
-				),
-				legacyTiming: ownedBy(TIMING_TESTS, input.path),
+				slow: ownedBy(SLOW_TESTS, input.path),
 				files: testFilesOf(input.path),
 			});
 			if (selection === null) return null;

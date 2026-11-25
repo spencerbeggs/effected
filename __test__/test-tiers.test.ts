@@ -42,30 +42,20 @@ describe("the tier and depth variables", () => {
 describe("validateLists", () => {
 	const exists = (path: string): boolean => path !== "packages/a/__test__/gone.test.ts";
 
-	it("accepts lists whose files exist", () => {
-		validateLists({ slow: ["packages/a/__test__/s.test.ts"], legacyTiming: ["packages/a/__test__/s.test.ts"], exists });
+	it("accepts a list whose files exist", () => {
+		validateLists({ slow: ["packages/a/__test__/s.test.ts"], exists });
 	});
 
 	it("refuses a slow path that is missing", () => {
 		assert.throws(
-			() => validateLists({ slow: ["packages/a/__test__/gone.test.ts"], legacyTiming: [], exists }),
+			() => validateLists({ slow: ["packages/a/__test__/gone.test.ts"], exists }),
 			/do not exist[\s\S]*gone\.test\.ts/,
 		);
 	});
 
 	// The suffix already places a hostile file; listed as slow too, it would run in two tiers.
 	it("refuses a hostile file in the slow list", () => {
-		assert.throws(
-			() => validateLists({ slow: ["packages/a/__test__/a.hostile.test.ts"], legacyTiming: [], exists }),
-			/hostile/,
-		);
-	});
-
-	it("refuses a timing path outside the slow list", () => {
-		assert.throws(
-			() => validateLists({ slow: [], legacyTiming: ["packages/a/__test__/t.test.ts"], exists }),
-			/SLOW_TESTS/,
-		);
+		assert.throws(() => validateLists({ slow: ["packages/a/__test__/a.hostile.test.ts"], exists }), /hostile/);
 	});
 });
 
@@ -75,47 +65,45 @@ describe("projectSelection", () => {
 		"/r/p/__test__/a.hostile.test.ts",
 		"/r/p/__test__/a.parity.test.ts",
 		"/r/p/__test__/s.e2e.test.ts",
-		"/r/p/__test__/t.test.ts",
 	];
 	const slow = ["/r/p/__test__/s.e2e.test.ts"];
-	const legacyTiming = ["/r/p/__test__/t.test.ts"];
 
-	it("with no tier, excludes hostile files and legacy timing files only", () => {
-		assert.deepStrictEqual(projectSelection({ tier: undefined, slow, legacyTiming, files }), {
-			exclude: ["**/*.hostile.test.{ts,tsx}", "/r/p/__test__/t.test.ts"],
+	it("with no tier, excludes hostile files only", () => {
+		assert.deepStrictEqual(projectSelection({ tier: undefined, slow, files }), {
+			exclude: ["**/*.hostile.test.{ts,tsx}"],
 		});
 	});
 
 	it("fast also excludes the slow files", () => {
-		assert.deepStrictEqual(projectSelection({ tier: "fast", slow, legacyTiming, files }), {
-			exclude: ["**/*.hostile.test.{ts,tsx}", "/r/p/__test__/t.test.ts", "/r/p/__test__/s.e2e.test.ts"],
+		assert.deepStrictEqual(projectSelection({ tier: "fast", slow, files }), {
+			exclude: ["**/*.hostile.test.{ts,tsx}", "/r/p/__test__/s.e2e.test.ts"],
 		});
 	});
 
 	it("slow includes only the slow files and drops a project with none", () => {
-		assert.deepStrictEqual(projectSelection({ tier: "slow", slow, legacyTiming, files }), { include: slow });
-		assert.isNull(projectSelection({ tier: "slow", slow: [], legacyTiming, files }));
+		assert.deepStrictEqual(projectSelection({ tier: "slow", slow, files }), { include: slow });
+		assert.isNull(projectSelection({ tier: "slow", slow: [], files }));
 	});
 
-	it("hostile includes hostile-suffix and legacy timing files and drops a project with neither", () => {
-		assert.deepStrictEqual(projectSelection({ tier: "hostile", slow, legacyTiming, files }), {
-			include: ["/r/p/__test__/a.hostile.test.ts", "/r/p/__test__/t.test.ts"],
+	it("hostile includes the hostile-suffix files and drops a project with none", () => {
+		assert.deepStrictEqual(projectSelection({ tier: "hostile", slow, files }), {
+			include: ["/r/p/__test__/a.hostile.test.ts"],
 		});
-		assert.isNull(projectSelection({ tier: "hostile", slow, legacyTiming: [], files: ["/r/p/__test__/a.test.ts"] }));
+		assert.isNull(projectSelection({ tier: "hostile", slow, files: ["/r/p/__test__/a.test.ts"] }));
 	});
 
 	it("full includes the depth-aware files at full depth and drops a project with none", () => {
-		assert.deepStrictEqual(projectSelection({ tier: "full", slow, legacyTiming, files }), {
+		assert.deepStrictEqual(projectSelection({ tier: "full", slow, files }), {
 			include: ["/r/p/__test__/a.parity.test.ts"],
 			env: { EFFECTED_TEST_DEPTH: "full" },
 		});
-		assert.isNull(projectSelection({ tier: "full", slow, legacyTiming, files: ["/r/p/__test__/a.test.ts"] }));
+		assert.isNull(projectSelection({ tier: "full", slow, files: ["/r/p/__test__/a.test.ts"] }));
 	});
 
 	it("places a .tsx file by the same suffixes", () => {
-		assert.deepStrictEqual(
-			projectSelection({ tier: "full", slow: [], legacyTiming: [], files: ["/r/p/__test__/v.property.test.tsx"] }),
-			{ include: ["/r/p/__test__/v.property.test.tsx"], env: { EFFECTED_TEST_DEPTH: "full" } },
-		);
+		assert.deepStrictEqual(projectSelection({ tier: "full", slow: [], files: ["/r/p/__test__/v.property.test.tsx"] }), {
+			include: ["/r/p/__test__/v.property.test.tsx"],
+			env: { EFFECTED_TEST_DEPTH: "full" },
+		});
 	});
 });
