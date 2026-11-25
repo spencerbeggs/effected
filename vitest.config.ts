@@ -39,8 +39,6 @@ const SLOW_TESTS: ReadonlyArray<string> = [
 	"packages/markdown/__test__/e2e/pathological.e2e.test.ts",
 	"packages/mcp/__test__/schema-tools.reload.test.ts",
 	"packages/plugin/__test__/e2e/packed-install.e2e.test.ts",
-	"packages/shell/__test__/ShellScript.test.ts",
-	"packages/shell/__test__/hostile.test.ts",
 	"packages/walker/__test__/PatternBoundsSweep.test.ts",
 	"packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts",
 ];
@@ -54,11 +52,7 @@ const SLOW_TESTS: ReadonlyArray<string> = [
  * A file that measures time takes the suffix instead of an entry here (#1415). Every entry must also be in
  * `SLOW_TESTS`, or the config refuses to load. The list is deleted when it is empty.
  */
-const TIMING_TESTS: ReadonlyArray<string> = [
-	"packages/markdown-lint/__test__/hostile-inputs.test.ts",
-	"packages/shell/__test__/ShellScript.test.ts",
-	"packages/shell/__test__/hostile.test.ts",
-];
+const TIMING_TESTS: ReadonlyArray<string> = ["packages/markdown-lint/__test__/hostile-inputs.test.ts"];
 
 export default async () => {
 	const root = fileURLToPath(new URL(".", import.meta.url));

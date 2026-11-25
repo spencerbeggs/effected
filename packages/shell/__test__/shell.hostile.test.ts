@@ -3,6 +3,7 @@
 // a megabyte of openers is one pass, not a stack overflow or a quadratic scan.
 
 import { assert, describe, it } from "@effect/vitest";
+import { Growth } from "@effected/testing";
 import { Arbitrary, Option, Schema } from "effect";
 import type { ShellScript, ShellWord } from "../src/index.js";
 import { ShellSyntax } from "../src/index.js";
@@ -13,31 +14,11 @@ const repeatTo = (unit: string, length: number): string =>
 	unit.repeat(Math.ceil(length / unit.length)).slice(0, length);
 
 /**
- * The CPU time one parse takes (`process.cpuUsage`): time the parse spent, not
- * time the process was descheduled, so a loaded machine slows a sample only
- * through GC, which `measure`'s fastest-of-three re-timing absorbs. vitest
- * runs each file in its own fork, so no other test's CPU lands here.
- */
-const time = (input: string): { readonly ms: number; readonly script: ShellScript } => {
-	const started = process.cpuUsage();
-	const script = ShellSyntax.parse(input);
-	const used = process.cpuUsage(started);
-	return { ms: (used.user + used.system) / 1000, script };
-};
-
-type Timing = ReturnType<typeof time>;
-
-/**
- * The growth ratio of a parse from `build(quarterLength)` to
- * `build(4 * quarterLength)`: linear is near 4, quadratic near 16. The quarter
- * size starts at a quarter megabyte and doubles, up to 4 MB, until its run
- * takes 5 ms, so a fast parse is measured on real work rather than on timer
- * noise: under 5 ms a quadratic parse can read as linear. Each size is timed
- * once after a warm-up; a unit whose quarter-megabyte run sits at the floor
- * starts larger (`LARGE_START`), so its small side always does milliseconds of
- * real work. A ratio of 10 or more is timed again, up to three
- * samples, keeping the fastest run of each size, so one pause in the full run
- * cannot fail a linear parse, while a quadratic one fails every sample.
+ * The growth ratio of a parse from `build(quarterLength)` to `build(4 * quarterLength)`, as `Growth.measure` times
+ * it: linear is near 4, quadratic near 16. Each size is the fastest of five CPU-time samples, a sample shorter than
+ * 5 ms is a batch of repeats, so a fast parse is measured on real work and not on timer noise, and a ratio of 10 or
+ * more is measured again, up to three rounds, so one pause in the full run cannot fail a linear parse, while a
+ * quadratic one fails every round. `full.script` is the parse of the full size, for the units that read it.
  *
  * The ratio is the whole bound: no unit asserts an absolute time. A ceiling of 10 s of CPU on the full run measured the
  * machine, not the parse. CPU time here is the process's, GC helper threads included (about 1.4x the wall time of a
@@ -47,29 +28,22 @@ type Timing = ReturnType<typeof time>;
  */
 const measure = (
 	build: (length: number) => string,
-	startQuarter: number = MEGABYTE / 4,
-): { readonly quarter: Timing; readonly full: Timing; readonly ratio: number; readonly length: number } => {
-	let quarterLength = startQuarter;
-	let small = build(quarterLength);
-	time(small); // warm up
-	let quarter = time(small);
-	while (quarter.ms < 5 && quarterLength < 4 * MEGABYTE) {
-		quarterLength *= 2;
-		small = build(quarterLength);
-		time(small);
-		quarter = time(small);
-	}
-	const large = build(quarterLength * 4);
-	let full = time(large);
-	let ratio = full.ms / Math.max(quarter.ms, 5);
-	for (let sample = 1; sample < 3 && ratio >= 10; sample += 1) {
-		const again = time(small);
-		const fullAgain = time(large);
-		if (again.ms < quarter.ms) quarter = again;
-		if (fullAgain.ms < full.ms) full = fullAgain;
-		ratio = full.ms / Math.max(quarter.ms, 5);
-	}
-	return { quarter, full, ratio, length: quarterLength * 4 };
+	quarterLength: number = MEGABYTE / 4,
+): {
+	readonly full: { readonly script: ShellScript };
+	readonly ratio: number;
+	readonly detail: string;
+	readonly length: number;
+} => {
+	const length = quarterLength * 4;
+	const { ratio, detail } = Growth.measure(
+		(size) => {
+			const input = build(size);
+			return () => ShellSyntax.parse(input);
+		},
+		{ from: quarterLength, bound: 10 },
+	);
+	return { full: { script: ShellSyntax.parse(build(length)) }, ratio, detail, length };
 };
 
 // Each unit is a construct whose naive handling is quadratic or recursive:
@@ -193,12 +167,12 @@ const LARGE_START: ReadonlySet<string> = new Set(["$[a<<b "]);
 describe("hostile input", () => {
 	for (const unit of UNITS) {
 		it(`a megabyte of ${JSON.stringify(unit)} parses in linear time`, { timeout: 60_000 }, () => {
-			const { quarter, full, ratio, length } = measure(
+			const { full, ratio, detail, length } = measure(
 				(size) => repeatTo(unit, size),
 				LARGE_START.has(unit) ? MEGABYTE : MEGABYTE / 4,
 			);
 			assert.strictEqual(full.script.source.length, length);
-			assert.isBelow(ratio, 10, `${JSON.stringify(unit)}: ${quarter.ms.toFixed(1)}ms -> ${full.ms.toFixed(1)}ms`);
+			assert.isBelow(ratio, 10, `${JSON.stringify(unit)}: ${detail}`);
 		});
 	}
 

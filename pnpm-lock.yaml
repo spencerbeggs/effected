@@ -1763,6 +1763,9 @@ importers:
       '@effect/vitest':
         specifier: 4.1.5
         version: 4.1.5(effect@4.1.5)(vitest@5.1.1)
+      '@effected/testing':
+        specifier: workspace:*
+        version: link:../testing
       '@types/node':
         specifier: catalog:effected:build
         version: 26.6.6
