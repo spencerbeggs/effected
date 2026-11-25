@@ -2,6 +2,9 @@
 // the same runner as the real checks: when that runner cannot tell a linear workload from a quadratic one, this file
 // fails and says so, instead of a parser's check failing (or passing) for a reason that is not the parser.
 
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { assert, describe, it } from "@effect/vitest";
 import { it as plainIt } from "vitest";
 import { Growth } from "../src/index.js";
@@ -189,5 +192,32 @@ describe("Growth.cpuNow", () => {
 		const started = Growth.cpuNow();
 		linear(20_000_000);
 		assert.isAbove(Growth.cpuNow(), started);
+	});
+});
+
+describe("a growth report", () => {
+	// A ratio's margin under its bound differs by machine: one check read 4.2x on macOS and 11.9x on a Linux runner.
+	// The report is how a runner says which checks are near their bounds before one of them fails.
+	it("appends one line per measurement, with its sizing, its ratio and where it was asked for", () => {
+		const dir = mkdtempSync(join(tmpdir(), "effected-growth-"));
+		try {
+			const report = join(dir, "growth.jsonl");
+			const first = Growth.measure((size) => () => linear(size), { from: 200_000, bound: 10, report });
+			Growth.measure((size) => () => quadratic(size), { from: 400, bound: 32, report });
+			const lines = readFileSync(report, "utf8").trimEnd().split("\n");
+			assert.strictEqual(lines.length, 2);
+			const [one, two] = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
+			assert.deepStrictEqual(
+				{ from: one?.from, factor: one?.factor, bound: one?.bound, ratio: one?.ratio },
+				{ from: 200_000, factor: 4, bound: 10, ratio: first.ratio },
+			);
+			assert.strictEqual(one?.smallMs, first.smallMs);
+			assert.strictEqual(one?.largeMs, first.largeMs);
+			assert.isAtLeast(one?.rounds as number, 1);
+			assert.match(one?.site as string, /^testing\/__test__\/Growth\.hostile\.test\.ts:\d+$/);
+			assert.strictEqual(two?.bound, 32);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });

@@ -21,6 +21,8 @@ sources:
     resource: ../../packages/testing/src/Growth.ts
   - id: growth-control
     resource: ../../packages/testing/__test__/Growth.hostile.test.ts
+  - id: growth-report
+    resource: ../../lib/scripts/growth-report.ts
   - id: layers-json
     resource: ../../lib/configs/layers.json
   - id: turbo-json
@@ -33,10 +35,10 @@ sources:
     last_modified: 2026-11-24T00:00:00Z
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-25T13:41:08Z
+  at: 2026-11-25T19:35:32Z
 integrity:
   generated:
-    body: b46d91999f2f60cb
+    body: f77e89bd7a1c98e9
 ---
 
 # @effected/testing
@@ -195,7 +197,22 @@ Three properties of the measurement matter to a caller:
 **Sizing.** Choose the smallest `from` whose run does real work: tens of
 thousands of characters for a scan. A short run is repeated until it can
 be timed, so a larger input adds no accuracy, and it makes a quadratic
-regression take minutes to report where a small one fails in seconds.
+regression take minutes to report where a small one fails in seconds. A
+large input also crosses the size where the memory a run holds costs more
+than the run, and that size differs by machine: parsing a megabyte of
+`$((` read 4.2 times the quarter megabyte on macOS and 11.9 times on a
+Linux runner, against a bound of 10.
+
+**The report.** A pass says nothing of a check's margin. With
+`EFFECTED_GROWTH_REPORT` naming a file, or `report` passed in the
+options, `Growth.measure` appends each measurement to it as one JSON
+line: the call site, the sizing, the bound, the ratio, both timings and
+the rounds taken. `lib/scripts/growth-report.ts` prints the checks
+nearest their bounds, one row per call site and sizing with its worst
+ratio, and the Hostile Tests job writes that table to its log and its
+summary on every run, pass or fail.[^growth-report] A check over about
+70% of its bound on the runner is the next to fail one run in a few;
+measure it at a smaller size.
 
 Its own tests, `Growth.hostile.test.ts`, are the positive control for
 every growth check in the kit: a linear workload passes order 1, a
@@ -237,3 +254,4 @@ collide; the artifacts do not.
 [^owner-design]: The design the repository owner approved for the test
     kit on 2026-11-24: the package's name, its private status, and the
     three primitives it holds.
+[^growth-report]: `lib/scripts/growth-report.ts` — `summarize`, and the `Hostile Tests` job's report step in `.github/workflows/slow-tests.yml`.

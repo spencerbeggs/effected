@@ -74,3 +74,12 @@ jobs:
 
       - name: Run the hostile tier
         run: pnpm run ci:test:hostile
+        env:
+          # Growth appends every measurement here; the next step prints the checks nearest their bounds.
+          EFFECTED_GROWTH_REPORT: ${{ runner.temp }}/growth.jsonl
+
+      # A pass says nothing of a check's margin, and the margin differs by machine. This table is how the runner
+      # says which checks are the next to fail. It runs when the tier failed too, and never fails the job itself.
+      - name: Report the growth checks nearest their bounds
+        if: always()
+        run: pnpm exec tsx lib/scripts/growth-report.ts "$RUNNER_TEMP/growth.jsonl" | tee -a "$GITHUB_STEP_SUMMARY"

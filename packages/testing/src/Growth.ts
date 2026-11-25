@@ -1,4 +1,5 @@
 import { AssertionError } from "node:assert/strict";
+import { appendFileSync } from "node:fs";
 
 /** How a growth measurement is sized and bounded. */
 export interface GrowthOptions {
@@ -8,6 +9,11 @@ export interface GrowthOptions {
 	readonly factor?: number;
 	/** The ratio at or over which the check fails. */
 	readonly bound?: number;
+	/**
+	 * A file to append this measurement to, one JSON line each. Defaults to the file `EFFECTED_GROWTH_REPORT` names,
+	 * and to no report when that is unset.
+	 */
+	readonly report?: string;
 }
 
 /** What a growth measurement found. */
@@ -93,6 +99,20 @@ const fastest = (run: () => unknown, repetitions: number): number => {
 
 const wholeAndPositive = (value: number): boolean => Number.isInteger(value) && value > 0;
 
+/**
+ * Where a measurement was asked for: each test-file frame of the stack as `package/__test__/file:line`, the helper
+ * that called `Growth` first and the test that called the helper after it.
+ */
+const callSite = (): string =>
+	(new Error().stack ?? "")
+		.split("\n")
+		.flatMap((frame) => {
+			const found = /packages\/([^/]+\/__test__\/[^:)]+:\d+)/.exec(frame);
+			return found?.[1] === undefined ? [] : [found[1]];
+		})
+		.filter((frame, index, frames) => frame !== frames[index - 1])
+		.join(" < ");
+
 const measure = (
 	make: (size: number) => () => unknown,
 	options: GrowthOptions & { readonly bound: number },
@@ -119,7 +139,9 @@ const measure = (
 	let smallMs = Number.POSITIVE_INFINITY;
 	let largeMs = Number.POSITIVE_INFINITY;
 	let ratio = Number.NaN;
+	let rounds = 0;
 	for (let round = 0; round < ROUNDS; round += 1) {
+		rounds += 1;
 		smallMs = Math.min(smallMs, fastest(small, smallRepetitions));
 		largeMs = Math.min(largeMs, fastest(large, largeRepetitions));
 		// Again, now that the large size has run: both sizes usually share their code, which is still warming up
@@ -148,6 +170,22 @@ const measure = (
 		}
 		if (ratio < options.bound || ratio >= options.bound * HOPELESS) break;
 	}
+	// A pass says nothing of its margin, and the margin differs by machine. The report is how a runner says which
+	// checks sit near their bounds before one of them fails: lib/scripts/growth-report.ts reads it.
+	const report = options.report ?? process.env.EFFECTED_GROWTH_REPORT;
+	if (report !== undefined && report !== "") {
+		const record = {
+			site: callSite(),
+			from: options.from,
+			factor,
+			bound: options.bound,
+			ratio,
+			smallMs,
+			largeMs,
+			rounds,
+		};
+		appendFileSync(report, `${JSON.stringify(record)}\n`);
+	}
 	return {
 		ratio,
 		smallMs,
@@ -168,7 +206,12 @@ const assertOrder = (
 		throw new Error(`Growth: a factor other than 4 needs an explicit bound, got factor ${factor}`);
 	}
 	const bound = options.bound ?? boundFor(options.order);
-	const result = measure(make, { from: options.from, factor, bound });
+	const result = measure(make, {
+		from: options.from,
+		factor,
+		bound,
+		...(options.report === undefined ? {} : { report: options.report }),
+	});
 	if (result.ratio >= bound) {
 		throw new AssertionError({
 			message: `grew faster than order ${options.order}: ${result.detail}`,

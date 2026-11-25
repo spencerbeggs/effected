@@ -14,6 +14,6 @@ Concept → `okf/modules/testing.md`. Tier and depth rules → `okf/decisions/vi
 
 - `Depth` reads `EFFECTED_TEST_DEPTH` (`sample` or `full`; unset is `sample`; anything else throws).
 - `Corpus` selects a committed sample of a corpus at sample depth and pins exact counts at full depth.
-- `Growth` is the one scaling-ratio measurement. Its own `Growth.hostile.test.ts` is the positive control and runs in the hostile tier on every pull request.
+- `Growth` is the one scaling-ratio measurement. Its own `Growth.hostile.test.ts` is the positive control and runs in the hostile tier on every pull request. With `EFFECTED_GROWTH_REPORT` naming a file it appends every measurement there, and `lib/scripts/growth-report.ts` prints the checks nearest their bounds; the Hostile Tests job does both on every run.
 
 A test file that reads `Depth` or `Corpus` is named `.parity.test.ts`, `.corpus.test.ts` or `.property.test.ts`. A test file that reads `Growth` is named `.hostile.test.ts`. The root `__test__/test-kinds.test.ts` holds both rules.
