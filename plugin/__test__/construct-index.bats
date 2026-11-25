@@ -92,6 +92,33 @@ setup_file() {
 	[[ "$output" == *"ghost"* ]]
 }
 
+@test "fixture: a package with an import surface that is never published is left out, not reported as a missing build" {
+	# @effected/testing is the real one: workspace-only test support, with exports
+	# and no publishConfig. It has no build and so no doc model, and a consumer can
+	# never import it, so it has no place in an index written for consumers.
+	local repo="$BATS_TEST_TMPDIR/workspace-only"
+	mkdir -p "$repo"
+	cp -R "$FIXTURES/constructs-repo/packages" "$repo/packages"
+	mkdir -p "$repo/packages/kit-only/src"
+	printf '{"name":"@effected/kit-only","version":"0.0.0","private":true,"exports":{".":"./src/index.ts"}}\n' > "$repo/packages/kit-only/package.json"
+	printf 'export const hidden = 1;\n' > "$repo/packages/kit-only/src/index.ts"
+	run node "$GEN" generate \
+		--packages "$repo/packages" \
+		--annotations "$FIXTURES/constructs-annotations.json" \
+		--out "$BATS_TEST_TMPDIR/out-workspace-only"
+	[ "$status" -eq 0 ]
+	[[ "$output" != *"kit-only"* ]]
+	[ ! -e "$BATS_TEST_TMPDIR/out-workspace-only/kit-only.md" ]
+	# Control: the same package marked public is a missing build again.
+	printf '{"name":"@effected/kit-only","version":"0.0.0","private":true,"exports":{".":"./src/index.ts"},"publishConfig":{"access":"public"}}\n' > "$repo/packages/kit-only/package.json"
+	run node "$GEN" generate \
+		--packages "$repo/packages" \
+		--annotations "$FIXTURES/constructs-annotations.json" \
+		--out "$BATS_TEST_TMPDIR/out-workspace-only-2"
+	[ "$status" -eq 2 ]
+	[[ "$output" == *"kit-only"* ]]
+}
+
 @test "fixture: check passes without --require-intent when annotations are merely incomplete" {
 	run node "$GEN" check \
 		--packages "$FIXTURES/constructs-repo/packages" \
