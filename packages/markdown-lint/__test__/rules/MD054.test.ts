@@ -7,6 +7,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { MarkdownEdit } from "@effected/markdown";
 import { Option } from "effect";
+import { MarkdownLint } from "../../src/MarkdownLint.js";
 import { MD054 } from "../../src/rules/MD054.js";
 import {
 	DIFFERENTIAL_TIMEOUT,
@@ -17,6 +18,7 @@ import {
 } from "../helpers/differential.js";
 import { linkGrid } from "../helpers/link-grid.js";
 import { linkStyleGrid } from "../helpers/link-style-grid.js";
+import { oracleApplyFixes, oracleLint } from "../helpers/markdownlint-oracle.js";
 import { labelShapes, paragraphBreakShapes, referenceGrid, tabbedDefinitions } from "../helpers/reference-grid.js";
 
 const extra = [...linkGrid, ...referenceGrid, ...labelShapes, ...linkStyleGrid];
@@ -138,6 +140,33 @@ describe("MD054 link-image-style", () => {
 		},
 		DIFFERENTIAL_TIMEOUT,
 	);
+
+	// Inherited markdownlint behaviour, kept on purpose for parity: the inline fix escapes `[` and `]` in the label
+	// and `(` and `)` in the destination, as md054.mjs does, but not a backslash, so an escape already written doubles
+	// into an escaped backslash. The label then closes early and the link is lost, or the destination changes. Both
+	// engines apply the same text.
+	for (const [name, source, applied] of [
+		["an escaped `]` in a label", "See [a \\] b][ref].\n\n[ref]: /u\n", "See [a \\\\] b](/u).\n\n[ref]: /u\n"],
+		["an escaped `[` in a label", "See [a \\[ b][ref].\n\n[ref]: /u\n", "See [a \\\\[ b](/u).\n\n[ref]: /u\n"],
+		[
+			"escaped parentheses in a destination",
+			"See [a][ref].\n\n[ref]: /u\\(v\\)\n",
+			"See [a](/u\\\\(v\\\\)).\n\n[ref]: /u\\(v\\)\n",
+		],
+		[
+			"an escaped `]` in an image's label",
+			"See ![a \\] b][ref].\n\n[ref]: /i.png\n",
+			"See ![a \\\\] b](/i.png).\n\n[ref]: /i.png\n",
+		],
+	] as const) {
+		it(`keeps markdownlint's inline fix of ${name}, which doubles the escape`, () => {
+			const settings = { full: false, collapsed: false, shortcut: false };
+			const findings = run(source, settings);
+			assert.lengthOf(findings, 1);
+			assert.strictEqual(MarkdownLint.applyFixes(source, findings), applied);
+			assert.strictEqual(oracleApplyFixes(source, oracleLint(source, { default: false, MD054: settings })), applied);
+		});
+	}
 });
 
 // markdownlint's MD054 findings over the corpus (LF and CRLF) and the grids, where the corpus's own comments
