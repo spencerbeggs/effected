@@ -174,13 +174,12 @@ describe("Run.setKillOptions against a real spawn", () => {
 			Effect.gen(function* () {
 				const stubborn = node("process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);");
 				const command = Run.setKillOptions(stubborn, { forceKillAfter: "300 millis" });
-				const started = Date.now();
 				const error = yield* Effect.flip(live(Run.collect(command, { timeout: "300 millis" })));
 				assert.instanceOf(error, CommandFailedError);
 				if (error instanceof CommandFailedError) assert.strictEqual(error.kind, "timeout");
-				assert.isBelow(Date.now() - started, 10_000);
 			}),
-		20_000,
+		// The deadline is the assertion: without the forced kill the scope's release never returns.
+		10_000,
 	);
 });
 

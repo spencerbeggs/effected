@@ -92,11 +92,10 @@ describe("checkImport", () => {
 	it("bounds a module that ignores SIGTERM", async () => {
 		// It ends itself eventually, so a run where the bound does not hold leaves no process behind for long.
 		const source = 'process.on("SIGTERM", () => {});\nsetTimeout(() => process.exit(0), 20_000);\n';
-		const started = Date.now();
 		const stubborn = await verdictFor("stubborn.js", source, { timeoutMs: 500 });
 		assert.strictEqual(stubborn.kind, "failed");
-		assert.isBelow(Date.now() - started, 5_000);
-	}, 10_000);
+		// The deadline is the assertion: unbounded, the verdict waits the module's own twenty seconds.
+	}, 5_000);
 
 	describe("the child's environment", () => {
 		const stubbed = { GITHUB_ACTIONS: "true", GITHUB_TOKEN: "secret", NODE_OPTIONS: "--no-warnings" };

@@ -77,12 +77,11 @@ describe("nodeProcessLiveness", () => {
 			const dead = spawnSync(process.execPath, ["-e", ""]).pid ?? 0;
 			const lock = { pid: dead, host: nodeProcessLiveness.host, nonce: "gone", startedAt: Date.now() };
 			writeFileSync(join(dir, "k.lock"), JSON.stringify(lock));
-			const started = Date.now();
 			const result = RunOnce.runSync({ key: "k", dir }, nodeRunOnceHost, () => Result.succeed("ok"));
 			assert.deepStrictEqual(result, Result.succeed({ _tag: "Ran", value: "ok" }));
-			assert.isBelow(Date.now() - started, 5000);
 		});
-	});
+		// The deadline is the assertion: a lock that waited out its holder would not be taken inside it.
+	}, 5_000);
 });
 
 describe("nodeRunSync through RunOnce.commandSync", () => {
