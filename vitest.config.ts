@@ -34,7 +34,6 @@ const SLOW_TESTS: ReadonlyArray<string> = [
 	"packages/cli/__test__/e2e/package-build.e2e.test.ts",
 	"packages/commands/__test__/RunOnce.model.test.ts",
 	"packages/engine/__test__/schema/ConfigLoader.reload.test.ts",
-	"packages/lockfiles/__test__/hostile.test.ts",
 	"packages/mcp/__test__/schema-tools.reload.test.ts",
 	"packages/plugin/__test__/e2e/packed-install.e2e.test.ts",
 	"packages/walker/__test__/PatternBoundsSweep.test.ts",

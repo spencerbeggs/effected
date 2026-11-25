@@ -37,6 +37,7 @@
 		"@effected/npm": "workspace:*",
 		"@effected/pnpm": "workspace:*",
 		"@effected/semver": "workspace:*",
+		"@effected/testing": "workspace:*",
 		"@effected/yaml": "workspace:*",
 		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",

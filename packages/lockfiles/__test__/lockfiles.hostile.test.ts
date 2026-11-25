@@ -5,6 +5,7 @@
 // the delegated typed failures actually surface through Lockfile.parse.
 
 import { assert, describe, it } from "@effect/vitest";
+import { Growth } from "@effected/testing";
 import { Effect, Exit, Option } from "effect";
 import { Lockfile, LockfileParseError } from "../src/Lockfile.js";
 import type { LockfileFormat } from "../src/LockfileFormat.js";
@@ -446,7 +447,7 @@ describe("npm workspace globs", () => {
 	 * The CPU time one parse takes, the minimum of five samples. A GC or
 	 * scheduler pause only ever adds time, so the fastest sample is the
 	 * least-disturbed estimate, and every sample of a super-linear parse is
-	 * slow. CPU time (`process.cpuUsage`) is time the parse spent, not time the
+	 * slow. CPU time (`Growth.cpuNow`) is time the parse spent, not time the
 	 * process was descheduled; vitest runs each file in its own fork, so no
 	 * other test's CPU lands here.
 	 */
@@ -454,14 +455,13 @@ describe("npm workspace globs", () => {
 		Effect.sync(() => {
 			let best = Number.POSITIVE_INFINITY;
 			for (let pass = 0; pass < 5; pass += 1) {
-				const started = process.cpuUsage();
+				const started = Growth.cpuNow();
 				for (let parse = 0; parse < parses; parse += 1) {
 					const exit = Effect.runSyncExit(Lockfile.parse(text, { format: "npm" }));
 					// A unit that silently timed the wrong outcome would pass vacuously.
 					if (Exit.isSuccess(exit) !== (expect === "parses")) assert.fail(`expected the input to ${expect}`);
 				}
-				const used = process.cpuUsage(started);
-				best = Math.min(best, (used.user + used.system) / 1000);
+				best = Math.min(best, Growth.cpuNow() - started);
 			}
 			return best;
 		});
@@ -696,8 +696,9 @@ describe("npm workspace globs", () => {
 				);
 				// The 488 KB pattern that cost 30.9 s through the regex is refused
 				// typed: the strip is linear, and the length ceiling follows it.
-				const huge = yield* cpuMs(at(244_000), 1, "fails");
-				assert.isBelow(huge, 1000, `the 488 KB pattern took ${huge.toFixed(0)}ms`);
+				// No time is asserted for it: the ratio above carries the bound, at any size.
+				const huge = Effect.runSyncExit(Lockfile.parse(at(244_000), { format: "npm" }));
+				assert.isTrue(Exit.isFailure(huge), "the 488 KB pattern is refused");
 			}),
 		120_000,
 	);
