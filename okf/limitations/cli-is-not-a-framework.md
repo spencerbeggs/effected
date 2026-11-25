@@ -3,6 +3,7 @@ type: Limitation
 title: "@effected/cli-kit is not a CLI framework"
 description: The package deliberately carries no argument parsing, no platform package, and no interactive terminal UI.
 status: deprecated
+superseded_by: ../decisions/cli-grows-presentation-layer.md
 x-okfit-bounds: ../modules/cli-kit.md
 tags: [dx]
 generated:
