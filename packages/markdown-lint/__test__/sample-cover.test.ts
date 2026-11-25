@@ -42,6 +42,43 @@ describe("chooseCover", () => {
 		);
 	});
 
+	// A pass costs time in proportion to the bytes it lints, so a cover is chosen by keys gained per byte: three small
+	// fixtures beat the one large fixture that covers the same rules.
+	it("with costs, takes the entry gaining the most keys per unit of cost", () => {
+		const wide = new Map<string, ReadonlySet<string>>([
+			["big.md", new Set(["a", "b", "c"])],
+			["s1.md", new Set(["a"])],
+			["s2.md", new Set(["b"])],
+			["s3.md", new Set(["c"])],
+		]);
+		const costs = new Map([
+			["big.md", 9000],
+			["s1.md", 100],
+			["s2.md", 100],
+			["s3.md", 100],
+		]);
+		assert.deepStrictEqual(chooseCover(wide), ["big.md"]);
+		assert.deepStrictEqual(chooseCover(wide, costs), ["s1.md", "s2.md", "s3.md"]);
+	});
+
+	it("with costs, still breaks a tie by name and refuses a cost that is not positive", () => {
+		const pair = new Map<string, ReadonlySet<string>>([
+			["z.md", new Set(["k"])],
+			["y.md", new Set(["k"])],
+		]);
+		assert.deepStrictEqual(
+			chooseCover(
+				pair,
+				new Map([
+					["z.md", 10],
+					["y.md", 10],
+				]),
+			),
+			["y.md"],
+		);
+		assert.throws(() => chooseCover(pair, new Map([["z.md", 0]])), /cost/);
+	});
+
 	it("chooses nothing when nothing is covered", () => {
 		assert.deepStrictEqual(chooseCover(new Map([["d.md", new Set<string>()]])), []);
 	});

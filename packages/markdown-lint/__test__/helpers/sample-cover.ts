@@ -6,22 +6,32 @@
 import { oracleLint } from "./markdownlint-oracle.js";
 
 /**
- * A greedy set cover: repeatedly the entry covering the most keys not yet covered, a tie going to the name that
- * sorts first, until no entry adds one. The result is sorted by name, so it is the same list whatever the map's order.
+ * A greedy set cover: repeatedly the entry covering the most keys not yet covered per unit of its cost, a tie going
+ * to the name that sorts first, until no entry adds one. Without `costs` every entry costs the same. The result is
+ * sorted by name, so it is the same list whatever the map's order.
+ *
+ * @throws When a cost is not a positive number.
  */
-export const chooseCover = (covers: ReadonlyMap<string, ReadonlySet<string>>): ReadonlyArray<string> => {
+export const chooseCover = (
+	covers: ReadonlyMap<string, ReadonlySet<string>>,
+	costs?: ReadonlyMap<string, number>,
+): ReadonlyArray<string> => {
+	for (const [name, cost] of costs ?? []) {
+		if (!(cost > 0)) throw new Error(`chooseCover: the cost of ${name} must be a positive number, got ${cost}`);
+	}
 	const names = [...covers.keys()].sort();
 	const covered = new Set<string>();
 	const chosen: Array<string> = [];
 	for (;;) {
 		let best: string | undefined;
-		let gain = 0;
+		let rate = 0;
 		for (const name of names) {
 			let adds = 0;
 			for (const key of covers.get(name) ?? []) if (!covered.has(key)) adds += 1;
-			if (adds > gain) {
+			const worth = adds / (costs?.get(name) ?? 1);
+			if (worth > rate) {
 				best = name;
-				gain = adds;
+				rate = worth;
 			}
 		}
 		if (best === undefined) return chosen.sort();
