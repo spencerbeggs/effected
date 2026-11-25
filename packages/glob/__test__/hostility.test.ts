@@ -923,17 +923,35 @@ describe("hostility: GlobSet and kept numeric ranges", () => {
 	}, 30_000);
 
 	it("checks a kept range's extglob frames in one pass over its portion", () => {
-		// 64 alternatives, each 15,000 `@(` frames deep and holding 8,000 kept ranges (58,030 characters): the
-		// extglob check at each range is constant time, so the compile reaches its typed failure as fast as before
-		// the check existed (about 0.5 s). Rescanning the open frames at every range took 5.8 s.
-		const pattern = "{a,b}".repeat(6) + "@(".repeat(15_000) + "{0..99}".repeat(4000);
-		const t = cpuNow();
-		const compiled = GlobPattern.compileResult(pattern);
-		const spent = cpuNow() - t;
+		// 64 alternatives, each `@(` frames deep and holding kept ranges: the extglob check at each range is constant
+		// time, so 4x the frames and ranges cost about 4x (3.3x measured, 204 ms to 675 ms). Rescanning the open frames
+		// at every range costs frames times ranges: 11x (418 ms to 4.6 s). A ratio of CPU times, the best of three
+		// each, so a loaded runner stretches neither side; a fixed wall-clock bound failed on shared CI runners.
+		const pattern = (unit: number) => "{a,b}".repeat(6) + "@(".repeat(unit * 15) + "{0..99}".repeat(unit * 4);
+		const timeAt = (unit: number): number => {
+			const source = pattern(unit);
+			let best = Number.POSITIVE_INFINITY;
+			for (let pass = 0; pass < 3; pass += 1) {
+				const t = cpuNow();
+				GlobPattern.compileResult(source);
+				best = Math.min(best, cpuNow() - t);
+			}
+			return best;
+		};
+		// 15,000 frames and 4,000 kept ranges (58,030 characters) reach the typed failure.
+		const compiled = GlobPattern.compileResult(pattern(1000));
 		assert.isTrue(Result.isFailure(compiled));
 		if (Result.isFailure(compiled)) assert.strictEqual(compiled.failure.reason, "CompileBudgetExceeded");
-		assert.isBelow(spent, 2000);
-	}, 30_000);
+		timeAt(125);
+		const small = timeAt(250);
+		const large = timeAt(1000);
+		const ratio = large / Math.max(small, 1);
+		assert.isBelow(
+			ratio,
+			8,
+			`4x the frames and ranges cost ${ratio.toFixed(1)}x (${small.toFixed(0)} ms -> ${large.toFixed(0)} ms)`,
+		);
+	}, 60_000);
 
 	it("compiles or fails typed, and then matches without throwing, over hostile range mixes", () => {
 		const pieces = [
