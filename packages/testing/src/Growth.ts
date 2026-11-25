@@ -34,6 +34,11 @@ const MAX_REPETITIONS = 200_000;
 const SAMPLING_BUDGET_MS = 1000;
 /** A ratio this many times its bound is not measured again: no retry brings it back under. */
 const HOPELESS = 8;
+/**
+ * A first run this many times slower than every later one did its work once and cached it. A compiler warming up
+ * does not make a run of five milliseconds or more fifty times faster; a cache does.
+ */
+const CACHED = 50;
 
 const UNMEASURED =
 	"the workload could not be measured: it stays under 5 ms of CPU after 200,000 repetitions, so its ratio would " +
@@ -60,12 +65,14 @@ const batch = (run: () => unknown, repetitions: number): number => {
 	return elapsed;
 };
 
-/** The repetition count at which one batch of `run` reaches the floor. */
-const calibrate = (run: () => unknown): number => {
+/** The repetition count at which one batch of `run` reaches the floor, and what the very first run cost. */
+const calibrate = (run: () => unknown): { readonly repetitions: number; readonly firstMs: number } => {
 	let repetitions = 1;
+	let firstMs = Number.NaN;
 	for (;;) {
 		const elapsed = batch(run, repetitions);
-		if (elapsed >= FLOOR_MS) return repetitions;
+		if (Number.isNaN(firstMs)) firstMs = elapsed;
+		if (elapsed >= FLOOR_MS) return { repetitions, firstMs };
 		if (repetitions >= MAX_REPETITIONS) throw new Error(`Growth: ${UNMEASURED}`);
 		const wanted = elapsed > 0 ? Math.ceil((repetitions * FLOOR_MS * 1.25) / elapsed) : repetitions * 16;
 		repetitions = Math.min(MAX_REPETITIONS, Math.max(repetitions * 2, wanted));
@@ -98,11 +105,17 @@ const measure = (
 		throw new Error(`Growth: factor must be a whole number of at least 2, got ${factor}`);
 	}
 	if (!(options.bound > 1)) throw new Error(`Growth: bound must be over 1, got ${options.bound}`);
+	// One run on an input of its own, thrown away: whatever the first run of this work in the process pays once
+	// (modules, tables built on first use, a cold compiler) is paid here, so the first run of each measured input
+	// below is slower than its later runs only if that input caches its own answer.
+	kept[0] = make(options.from)();
 	const small = make(options.from);
 	const large = make(options.from * factor);
 	// Calibration is also the warm-up: each thunk has run to its floor before any sample is kept.
-	const smallRepetitions = calibrate(small);
-	const largeRepetitions = calibrate(large);
+	const smallCalibration = calibrate(small);
+	const largeCalibration = calibrate(large);
+	const smallRepetitions = smallCalibration.repetitions;
+	const largeRepetitions = largeCalibration.repetitions;
 	let smallMs = Number.POSITIVE_INFINITY;
 	let largeMs = Number.POSITIVE_INFINITY;
 	let ratio = Number.NaN;
@@ -111,6 +124,25 @@ const measure = (
 		largeMs = Math.min(largeMs, fastest(large, largeRepetitions));
 		ratio = largeMs / smallMs;
 		if (!Number.isFinite(ratio) || !(smallMs > 0)) throw new Error(`Growth: ${UNMEASURED}`);
+		for (const [firstMs, laterMs] of [
+			[smallCalibration.firstMs, smallMs],
+			[largeCalibration.firstMs, largeMs],
+		] as const) {
+			if (firstMs >= FLOOR_MS && laterMs * CACHED < firstMs) {
+				throw new Error(
+					`Growth: the work is cached after its first run (${firstMs.toFixed(3)} ms, then ${laterMs.toFixed(3)} ms), ` +
+						"so later runs measure the cache and not the work. Build the work so every run does it.",
+				);
+			}
+		}
+		// A larger input at under half the cost of the smaller is not growth being measured: the two sizes did
+		// different things.
+		if (ratio < 0.5) {
+			throw new Error(
+				`Growth: the workload could not be measured: ${factor}x the size cost ${ratio.toFixed(2)}x the time ` +
+					`(${smallMs.toFixed(3)} ms -> ${largeMs.toFixed(3)} ms), so the sizes are not doing the same work.`,
+			);
+		}
 		if (ratio < options.bound || ratio >= options.bound * HOPELESS) break;
 	}
 	return {
@@ -158,7 +190,9 @@ const assertOrder = (
  * named `.hostile.test.ts`, which runs it one file at a time.
  *
  * The work `make` returns should return what it computed: its result is kept, so the optimizer cannot drop the
- * call. Choose the smallest `from` whose run does real work, tens of thousands of characters for a scan: a short run is
+ * call. It must do its work on every run: work cached after the first run is refused, as is a larger size that
+ * costs under half the smaller. `make` is called once more than the two sizes measured, for a warm-up run on an
+ * input of its own that takes the process's one-time start-up cost. Choose the smallest `from` whose run does real work, tens of thousands of characters for a scan: a short run is
  * repeated until it can be timed, so a larger input adds no accuracy, and it makes a quadratic regression take
  * minutes to report where a small one fails in seconds.
  */

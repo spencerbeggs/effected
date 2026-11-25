@@ -58,6 +58,51 @@ describe("Growth.assertOrder", () => {
 		assert.throws(() => Growth.assertOrder(() => () => undefined, { from: 1, order: 1 }), /could not be measured/);
 	});
 
+	// Work that caches its answer does the real work once, on the first call. Every run after that costs the same
+	// small amount at both sizes, and a ratio of one looks better than linear: the check must refuse it, not pass it.
+	it("fails when the work is only done on the first call: a memoized workload", { timeout: 60_000 }, () => {
+		const memoized = (size: number): (() => unknown) => {
+			let cached: number | undefined;
+			return () => {
+				if (cached === undefined) {
+					quadratic(size);
+					cached = size;
+				} else {
+					// What reading a cache costs: a little, and the same whatever the size.
+					const until = Growth.cpuNow() + 0.05;
+					while (Growth.cpuNow() < until) linear(100);
+				}
+				return cached;
+			};
+		};
+		assert.throws(() => Growth.assertOrder(memoized, { from: 2_000, order: 1 }), /cached after its first run/);
+	});
+
+	// The first run of anything in a process pays for start-up: modules, tables built on first use, a cold compiler.
+	// That is not a cache, and it must not be mistaken for one, or every cheap check would be refused.
+	it("does not take a one-time start-up cost for a cache", { timeout: 60_000 }, () => {
+		let started = false;
+		const result = Growth.assertOrder(
+			(size) => () => {
+				if (!started) {
+					started = true;
+					quadratic(2_000);
+				}
+				linear(size);
+			},
+			{ from: 20_000, order: 1 },
+		);
+		assert.isBelow(result.ratio, 10);
+	});
+
+	// A larger input that costs less than half the smaller one is not a measurement of growth at all.
+	it("fails when the larger size reads as cheaper than the smaller", { timeout: 60_000 }, () => {
+		assert.throws(
+			() => Growth.assertOrder((size) => () => linear(size > 100_000 ? 20_000 : 400_000), { from: 100_000, order: 1 }),
+			/could not be measured/,
+		);
+	});
+
 	it("refuses a factor other than 4 without a bound", () => {
 		assert.throws(
 			() => Growth.assertOrder((size) => () => linear(size), { from: 1000, factor: 8, order: 1 }),
@@ -73,7 +118,7 @@ describe("Growth.assertOrder", () => {
 });
 
 describe("Growth.measure", () => {
-	it("reports both timings and builds each input once", { timeout: 60_000 }, () => {
+	it("reports both timings, and builds the inputs it measures once each", { timeout: 60_000 }, () => {
 		const built: Array<number> = [];
 		const result = Growth.measure(
 			(size) => {
@@ -82,7 +127,8 @@ describe("Growth.measure", () => {
 			},
 			{ from: 200_000, bound: 10 },
 		);
-		assert.deepStrictEqual(built, [200_000, 800_000]);
+		// The small size is built twice: once for a warm-up run that is thrown away, once to measure.
+		assert.deepStrictEqual(built, [200_000, 200_000, 800_000]);
 		assert.isAbove(result.smallMs, 0);
 		assert.isAbove(result.largeMs, result.smallMs);
 		assert.strictEqual(result.ratio, result.largeMs / result.smallMs);
