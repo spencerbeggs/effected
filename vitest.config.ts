@@ -6,6 +6,7 @@ import { defineConfig } from "vitest/config";
 import {
 	DEPTH_SUFFIXES,
 	isHostile,
+	isolatesFiles,
 	parseDepth,
 	parseTier,
 	projectSelection,
@@ -18,9 +19,9 @@ import {
  * @remarks
  * `EFFECTED_TEST_TIER` splits the suite, and `lib/scripts/test-tiers.ts` holds the rules. `fast` (what `ci:test`
  * runs, with coverage and its thresholds) excludes these files and the hostile ones from discovery itself rather
- * than through a tag filter, so the run still counts as a full run and keeps its coverage thresholds. `slow` and
- * then `hostile` (what `ci:test:slow` runs in `.github/workflows/slow-tests.yml`, coverage off) run only these and
- * only the hostile files. `full` (`ci:test:full`) runs only the depth-aware files at full depth. Unset, every local
+ * than through a tag filter, so the run still counts as a full run and keeps its coverage thresholds. `slow`
+ * (`ci:test:slow`) and `hostile` (`ci:test:hostile`), each a job of `.github/workflows/slow-tests.yml` with
+ * coverage off, run only these and only the hostile files. `full` (`ci:test:full`) runs only the depth-aware files at full depth. Unset, every local
  * run, runs everything but the hostile files.
  *
  * A file earns a place here by taking about 20 s or more on a CI runner, as the heavy ones below did in the Effect
@@ -86,6 +87,9 @@ export default async () => {
 				...inherited.test,
 				...(selection.exclude ? { exclude: [...(inherited.test?.exclude ?? []), ...selection.exclude] } : {}),
 				...(selection.include ? { include: [...selection.include] } : {}),
+				// A project's files share a process where that is safe and worth it: starting one per file was 38% of the
+				// pull request run's worker time (#1415). Which runs and which projects is in lib/scripts/test-tiers.ts.
+				isolate: isolatesFiles(tier, input.name),
 				env: {
 					...inherited.test?.env,
 					...selection.env,

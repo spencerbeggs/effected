@@ -2,7 +2,9 @@ import { assert, describe, it } from "vitest";
 import {
 	DEPTH_SUFFIXES,
 	HOSTILE_SUFFIX,
+	NEEDS_FRESH_PROCESS,
 	TIERS,
+	isolatesFiles,
 	parseDepth,
 	parseTier,
 	projectSelection,
@@ -56,6 +58,32 @@ describe("validateLists", () => {
 	// The suffix already places a hostile file; listed as slow too, it would run in two tiers.
 	it("refuses a hostile file in the slow list", () => {
 		assert.throws(() => validateLists({ slow: ["packages/a/__test__/a.hostile.test.ts"], exists }), /hostile/);
+	});
+});
+
+describe("isolatesFiles", () => {
+	// Starting a process for every test file was 38% of the pull request run's worker time (#1415): a thousand
+	// files each loading the same modules. Files of one project now share a process in the runs with a coverage
+	// gate to hold, unless the project's tests assert on what a fresh process has or has not loaded.
+	it("shares a process between a project's files in the fast tier and in a run with no tier", () => {
+		for (const tier of ["fast", undefined] as const) {
+			assert.isFalse(isolatesFiles(tier, "@effected/glob"), String(tier));
+		}
+	});
+
+	it("keeps a file to its own process in the projects that need a fresh one", () => {
+		assert.isAbove(NEEDS_FRESH_PROCESS.size, 0);
+		for (const project of NEEDS_FRESH_PROCESS) {
+			for (const tier of ["fast", undefined] as const) assert.isTrue(isolatesFiles(tier, project), project);
+		}
+	});
+
+	// A growth check reads the CPU time of its process, so nothing else may run in that process; the slow tier's
+	// e2es spawn and pack; the full tier is rare and long. None of them is worth the risk for the time.
+	it("keeps a file to its own process in the hostile, slow and full tiers", () => {
+		for (const tier of ["hostile", "slow", "full"] as const) {
+			assert.isTrue(isolatesFiles(tier, "@effected/glob"), tier);
+		}
 	});
 });
 

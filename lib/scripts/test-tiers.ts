@@ -70,6 +70,30 @@ export const validateLists = (input: {
 	}
 };
 
+/**
+ * The projects whose test files each need a process of their own, because they assert on what a fresh process has
+ * or has not loaded.
+ *
+ * @remarks
+ * Measured, as the build list is: with file isolation off, the fast tier failed in exactly these two. cli-kit's UI
+ * tests assert that Ink is not loaded until a screen needs it, which is only true of a process that has not loaded
+ * it for an earlier file; the bundler's tests hold module state the same way. To measure it again, run the fast
+ * tier with `--no-isolate` and read what fails.
+ */
+export const NEEDS_FRESH_PROCESS: ReadonlySet<string> = new Set(["@effected/bundler", "@effected/cli-kit"]);
+
+/**
+ * Whether each of `project`'s test files gets a process of its own under `tier`.
+ *
+ * @remarks
+ * A process per file is the safe default and the costly one: every file loads the same modules again. In the fast
+ * tier and in a run with no tier, a project's files share a process unless the project needs a fresh one. The
+ * hostile tier always isolates, since a growth check reads the CPU time of its own process, and so do the slow and
+ * full tiers, where the time is not worth the risk.
+ */
+export const isolatesFiles = (tier: Tier | undefined, project: string): boolean =>
+	tier === "hostile" || tier === "slow" || tier === "full" || NEEDS_FRESH_PROCESS.has(project);
+
 /** What one project runs under a tier. */
 export interface ProjectSelection {
 	readonly include?: ReadonlyArray<string>;
