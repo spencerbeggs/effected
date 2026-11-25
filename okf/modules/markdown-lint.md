@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T23:47:38Z
+  at: 2026-11-25T01:07:31Z
 integrity:
   generated:
-    body: 1ded47b395c16544
+    body: 7d72541edcb7c078
 ---
 
 # `@effected/markdown-lint`
@@ -865,6 +865,20 @@ plain synchronous function; no logging, no metrics.
   `!`, doubling with each `a`) takes that time in the kit too. The setting
   is the config author's, not the document's. Telling such a pattern apart
   syntactically misreads safe ones, so the kit does not try.
+- **MD054's inline fix doubles an escape already written.** Rewriting a
+  reference or a disallowed form as an inline link or image, MD054 escapes
+  `[` and `]` in the label and `(` and `)` in the destination, exactly as
+  markdownlint's `md054.mjs` does, and escapes no backslash. So a label
+  holding an escaped bracket (`[a \] b][ref]` with `[ref]: /u`, under
+  `full: false` with inline allowed) is fixed to `[a \\] b](/u)`: the
+  escaped backslash closes the label early and the link is lost. An image
+  label (`![a \] b][ref]`) loses its image the same way, and a destination
+  written with escaped parentheses (`[ref]: /u\(v\)`) is fixed to
+  `(/u\\(v\\))`, which changes the URL from `/u(v)` to `/u\(v\)`. It is
+  kept for parity, not a divergence: both engines apply the same text,
+  pinned in `MD054.test.ts`. The two CodeQL "incomplete string escaping"
+  alerts on those escaping lines in `MD054.ts` are dismissed for this
+  reason; moving the lines could reopen them.
 - Fixes from several findings can meet (MD022's two headings asking for the
   blank line between them). `MarkdownEdit.applyAll` applies every edit and
   refuses an overlap; apply findings with `MarkdownLint.applyFixes`, which
