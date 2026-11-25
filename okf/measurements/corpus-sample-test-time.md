@@ -4,7 +4,7 @@ title: Sampling markdown-lint's corpus cut its local file time from 1,675 s to 1
 description: "On PR 1414 the Run Tests step took 38 minutes, 3,640 of 4,186 s of file time in markdown-lint. An 11-fixture corpus sample ran in 160 s against 1,675 s locally (9.6%, where the 240 s CI gate needs 6.6%) with source coverage within a point of the full corpus; on PR 1419 the Run Tests step then took 9 min 53 s (3 min 5 s build, 401 s vitest) with markdown-lint at 252 s."
 status: draft
 stale_after: 2027-02-25T00:00:00Z
-justifies:
+x-okfit-justifies:
   - ../decisions/vitest-test-tiers.md
 tags:
   - testing
@@ -18,7 +18,7 @@ sources:
     resource: local vitest runs on the branch that added the corpus sample, one machine
     last_modified: 2026-11-24T00:00:00Z
   - id: pr-1419-runs
-    resource: GitHub Actions runs for PR 1419, the Silk and Slow Tests workflows on commits 2b20b0008 and 0a4462447
+    resource: GitHub Actions runs for PR 1419, the Silk and Slow Tests workflows on commits 2b20b0008, 0a4462447 and 886319109
     last_modified: 2026-11-25T00:00:00Z
   - id: choose-sample
     resource: ../../packages/markdown-lint/__test__/helpers/choose-sample.ts
@@ -30,10 +30,10 @@ sources:
     last_modified: 2026-11-24T00:00:00Z
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-25T19:56:13Z
-integrity:
+  at: 2026-11-25T20:25:49Z
+x-okfit-integrity:
   generated:
-    body: 61da182a17be325c
+    body: 3afa9b312a5a93e6
 ---
 
 # Sampling markdown-lint's corpus cut its local file time from 1,675 s to 160 s, short of the 240 s CI gate's proportion
@@ -85,7 +85,7 @@ The hostile tier locally: 335 tests across 13 packages in about three minutes (3
 
 ## The pull request's own runs
 
-Two runs on PR 1419, on GitHub-hosted `ubuntu-latest` runners with four cores, measured 2026-11-25.[^pr-1419-runs] The first is the branch as it was opened. The second follows three changes made because of the first: each tier builds only the packages its tests read built output from, the hostile tier has a job of its own, and in the fast tier a project's test files share a process.
+Three runs on PR 1419, on GitHub-hosted `ubuntu-latest` runners with four cores, measured 2026-11-25.[^pr-1419-runs] The first is the branch as it was opened. The second and third follow three changes made because of the first: each tier builds only the packages its tests read built output from, the hostile tier has a job of its own, and in the fast tier a project's test files share a process.
 
 | Measure | PR 1414 baseline | PR 1419, first run | PR 1419, after the three changes |
 | --- | --- | --- | --- |
@@ -100,7 +100,9 @@ Two runs on PR 1419, on GitHub-hosted `ubuntu-latest` runners with four cores, m
 
 The Code Validation job that holds the Run Tests step took 16 min 10 s in the second run. Two minutes of it come before the tests (58 s of checkout) and 4 min 20 s after, in the shell test step, which this branch does not change.
 
-Against the budget: the Run Tests step is inside 15 minutes and the vitest phase, at 6 min 41 s, is inside 7. markdown-lint at 252 s is 12 s over its 240 s gate.
+A third run, at commit `886319109` after main was merged in, took 6 min 56 s for the step: a 2 min 24 s build with nothing cached and 268 s of vitest, with 504 s of summed file time and markdown-lint at 164 s. It is the same test configuration as the second, so the spread between the two (761 s against 504 s for the same tests) is the runner; that merge also brought vitest 5.1.2.
+
+Against the budget: the Run Tests step is inside 15 minutes and the vitest phase, at 6 min 41 s and 4 min 28 s, is inside 7. markdown-lint meets its 240 s gate on the faster runner (164 s) and misses it by 12 s on the slower (252 s).
 
 Each of the first three hostile runs on the Linux runner failed one growth check that passes on macOS, a different one each time. Two measured across a size where the memory a run holds costs more than the run, and one timed a matcher that answers from a cache. The Hostile Tests job now prints the checks nearest their bounds on every run, so the next one is read before it fails.
 
@@ -123,4 +125,4 @@ It rules in the depth axis of [the test tiers](../decisions/vitest-test-tiers.md
 [^choose-sample]: `packages/markdown-lint/__test__/helpers/choose-sample.ts` — the header comment records the coverage at both depths and what the wider sample cost.
 [^corpus-sample]: `packages/markdown-lint/__test__/helpers/corpus-sample.ts` — the committed sample.
 [^owner-design]: The design the repository owner approved on 2026-11-24: the 15-minute step budget, the 7-minute vitest budget, the 240 s gate and the one-point coverage rule above it.
-[^pr-1419-runs]: GitHub Actions, the Silk workflow's Run Tests step and the Slow Tests workflow's jobs on PR 1419, at commits `2b20b0008` and `0a4462447`.
+[^pr-1419-runs]: GitHub Actions, the Silk workflow's Run Tests step and the Slow Tests workflow's jobs on PR 1419, at commits `2b20b0008`, `0a4462447` and `886319109`.
