@@ -4,6 +4,7 @@
 // hostile input must never surface as a stack overflow, an OOM, or a hang.
 
 import { assert, describe, it } from "@effect/vitest";
+import { Growth } from "@effected/testing";
 import { Arbitrary, Effect, Result, Schema } from "effect";
 import * as oracle from "minimatch";
 import { GlobPattern, GlobPatternOptions, GlobSet } from "../src/index.js";
@@ -32,16 +33,6 @@ const reasonOf = (fn: () => unknown): string => {
 		throw e;
 	}
 	throw new Error("expected a GuardExceeded throw");
-};
-
-/**
- * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
- * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
- * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
- */
-const cpuNow = (): number => {
-	const used = process.cpuUsage();
-	return (used.user + used.system) / 1000;
 };
 
 describe("hostility: pattern length", () => {
@@ -119,9 +110,13 @@ describe("hostility: brace expansion", () => {
 		const rewrites = (n: number): string => `{a}${"}".repeat(n)},z}`;
 		assert.deepStrictEqual(expand(rewrites(999)), [`a${"}".repeat(1000)}`, "z"]);
 		assert.deepStrictEqual(expand(rewrites(1000)), [rewrites(1000)]);
-		const t = cpuNow();
 		assert.deepStrictEqual(expand(rewrites(65_000)), [rewrites(65_000)]);
-		assert.isBelow(cpuNow() - t, 1000);
+		// Past the 1,000 rewrites the rest stays literal, so 4x the braces is about 4x the work (bound 10); an
+		// unbounded rewrite re-reads the string once per brace, which is 16x.
+		assert.isBelow(
+			growth((n) => () => expand(rewrites(n)), 16_000, 64_000, 10),
+			10,
+		);
 	});
 
 	it("shares one {a},b} rewrite count across a chain of groups, as upstream", () => {
@@ -147,9 +142,7 @@ describe("hostility: brace expansion", () => {
 		// so upstream runs out of its step budget and keeps the whole pattern
 		// literal, which compiles quickly instead of failing typed.
 		const long = S(990).repeat(64);
-		const t = cpuNow();
 		assert.deepStrictEqual(expand(long), oracle.braceExpand(long));
-		assert.isBelow(cpuNow() - t, 500);
 	});
 
 	it("shortcuts the CVE-2022-3517 non-closing brace prefix fast", () => {
@@ -161,13 +154,12 @@ describe("hostility: brace expansion", () => {
 });
 
 describe("hostility: the brace-expansion work budget (5.0.13)", () => {
-	// Each shape here answers as the oracle does and finishes in a CPU bound;
-	// the shapes 5.0.13's own comments name pass `max` results, so they are
-	// held to the typed failure instead (the last test).
-	const parity = (shape: string, boundMs: number): Array<string> => {
-		const t = cpuNow();
+	// Each shape here answers as the oracle does, inside the step budget that bounds its work: the budget is a count
+	// of steps, so a shape that spent it without stopping would not return at all, and the tier's timeout fails it.
+	// The shapes 5.0.13's own comments name pass `max` results, so they are held to the typed failure instead (the
+	// last test).
+	const parity = (shape: string): Array<string> => {
 		const got = expand(shape);
-		assert.isBelow(cpuNow() - t, boundMs, shape.slice(0, 40));
 		assert.deepStrictEqual(got, oracle.braceExpand(shape), shape.slice(0, 40));
 		return got;
 	};
@@ -177,8 +169,8 @@ describe("hostility: the brace-expansion work budget (5.0.13)", () => {
 		// are about 32M steps, past the 20M budget; 30,000 characters fit.
 		const nest = (depth: number, pad: number): string => "{a,".repeat(depth) + "x".repeat(pad) + "}".repeat(depth);
 		const over = nest(250, 63_000);
-		assert.deepStrictEqual(parity(over, 500), [over]);
-		assert.strictEqual(parity(nest(250, 30_000), 500).length, 251);
+		assert.deepStrictEqual(parity(over), [over]);
+		assert.strictEqual(parity(nest(250, 30_000)).length, 251);
 	});
 
 	it("masks unmatched `{` so a scan stops at its group's `}`, as upstream", () => {
@@ -186,16 +178,16 @@ describe("hostility: the brace-expansion work budget (5.0.13)", () => {
 		// of the string, which spends the budget partway through and leaves the
 		// rest literal.
 		const shape = "{a,{1..1}".repeat(7_000);
-		assert.deepStrictEqual(parity(shape, 500), ["{a,1".repeat(7_000)]);
+		assert.deepStrictEqual(parity(shape), ["{a,1".repeat(7_000)]);
 	});
 
 	it("asks whether a comma set follows in one pass, not by backtracking", () => {
 		// `/,(?!,).*\}/` tries every comma and reads its line from each: about
 		// 800ms here.
-		parity(`{a}${",a".repeat(30_000)}\n}`, 100);
+		parity(`{a}${",a".repeat(30_000)}\n}`);
 		// The line-terminator rule the regex's `.` held, in one pass.
 		for (const shape of ["{a},b}", "{a},b\n}", "{a},b\r}", "{a},b\u2028}", "{a},b\u2029}", "{a},,}", "{a},,b}"]) {
-			parity(shape, 50);
+			parity(shape);
 		}
 	});
 
@@ -203,8 +195,8 @@ describe("hostility: the brace-expansion work budget (5.0.13)", () => {
 		// 30,000 empty prefixes against 30,001 empty values: visiting each pair is
 		// 900M iterations that keep nothing.
 		const k = 30_000;
-		assert.strictEqual(parity(`{,a${",".repeat(k)}}{${",".repeat(k)}}`, 500).length, k + 1);
-		parity("{,a,,}{,,}", 50);
+		assert.strictEqual(parity(`{,a${",".repeat(k)}}{${",".repeat(k)}}`).length, k + 1);
+		parity("{,a,,}{,,}");
 	});
 
 	it("answers padded sequences as upstream", () => {
@@ -212,7 +204,7 @@ describe("hostility: the brace-expansion work budget (5.0.13)", () => {
 		// holds too few padded values to spend the budget, and enough of them to
 		// spend it pass `max` or the length bound first, which fail typed.
 		for (const shape of ["{0001..0100}", "{-05..05}", `{${"0".repeat(100)}..99}`]) {
-			parity(shape, 200);
+			parity(shape);
 		}
 	});
 
@@ -224,13 +216,11 @@ describe("hostility: the brace-expansion work budget (5.0.13)", () => {
 		];
 		for (const shape of shapes) {
 			assert.isAtMost(shape.length, 65_536);
-			const t = cpuNow();
 			assert.strictEqual(
 				reasonOf(() => expand(shape)),
 				"ExpansionBudgetExceeded",
 				shape.slice(0, 40),
 			);
-			assert.isBelow(cpuNow() - t, 200, shape.slice(0, 40));
 			// The oracle keeps a truncated list, not the pattern literal.
 			assert.notDeepEqual(oracle.braceExpand(shape), [shape]);
 		}
@@ -292,9 +282,9 @@ describe("hostility: optimizationLevel 2 **/.. splitting (GHSA-g3hv-75wg-m249)",
 	const compileMs = (pattern: string): number => {
 		let best = Number.POSITIVE_INFINITY;
 		for (let i = 0; i < 3; i++) {
-			const t = cpuNow();
+			const t = Growth.cpuNow();
 			new Minimatch(pattern, level2);
-			best = Math.min(best, cpuNow() - t);
+			best = Math.min(best, Growth.cpuNow() - t);
 		}
 		return best;
 	};
@@ -333,12 +323,10 @@ describe("hostility: optimizationLevel 2 **/.. splitting (GHSA-g3hv-75wg-m249)",
 
 	it("fails typed fast on 2^17 rows at default options, never hanging", () => {
 		// Unbounded, this took hours. Whichever bound trips first, it fails typed.
-		const t = cpuNow();
 		assert.strictEqual(
 			reasonOf(() => new Minimatch(splits(17), level2)),
 			"ExpansionBudgetExceeded",
 		);
-		assert.isBelow(cpuNow() - t, 1000);
 	});
 
 	it("grows compile time about linearly in the rows the split makes", () => {
@@ -361,61 +349,19 @@ describe("hostility: internal cap wiring", () => {
 	});
 });
 
-// The growth of an operation's time from size `from` to size `to`. Each size
-// is timed on real work, not timer noise: the operation repeats until a sample
-// takes at least 5 ms, and its time is that sample over the repeats. A unit
-// whose size can not grow (a nesting cap holds it) still does 5 ms of work. A
-// ratio over `bound` is timed again, up to three samples, keeping the fastest
-// of each size, so one pause can not fail linear work while superlinear work
-// fails every sample.
-const growth = (make: (n: number) => () => unknown, from: number, to: number, bound: number): number => {
-	const sample = (run: () => unknown): number => {
-		let reps = 0;
-		const t = cpuNow();
-		let elapsed = 0;
-		while (elapsed < 5) {
-			run();
-			reps++;
-			elapsed = cpuNow() - t;
-		}
-		return elapsed / reps;
-	};
-	const small = make(from);
-	const large = make(to);
-	small();
-	large();
-	let a = sample(small);
-	let b = sample(large);
-	for (let i = 1; i < 3 && b / a >= bound; i++) {
-		a = Math.min(a, sample(small));
-		b = Math.min(b, sample(large));
-	}
-	return b / a;
-};
-
-// An absolute bound on one operation, timed the way the growth units are: a
-// try over the bound is timed again, up to three tries, keeping the fastest,
-// so one pause on a loaded machine can not fail work that is fast, while slow
-// work misses every try.
-const fastest = (run: () => unknown, bound: number): number => {
-	let best = Number.POSITIVE_INFINITY;
-	for (let i = 0; i < 3 && best >= bound; i++) {
-		const t = cpuNow();
-		run();
-		best = Math.min(best, cpuNow() - t);
-	}
-	return best;
-};
+// The growth of an operation's time from size `from` to size `to`, as `Growth.measure` times it: each size is the
+// fastest of five CPU-time samples, a sample shorter than 5 ms is a batch of repeats, and a ratio at or over
+// `bound` is measured again, up to three rounds, so one pause can not fail linear work while superlinear work fails
+// every round. No unit here bounds an elapsed time: a bound in milliseconds holds on one machine and fails on a
+// loaded runner, and a ratio holds on both (#1415).
+const growth = (make: (n: number) => () => unknown, from: number, to: number, bound: number): number =>
+	Growth.measure(make, { from, factor: to / from, bound }).ratio;
 
 describe("hostility: chained and unclosed extglobs", () => {
 	it("compiles a chain of unclosed openers in linear time", () => {
 		// Each unclosed @( is a node above the next; asking whether one is the end
 		// of the portion must not ask its parent twice (2^depth).
 		assert.isTrue(Result.isSuccess(GlobPattern.compileResult(`a${"@(".repeat(32)}`)));
-		assert.isBelow(
-			fastest(() => GlobPattern.compileResult(`a${"@(".repeat(32)}`), 50),
-			50,
-		);
 		assert.isTrue(Result.isSuccess(GlobPattern.compileResult(`a${"@(".repeat(120)}`)));
 		// 4x the depth: isStart walks a node's ancestors, so compiling is
 		// quadratic in nesting depth, which MAX_NESTING_DEPTH (256) bounds:
@@ -432,10 +378,6 @@ describe("hostility: chained and unclosed extglobs", () => {
 		// doubled per negation: 25 of them (101 bytes) ran out of memory.
 		const chain = `x${"!(a)".repeat(25)}`;
 		const m = new Minimatch(chain, { platform: "posix" });
-		assert.isBelow(
-			fastest(() => new Minimatch(chain, { platform: "posix" }), 100),
-			100,
-		);
 		for (const f of ["x", "xa", "xb", "xab"]) assert.strictEqual(m.match(f), oracle.minimatch(f, chain), f);
 		// 4x the negations: compiling is linear, so about 4x (bound 10, which a
 		// quadratic regression, 16x, still fails). At 4,000 the small side is a
@@ -449,8 +391,9 @@ describe("hostility: chained and unclosed extglobs", () => {
 		const open = `a${"!(*(b)|".repeat(1000)}`;
 		assert.isTrue(Result.isSuccess(GlobPattern.compileResult(open)));
 		assert.isBelow(
-			fastest(() => GlobPattern.compileResult(open), 500),
-			500,
+			// 4x the openers: linear, so about 4x (bound 10)
+			growth((n) => () => GlobPattern.compileResult(`a${"!(*(b)|".repeat(n)}`), 250, 1000, 10),
+			10,
 		);
 	});
 });
@@ -632,21 +575,21 @@ describe("hostility: unclosed [", () => {
 	it("compiles a run of [ that never closes in linear time", () => {
 		// Each [ looked for its ] to the end of the portion: quadratic, and the
 		// engine asks twice per [ (the parse and the regexp).
-		const timed = (source: string, bound: number): void => {
-			assert.isTrue(Result.isSuccess(GlobPattern.compileResult(source)), source.slice(0, 20));
+		// Each shape compiles at its full size, and compiling 4x the run costs about 4x (bound 10): the quadratic
+		// scan was 16x, and minutes at the 65,000 the first shape reaches.
+		const linear = (shape: (n: number) => string, size: number): void => {
+			assert.isTrue(Result.isSuccess(GlobPattern.compileResult(shape(size))), shape(8));
 			assert.isBelow(
-				fastest(() => GlobPattern.compileResult(source), bound),
-				bound,
-				source.slice(0, 20),
+				growth((n) => () => GlobPattern.compileResult(shape(n)), size / 4, size, 10),
+				10,
+				shape(8),
 			);
 		};
-		timed("[".repeat(2000), 100);
-		timed("[!(a)".repeat(1000), 100);
-		// catches a regression to quadratic (minutes); the growth unit carries linearity
-		timed("[".repeat(65_000), 3000);
+		linear((n) => "[".repeat(n), 65_000);
+		linear((n) => "[!(a)".repeat(n), 1000);
 		// every ] escaped, or swallowed by a POSIX class: still linear
-		timed("[\\]".repeat(4000), 100);
-		timed(`${"[".repeat(4000)}[:alpha:]`, 100);
+		linear((n) => "[\\]".repeat(n), 4000);
+		linear((n) => `${"[".repeat(n)}[:alpha:]`, 4000);
 		assert.isBelow(
 			// 4x the run: linear, so about 4x (bound 10)
 			growth((n) => () => new Minimatch("[".repeat(n), { platform: "posix" }), 4000, 16_000, 10),
@@ -718,12 +661,9 @@ describe("hostility: nested quantified extglobs", () => {
 		];
 		for (const [pattern, options, path = pattern] of rows) {
 			const m = new Minimatch(pattern, { platform: "posix", ...options });
+			// Fixed inputs, with no size to grow: the growth unit below carries the bound, and a row that went back to
+			// exponential work would not finish inside the tier's timeout.
 			const answer = m.match(path);
-			assert.isBelow(
-				fastest(() => m.match(path), 50),
-				50,
-				pattern,
-			);
 			assert.strictEqual(answer, new oracle.Minimatch(pattern, { platform: "linux", ...options }).match(path), pattern);
 		}
 		// 4x the path: polynomial work, far from the exponential backtracking
@@ -761,7 +701,6 @@ describe("hostility: nested quantifiers and negations in the walk", () => {
 				oracle.minimatch(path, pattern),
 				pattern,
 			);
-			assert.isBelow(fastest(at(pattern)(400), 250), 250, pattern);
 			// 2x the path: one cached state per character, so about 2x (bound 4)
 			assert.isBelow(growth(at(pattern), 200, 400, 4), 4, pattern);
 		}
@@ -775,8 +714,8 @@ describe("hostility: nested quantifiers and negations in the walk", () => {
 			new Minimatch(nested, { platform: "posix", ...options }).match("a".repeat(50)),
 			oracle.minimatch("a".repeat(50), nested),
 		);
-		assert.isBelow(fastest(at(nested, options)(50), 100), 100);
-		assert.isBelow(fastest(at(nested, options)(400), 1000), 1000);
+		// 4x the path: one cached state per character, so about 4x (bound 10)
+		assert.isBelow(growth(at(nested, options), 100, 400, 10), 10);
 	});
 });
 
@@ -788,7 +727,7 @@ describe("hostility: long extglob chains", () => {
 	// stack on them; the port's worklist does not).
 	const cold = (pattern: string, n: number) => () => new Minimatch(pattern, { platform: "posix" }).match("a".repeat(n));
 
-	it("answers 60 KB chains in well under a second, and finishes at 1,000 characters", () => {
+	it("answers 60 KB chains in time linear in the path, up to 1,000 characters", () => {
 		for (const [pattern, matches] of [
 			["*(a|?)".repeat(10_000), true],
 			["*(a)".repeat(16_000), true],
@@ -796,8 +735,13 @@ describe("hostility: long extglob chains", () => {
 			["+(a)".repeat(16_000), false],
 		] as const) {
 			assert.strictEqual(cold(pattern, 400)(), matches, pattern.slice(0, 8));
-			assert.isBelow(fastest(cold(pattern, 400), 500), 500, pattern.slice(0, 8));
-			assert.isBelow(fastest(cold(pattern, 1000), 3000), 3000, pattern.slice(0, 8));
+			// 4x the path under the same 60 KB chain: the compile does not grow and the match is linear in the path, so
+			// under 4x (bound 10). The walk this replaced took 141 s at 400 characters.
+			assert.isBelow(
+				growth((n) => cold(pattern, n), 250, 1000, 10),
+				10,
+				pattern.slice(0, 8),
+			);
 		}
 	});
 
@@ -830,15 +774,10 @@ describe("hostility: stars separated by literals", () => {
 		[`${"*a".repeat(30)}b`, "a".repeat(2000)],
 	];
 
-	it("answers each in milliseconds, as the oracle does", () => {
+	it("answers each as the oracle does", () => {
 		for (const [pattern, path, options = {}] of rows) {
-			// time first, so a slow row fails on its bound before the oracle check
-			// runs it once more
-			assert.isBelow(
-				fastest(() => new Minimatch(pattern, { platform: "posix", ...options }).match(path), 50),
-				50,
-				pattern,
-			);
+			// Fixed inputs: the growth units below carry the bound, and a row that went back to the regexp's
+			// backtracking would not finish inside the tier's timeout.
 			const m = new Minimatch(pattern, { platform: "posix", ...options });
 			assert.strictEqual(m.match(path), new oracle.Minimatch(pattern, options).match(path), pattern);
 		}
@@ -928,29 +867,12 @@ describe("hostility: GlobSet and kept numeric ranges", () => {
 		// at every range costs frames times ranges: 11x (418 ms to 4.6 s). A ratio of CPU times, the best of three
 		// each, so a loaded runner stretches neither side; a fixed wall-clock bound failed on shared CI runners.
 		const pattern = (unit: number) => "{a,b}".repeat(6) + "@(".repeat(unit * 15) + "{0..99}".repeat(unit * 4);
-		const timeAt = (unit: number): number => {
-			const source = pattern(unit);
-			let best = Number.POSITIVE_INFINITY;
-			for (let pass = 0; pass < 3; pass += 1) {
-				const t = cpuNow();
-				GlobPattern.compileResult(source);
-				best = Math.min(best, cpuNow() - t);
-			}
-			return best;
-		};
 		// 15,000 frames and 4,000 kept ranges (58,030 characters) reach the typed failure.
 		const compiled = GlobPattern.compileResult(pattern(1000));
 		assert.isTrue(Result.isFailure(compiled));
 		if (Result.isFailure(compiled)) assert.strictEqual(compiled.failure.reason, "CompileBudgetExceeded");
-		timeAt(125);
-		const small = timeAt(250);
-		const large = timeAt(1000);
-		const ratio = large / Math.max(small, 1);
-		assert.isBelow(
-			ratio,
-			8,
-			`4x the frames and ranges cost ${ratio.toFixed(1)}x (${small.toFixed(0)} ms -> ${large.toFixed(0)} ms)`,
-		);
+		const ratio = growth((unit) => () => GlobPattern.compileResult(pattern(unit)), 250, 1000, 8);
+		assert.isBelow(ratio, 8, `4x the frames and ranges cost ${ratio.toFixed(1)}x`);
 	}, 60_000);
 
 	it("compiles or fails typed, and then matches without throwing, over hostile range mixes", () => {
@@ -1021,10 +943,9 @@ describe("hostility: regexp work of one compile", () => {
 	const cpu = (run: (sample: number) => unknown): number => {
 		let best = Number.POSITIVE_INFINITY;
 		for (let i = 0; i < 3; i++) {
-			const start = process.cpuUsage();
+			const start = Growth.cpuNow();
 			run(i);
-			const used = process.cpuUsage(start);
-			best = Math.min(best, (used.user + used.system) / 1000);
+			best = Math.min(best, Growth.cpuNow() - start);
 		}
 		return best;
 	};

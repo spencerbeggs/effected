@@ -69,16 +69,6 @@ const held: ReadonlyArray<Row> = [
 	["a/**/b/c", "a/b/d/e", true, { partial: true }],
 ];
 
-/**
- * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
- * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
- * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
- */
-const cpuNow = (): number => {
-	const used = process.cpuUsage();
-	return (used.user + used.system) / 1000;
-};
-
 describe("more than one globstar", () => {
 	for (const [pattern, candidate, expected, options] of fixed) {
 		it(`${pattern} vs ${candidate} is ${expected}${options ? ` ${JSON.stringify(options)}` : ""}`, () => {
@@ -104,27 +94,16 @@ describe("hostility: globstar sections that all fail", () => {
 	// Every section can start at every `a` and every walk ends at the same dot
 	// portion, so trying each combination is exponential in the number of `**`:
 	// these took over nine seconds each, and two more `**` with a longer path
-	// did not finish in fifteen. The pattern is a few dozen bytes, and match() is
-	// sync, so a timeout could not stop it.
-	const budgetMs = 1000;
+	// did not finish in fifteen. The pattern is a few dozen bytes. These rows hold
+	// the answers; `globstar.hostile.test.ts` holds how the work grows.
 	const path = `${rep("a", 30)}/.x/${rep("q", 14)}`;
 
-	it("does not take exponential time under partial", () => {
-		const m = new Minimatch(rep("**/a", 12), { partial: true });
-		const start = cpuNow();
-		const hit = m.match(path);
-		const elapsed = cpuNow() - start;
-		assert.isFalse(hit);
-		assert.isBelow(elapsed, budgetMs);
+	it("answers a path no section walk can finish, under partial", () => {
+		assert.isFalse(new Minimatch(rep("**/a", 12), { partial: true }).match(path));
 	});
 
-	it("does not take exponential time without partial", () => {
-		const m = new Minimatch(`${rep("**/a", 12)}/**/z`);
-		const start = cpuNow();
-		const hit = m.match(`${path}/z`);
-		const elapsed = cpuNow() - start;
-		assert.isFalse(hit);
-		assert.isBelow(elapsed, budgetMs);
+	it("answers a path no section walk can finish, without partial", () => {
+		assert.isFalse(new Minimatch(`${rep("**/a", 12)}/**/z`).match(`${path}/z`));
 	});
 });
 

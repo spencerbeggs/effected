@@ -59,7 +59,7 @@ everywhere. Measured: `*(a|?)` × 10,000 (60 KB) against 1,000 characters,
 the matcher inherits from 11 is a chain of negations separated by literals:
 each negation's run stays in every later state, so `x!(a)` repeated against
 `xb` repeated is about cubic: 22 ms at a 400-character path, 1.6 s at 2,000
-(11.0.5 is slower still). `hostility.test.ts` pins its growth, and the `**`
+(11.0.5 is slower still). `glob.hostile.test.ts` pins its growth, and the `**`
 routes below are the others. A caller with untrusted patterns or paths bounds
 the input (`@./okf/decisions/glob-hostile-pattern-bound.md`).
 `matches()` is **total**: every compile-time guard throws before an instance
@@ -139,7 +139,7 @@ is linear: the indices an unclosed scan reached in a neutral state (past the
 first character, not escaping, no range pending), from which every later
 scan that reaches one never closes, so it stops there. Without it a run
 of unclosed `[`, `[\]` or `[` before `[:alpha:]` was quadratic: 2,000 `[`
-took 5 s. **Never drop it**; `hostility.test.ts` pins the shapes.
+took 5 s. **Never drop it**; `glob.hostile.test.ts` pins the shapes.
 
 `#matchGlobStarBodySections` also keeps a `tried` set, from minimatch 11, so
 sections that all fail stop at a place already tried. Without it, `**/a` twelve
@@ -194,7 +194,7 @@ The engine answers as the 11.0.9 oracle does, except the divergences below:
   extglob). That last one reuses the alternatives already parsed instead of
   parsing the rest again, and `isEnd` asks a null-typed node's parent once,
   not twice: together they keep a chain of unclosed openers linear
-  (`hostility.test.ts` pins `a` + 120 × `@(` and the growth ratio).
+  (`glob.hostile.test.ts` pins `a` + 120 × `@(` and the growth ratio).
 - **11's matcher** (`internal/matcher.ts`, port note 9 in `ast.ts`) answers
   every magic portion, so 11's dot rules hold (a wildcard, class or `!(...)`
   never takes the leading dot of a dotfile without `dot`, nor any character
@@ -330,7 +330,7 @@ smaller range, or every range of a portion where a `[` precedes one); nesting
 past `MAX_NESTING_DEPTH` (256, where brace-expansion 5.0.13 turns literal at
 1,000); `InvalidRegExp` (11 has no regexp to reject), whose one known
 cause is a portion's regexp too large for the runtime (about 32,000 literal
-characters and a wildcard in one portion; `hostility.test.ts` still reaches
+characters and a wildcard in one portion; `glob.hostile.test.ts` still reaches
 it); and `CompileBudgetExceeded`, a compile whose work passes
 `MAX_REGEXP_WORK` (thousands of alternatives each with its own POSIX class,
 `[[:alpha:]]{0..99}{0..99}`, or more than 256 POSIX-class properties in one
@@ -393,7 +393,7 @@ typed failures, never wrong answers.
 ## Testing and building
 
 Tests in `__test__/`, `@effect/vitest`, `assert.*` never `expect`. The
-compliance gate (`compliance.test.ts` + `hostility.test.ts` +
+compliance gate (`compliance.test.ts` + `glob.hostile.test.ts` +
 `globstar.test.ts`) runs against the raw engine: a 130-row fixture table asserting expected AND oracle agreement on
 every row, oracle property tests, and the hostile-input suite. **If the engine
 disagrees with the oracle, fix the engine, never the expectation** — except
