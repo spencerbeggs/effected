@@ -3,7 +3,7 @@ type: Module
 title: git
 description: Typed git for the kit — a read tier over a repository's state and a clearly-marked mutating tier, plus a pure git-config document model.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/git
 tags:
   - architecture
@@ -11,7 +11,7 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-21T19:42:38Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 59b41401d9955a31
 ---

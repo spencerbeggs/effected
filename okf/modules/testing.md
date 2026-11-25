@@ -3,7 +3,7 @@ type: Module
 title: "@effected/testing"
 description: The workspace's private, never-published test kit — Depth, Corpus and Growth, the three primitives the kit's own test files share — with zero @effected dependencies of any kind, placed outside the layering so no library can take it at runtime.
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/testing
 tags:
   - testing
@@ -36,7 +36,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-25T19:35:32Z
-integrity:
+x-okfit-integrity:
   generated:
     body: f77e89bd7a1c98e9
 ---

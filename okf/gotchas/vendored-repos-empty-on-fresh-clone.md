@@ -11,7 +11,7 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 3a4c9c8a6247fd5e
 ---

@@ -7,7 +7,7 @@ tags: [architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 8f9a4cb5d4fc60ef
   verified:

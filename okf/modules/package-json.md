@@ -3,7 +3,7 @@ type: Module
 title: package-json
 description: package.json parsing, editing, validation and file IO as Effect schemas — the kit's boundary-tier manifest library and its reference for pure/IO separation.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/package-json
 tags:
   - dx
@@ -11,7 +11,7 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-08T12:10:34Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 71dc62eaac091e7a
 ---

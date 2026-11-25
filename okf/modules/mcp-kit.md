@@ -3,14 +3,14 @@ type: Module
 title: "@effected/mcp-kit"
 description: The boundary-tier MCP front end — stdio server wiring with a JSON-RPC stdin guard, tool-failure shaping, the ok:false outcome envelope, idempotent replay, JSON-schema input walkers for Tool.dynamic tools, and strict-by-default toolkit registration — plus a Node-only ./node stdio capture and an in-process/spawned testing subpath.
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/mcp-kit
-layer: boundary
+x-okfit-layer: boundary
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-11-21T16:30:44Z
-integrity:
+x-okfit-integrity:
   generated:
     body: ded020ecb0d4bea1
 ---

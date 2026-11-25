@@ -3,9 +3,9 @@ type: Module
 title: app
 description: The thin composition layer wiring xdg, config-file and store into an application control plane -- owns no domain logic, defines no service or error of its own, and re-exports nothing from the packages beneath it.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/app
-layer: L2
+x-okfit-layer: L2
 tags:
   - architecture
 sources:
@@ -16,7 +16,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-06T20:09:15Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 0c34467b22122cce
 ---

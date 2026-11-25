@@ -3,13 +3,13 @@ type: Module
 title: "@effected/schema-org"
 description: The schema.org vocabulary as pure Effect Schema classes, a JsonLdDocument graph assembler with a script-safe serializer, and offline conformance validation over the vendored vocabulary.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/schema-org
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-11-06T20:09:15Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 48b32786e73df4ba
 ---

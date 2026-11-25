@@ -3,7 +3,7 @@ type: Interface
 title: "@effected/workspaces snapshots"
 description: WorkspaceSnapshots and WorkspaceStateSnapshot — point-in-time workspace reads at a git ref or in the worktree, with config-dependency hooks replayed at the ref's declared versions.
 status: stable
-kind: api
+x-okfit-kind: api
 resource: ../../packages/workspaces/src/WorkspaceSnapshots.ts
 tags:
   - architecture
@@ -24,7 +24,7 @@ verified:
     at: 2026-10-13T21:42:59Z
   - by: human:spencer
     at: 2026-11-16T16:59:20Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 54ff4efc1040e118
   verified:

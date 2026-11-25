@@ -3,7 +3,7 @@ type: Limitation
 title: memfs's volume is invisible to anything that does not ask for the FileSystem service
 description: memfs installs no hooks and patches no module registry, so direct node:fs calls, spawned processes, native-binding IO, process.cwd() and process.platform all silently bypass the volume.
 status: stable
-bounds: ../modules/memfs.md
+x-okfit-bounds: ../modules/memfs.md
 tags:
   - testing
 sources:
@@ -16,7 +16,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-30T01:39:09Z
-integrity:
+x-okfit-integrity:
   generated:
     body: df9deeaa159f483d
 ---

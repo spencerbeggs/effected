@@ -3,13 +3,13 @@ type: Module
 title: "@effected/github"
 description: The kit's typed GitHub REST and GraphQL API layer, owning the octokit runtime.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/github
 tags: [bundle, architecture]
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-11-16T17:04:15Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 297374c232527845
 ---

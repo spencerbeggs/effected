@@ -11,7 +11,7 @@ generated:
 sources:
   - id: repo
     resource: "https://github.com/savvy-web/silk-router-action"
-integrity:
+x-okfit-integrity:
   generated:
     body: d3150a6f9995eca0
 ---

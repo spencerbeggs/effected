@@ -3,16 +3,16 @@ type: Module
 title: "@effected/images"
 description: Image facts read from bytes with one typed parse failure, plus a generated-image cache keyed by a Schema-encoded parameter object.
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/images
-layer: L1
+x-okfit-layer: L1
 tags:
   - architecture
   - performance
 generated:
   by: "okfit/claude-code"
   at: 2026-11-06T20:09:15Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 12849d90666c2837
 ---

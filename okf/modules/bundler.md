@@ -3,7 +3,7 @@ type: Module
 title: "@effected/bundler"
 description: "The kit's build pipeline as an integrated library: package and GitHub Action builds, API Extractor and the bundle.json schema, SEA executables, the issues.json report and the build journals, returned as typed results that the effected tool's engine wraps for its two front ends."
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/bundler
 tags:
   - architecture
@@ -28,7 +28,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-12T03:49:06Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 2e9248099ca9a210
 ---

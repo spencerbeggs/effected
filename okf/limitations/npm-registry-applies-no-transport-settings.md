@@ -3,7 +3,7 @@ type: Limitation
 title: NpmRegistry applies none of the npmrc proxy or TLS settings
 description: NpmRegistry and PackageTarball send every request through the caller's HttpClient and apply no npmrc transport setting (proxy, https-proxy, http-proxy, noproxy, no-proxy, strict-ssl, ca, cafile, cert, key, local-address, and the per-registry //host/:ca, :cafile, :cert, :certfile, :key, :keyfile); NpmConfig reads them, as npm 11 and 12 and pnpm do, through NpmConfig.transport, NpmConfig.proxyFor and NpmConfig.tlsFor; on Node the @effected/npm/node subpath ships NpmHttpClient.layer, the client that applies them, and the runtime-neutral root stays free of any proxy agent.
 status: draft
-bounds: ../modules/npm.md
+x-okfit-bounds: ../modules/npm.md
 tags:
   - architecture
 sources:
@@ -22,7 +22,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-13T06:47:43Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 9291b7452a93f5f6
 ---

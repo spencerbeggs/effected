@@ -2,13 +2,13 @@
 type: Limitation
 title: A block-mapping key longer than 1024 rendered characters spills to explicit-key form
 description: "YAML 1.2's implicit-key length cap forces the stringifier to switch a long key from block-implicit to explicit-key form, changing the emitted shape."
-bounds: ../interfaces/yaml-stringify-options.md
+x-okfit-bounds: ../interfaces/yaml-stringify-options.md
 status: stable
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-integrity:
+x-okfit-integrity:
   generated:
     body: b4af426b107a58c1
 ---

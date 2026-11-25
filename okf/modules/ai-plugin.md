@@ -3,7 +3,7 @@ type: Module
 title: ai-plugin
 description: "The \"effected\" agent plugin: one pluginfinity source under plugin/ — skills, four specialist agents, a SessionStart briefing and a Claude-Code-only build-diagnostics monitor — built into committed Claude Code and GitHub Copilot plugins."
 status: stable
-kind: plugin
+x-okfit-kind: plugin
 resource: ../../plugin
 tags:
   - architecture
@@ -20,7 +20,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-09T20:42:55Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 5e2c8e8e320b499d
 ---

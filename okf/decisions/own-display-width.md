@@ -11,7 +11,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-16T17:12:16Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 17feb768af61283c
   verified:

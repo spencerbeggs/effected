@@ -3,13 +3,13 @@ type: Limitation
 title: Bun's package-tuple integrity position is assumed, not documented
 description: Integrity data is read from an inferred index in bun's package tuple because bun does not document the tuple's shape.
 status: stable
-bounds: ../modules/lockfiles.md
+x-okfit-bounds: ../modules/lockfiles.md
 tags:
   - dx
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 8f7302f75ba39723
 ---

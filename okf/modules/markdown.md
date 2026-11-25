@@ -3,9 +3,9 @@ type: Module
 title: "@effected/markdown"
 description: CommonMark 0.31.2 + GFM as pure Effect Schema classes; parse, edit, format, modify, transform and project markdown documents.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/markdown
-layer: L1
+x-okfit-layer: L1
 tags:
   - architecture
 sources:
@@ -52,7 +52,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-25T13:41:08Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 58b91a51ff08ff49
 ---

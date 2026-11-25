@@ -3,8 +3,8 @@ type: Incident
 title: A zero-width space never stopped the Actions runner reading a workflow command
 description: "CommandNeutralizer shipped putting U+200B before a :: line and inside ##[, but the runner matches with culture-sensitive .NET comparisons under ICU, which skip zero-width characters, so every neutralized line was still a command; it now matches through what ICU skips and marks with U+2800."
 status: draft
-occurred: "2026-10-01T00:00:00Z"
-guard: ../../packages/github-commands/__test__/CommandNeutralizer.test.ts
+x-okfit-occurred: "2026-10-01T00:00:00Z"
+x-okfit-guard: ../../packages/github-commands/__test__/CommandNeutralizer.test.ts
 tags:
   - security
   - github
@@ -30,7 +30,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-02T15:49:39Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 9434991018a6a0cb
 ---

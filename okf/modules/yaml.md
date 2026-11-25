@@ -3,13 +3,13 @@ type: Module
 title: "@effected/yaml"
 description: Pure-tier YAML 1.2 parsing, editing, formatting and linting as Effect schemas, with a vendored engine and full per-node comment fidelity.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/yaml
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-11-06T20:09:15Z
-integrity:
+x-okfit-integrity:
   generated:
     body: d5d539a272d148e2
 ---

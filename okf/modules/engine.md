@@ -3,7 +3,7 @@ type: Module
 title: "@effected/engine"
 description: "The effected tool's shared logic, consumed by its CLI and MCP front ends: the identity report both describe themselves with, the ./schema subpath that holds everything effected schema does, from loading a schemastore config to the shipped ajv engines, and the ./build subpath behind effected package build, effected action build and effected action init."
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/engine
 tags:
   - architecture
@@ -11,7 +11,7 @@ tags:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-11-19T23:33:10Z
-integrity:
+x-okfit-integrity:
   generated:
     body: d1b69afd9766c56b
 ---

@@ -3,14 +3,14 @@ type: Module
 title: semver
 description: Strict SemVer 2.0.0 versions, ranges and comparators as Effect Schema classes — the kit's DX exemplar.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/semver
 tags:
   - dx
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-11-10T00:30:06Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 9a2a046d6f0609f4
 ---

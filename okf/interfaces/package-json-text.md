@@ -3,7 +3,7 @@ type: Interface
 title: The package-json decode-free text path
 description: PackageJsonFormat's formatter and surgical mutator work on manifest text without ever decoding it — the formatter matching sort-package-json's byte order exactly, and the mutator preserving every untouched byte around an edit — so both work on legal manifests the strict Package decode rejects.
 status: stable
-kind: api
+x-okfit-kind: api
 resource: ../../packages/package-json/src/PackageJsonFormat.ts
 tags:
   - dx
@@ -24,7 +24,7 @@ verified:
     at: 2026-10-29T00:43:21Z
   - by: human:spencer
     at: 2026-11-05T20:23:04Z
-integrity:
+x-okfit-integrity:
   generated:
     body: bdae357cc466e363
   verified:

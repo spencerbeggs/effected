@@ -3,7 +3,7 @@ type: Module
 title: "@effected/changesets"
 description: "Boundary-tier reader for changeset files and .changeset/config.json, a release planner (snapshots included, and pnpm-native versioning held to pnpm), release application and changelog assembly as data, each held to its @changesets/* engine as a test oracle, so consumers stop carrying those packages at runtime."
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/changesets
 tags:
   - release
@@ -33,7 +33,7 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-11-24T05:55:52Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 125bf0093a42e10c
 ---

@@ -3,7 +3,7 @@ type: Limitation
 title: Under the no-op hooks layer, a hook-injected catalog's range bump between two refs is invisible to a snapshot diff
 description: Under ConfigDependencyHooks.layerNoop (the default composites), WorkspaceStateSnapshot.crossSeed cannot surface a range change made purely by bumping a config dependency between two refs, because neither ref's committed sources declare the catalog; a replaying layer detects it.
 status: stable
-bounds: ../interfaces/workspaces-snapshots.md
+x-okfit-bounds: ../interfaces/workspaces-snapshots.md
 tags:
   - architecture
 sources:
@@ -12,7 +12,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-27T06:20:52Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 21e1be218e5ce5d6
 ---

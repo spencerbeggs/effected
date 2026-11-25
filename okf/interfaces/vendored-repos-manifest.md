@@ -3,7 +3,7 @@ type: Interface
 title: Vendored repos manifest
 description: The .repos/config.json shape the silk repos tooling reads to manage every vendored submodule.
 status: stable
-kind: config
+x-okfit-kind: config
 resource: ../../.repos/config.json
 tags:
   - architecture
@@ -16,7 +16,7 @@ verified:
     at: 2026-09-24T00:12:22.388Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
-integrity:
+x-okfit-integrity:
   generated:
     body: dd378ac5e27f5d63
   verified:

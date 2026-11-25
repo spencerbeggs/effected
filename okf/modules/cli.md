@@ -3,7 +3,7 @@ type: Module
 title: "@effected/cli"
 description: "The effected command: effected package build, effected action build, effected action init and effected schema build, check and validate over effect/cli and @effected/cli-kit, with --version and --help, run by a bin that a carrier shim can wrap with its own distribution identity."
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/cli
 tags:
   - architecture
@@ -11,7 +11,7 @@ tags:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-11-08T17:37:31Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 7a8a235496e65065
 ---

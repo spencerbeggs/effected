@@ -3,9 +3,9 @@ type: Module
 title: "@effected/schemastore"
 description: Builds, versions, validates and lints SchemaStore-shaped Draft-07 JSON Schema documents from Effect Schema sources, over core's generation pipeline.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/schemastore
-layer: L3
+x-okfit-layer: L3
 tags:
   - architecture
   - bundle
@@ -29,7 +29,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-08T12:10:34Z
-integrity:
+x-okfit-integrity:
   generated:
     body: aa45d8a82e65b970
 ---

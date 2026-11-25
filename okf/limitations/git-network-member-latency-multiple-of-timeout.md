@@ -3,7 +3,7 @@ type: Limitation
 title: A network-touching Git member's worst-case latency is a multiple of GIT_TIMEOUT
 description: "Each ssh-pin config probe is a full classified run with its own 30-second ceiling, so a network member can spend up to 30s probing before its own 30s run, and fetchAny doubles that again."
 status: stable
-bounds: ../modules/git.md
+x-okfit-bounds: ../modules/git.md
 tags:
   - performance
 sources:
@@ -12,7 +12,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-20T22:40:26Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 2558b15c06d43e5f
 ---

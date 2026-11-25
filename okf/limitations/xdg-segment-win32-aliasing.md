@@ -3,7 +3,7 @@ type: Limitation
 title: AppDirs.segment does not refuse Windows trailing dots or device names
 description: On win32 a segment ending in "." aliases the name without it, and a device name such as CON or NUL names a device rather than a directory; AppDirs.segment refuses neither, because its mapping is a persisted, platform-independent contract.
 status: draft
-bounds: ../modules/xdg.md
+x-okfit-bounds: ../modules/xdg.md
 tags:
   - compat
   - security
@@ -15,7 +15,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-27T13:22:20Z
-integrity:
+x-okfit-integrity:
   generated:
     body: e3e8067c0c6610c2
 ---

@@ -3,7 +3,7 @@ type: Module
 title: "@effected/shell"
 description: "A tolerant shell-syntax lexer and segmenter for guards and agent tooling: which simple commands an untrusted command string would run, with which words and from which spans, as pure Schema classes that never fail and never evaluate."
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/shell
 tags:
   - architecture
@@ -28,7 +28,7 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-11-25T13:41:08Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 0502d0046699760e
 ---

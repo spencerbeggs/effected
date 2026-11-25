@@ -3,7 +3,7 @@ type: Decision
 title: The effect catalog holds the Effect family to one minor with tilde ranges
 description: "Every effect and @effect/* catalog entry is a tilde range on the current Effect minor with a peer floored to that minor (~4.<minor>.0) under lock-minor, so no unattended upgrade can cross an Effect minor and the kit's published peer admits only the minor it was built on; @effect/tsgo keeps a 0.x caret, and the derived graph-wide pins are unchanged."
 status: stable
-supersedes: effect-catalog-tracks-stable-minor.md
+x-okfit-supersedes: effect-catalog-tracks-stable-minor.md
 tags:
   - deps
   - compat
@@ -27,7 +27,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-10T04:40:05Z
-integrity:
+x-okfit-integrity:
   generated:
     body: bede640a4f40193c
   verified:

@@ -3,9 +3,9 @@ type: Module
 title: "@effected/markdown-lint"
 description: "A markdownlint-compatible lint rule shape over @effected/markdown trees: one LintRule definition with markdownlint metadata, a pure programmatic host (MarkdownLint) resolving markdownlint configuration and inline comments, a markdownlint custom-rule adapter (MarkdownlintAdapter), 53 ported built-in rules on ./rules held to markdownlint by a differential harness, and a ./config reader of markdownlint config files; every line, range and fix derived from kit offsets by PositionMapping."
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/markdown-lint
-layer: L2
+x-okfit-layer: L2
 tags:
   - architecture
 sources:
@@ -34,7 +34,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-25T13:41:08Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 8ec1a013a6a2fc36
 ---

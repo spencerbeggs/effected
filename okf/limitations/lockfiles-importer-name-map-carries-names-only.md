@@ -3,13 +3,13 @@ type: Limitation
 title: The importer-name map carries names only
 description: withImporterNames rewrites pnpm workspace package names but leaves their placeholder version untouched.
 status: stable
-bounds: ../modules/lockfiles.md
+x-okfit-bounds: ../modules/lockfiles.md
 tags:
   - dx
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 1c99fe44582c83f5
 ---

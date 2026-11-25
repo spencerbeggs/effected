@@ -3,7 +3,7 @@ type: Interface
 title: "@effected/github errors and retry"
 description: Four error classes, one classification step, and one retry policy driven by GitHub's own headers.
 status: stable
-kind: api
+x-okfit-kind: api
 resource: ../../packages/github/src/GitHubError.ts
 tags: [bundle]
 generated:
@@ -16,7 +16,7 @@ verified:
     at: 2026-10-13T21:42:59Z
   - by: human:spencer
     at: 2026-10-29T00:43:21Z
-integrity:
+x-okfit-integrity:
   generated:
     body: cca312f6d4041f01
   verified:

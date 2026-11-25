@@ -3,7 +3,7 @@ type: Interface
 title: The catalog:sync / catalog:check CLI
 description: Two root package.json scripts over lib/scripts/catalog-sync.ts that resolve every catalogued @effected/* package's next-release version, rewrite the effected catalog literal in packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts, and gate on both catalog membership and version drift.
 status: stable
-kind: cli
+x-okfit-kind: cli
 resource: ../../lib/scripts/catalog-sync.ts
 tags:
   - release
@@ -33,7 +33,7 @@ verified:
     at: 2026-11-10T00:32:33Z
   - by: human:spencer
     at: 2026-11-21T22:48:18Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 4c5b5112545bb0e6
   verified:

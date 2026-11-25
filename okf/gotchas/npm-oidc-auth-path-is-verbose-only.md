@@ -20,7 +20,7 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-10-23T21:09:05Z
-integrity:
+x-okfit-integrity:
   generated:
     body: c311866625353456
 ---

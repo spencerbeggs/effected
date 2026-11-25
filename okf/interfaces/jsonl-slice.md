@@ -3,7 +3,7 @@ type: Interface
 title: "@effected/jsonl read surfaces"
 description: Slice, the one filter shape every read surface takes; the consumption model built on it; and the read economy that motivates the whole package.
 status: stable
-kind: api
+x-okfit-kind: api
 resource: ../../packages/jsonl/src/Slice.ts
 tags:
   - architecture
@@ -16,7 +16,7 @@ verified:
     at: 2026-09-24T00:11:38.223Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 608e36f2eec9b4c6
   verified:

@@ -3,9 +3,9 @@ type: Module
 title: "@effected/crypto"
 description: HMAC, message digests, constant-time comparison and AWS SigV4 request signing over core Mac and Digest in R, with no node imports, plus HttpRedaction, the kit's one credential scrub for kept HTTP errors.
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/crypto
-layer: L1
+x-okfit-layer: L1
 tags:
   - architecture
   - security
@@ -36,7 +36,7 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-11-22T05:32:31Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 78197c10afb68baa
 ---

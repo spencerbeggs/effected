@@ -3,8 +3,8 @@ type: Incident
 title: The catalog sync moved the effect catalog onto Effect 4.1 under a kit built on 4.0
 description: "The unattended catalog-sync job took the in-range 4.1.0 for the caret effect catalog, so pnpm-plugin-effect 0.19.1 to 0.19.3 pinned every consumer graph to Effect 4.1 while the whole published kit was built on 4.0.7 and imported the Crypto module 4.1.0 removed; the kit died at import, and the Effect family is now held to one minor with tildes."
 status: draft
-occurred: "2026-10-29"
-guard: ../../packages/pnpm-plugin-effected/__test__/catalog.test.ts
+x-okfit-occurred: "2026-10-29"
+x-okfit-guard: ../../packages/pnpm-plugin-effected/__test__/catalog.test.ts
 tags:
   - release
   - deps
@@ -30,7 +30,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-01T21:43:51Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 7234e66a32a9e294
 ---

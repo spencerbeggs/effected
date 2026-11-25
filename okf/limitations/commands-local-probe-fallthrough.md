@@ -3,7 +3,7 @@ type: Limitation
 title: "A tool installed only globally also probes as local, because the package manager's exec falls through to PATH"
 description: "ToolDiscovery's local probe runs the tool through the launcher (pnpm exec, npx --no --, …), which also finds a PATH-only tool, so a global-only tool such as git reads as present in both places with equal versions and, under prefer local, resolves to pnpm exec git."
 status: draft
-bounds: ../modules/commands.md
+x-okfit-bounds: ../modules/commands.md
 tags: [dx, performance]
 sources:
   - id: tool-resolution-ts
@@ -13,7 +13,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-25T19:59:29Z
-integrity:
+x-okfit-integrity:
   generated:
     body: ff734bf19dfbd9c3
   verified:

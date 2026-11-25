@@ -3,13 +3,13 @@ type: Module
 title: "@effected/github-commands"
 description: "The GitHub Actions workflow-command grammar as pure functions: render a command, and neutralize text so the runner cannot read it as one."
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/github-commands
 tags: [github, security, bundle]
 generated:
   by: okfit/claude-code
   at: 2026-11-02T15:49:39Z
-integrity:
+x-okfit-integrity:
   generated:
     body: b989329b71d2206e
 ---

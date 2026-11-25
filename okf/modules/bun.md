@@ -3,7 +3,7 @@ type: Module
 title: bun
 description: Everything bun owns alone — its bun.lock document (BunLockDocument) and BunExtension — over the npm vocabulary it shares.
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/bun
 tags:
   - architecture
@@ -15,7 +15,7 @@ sources:
     resource: ../../docs/superpowers/specs/2026-11-12-package-manager-model-design.md
   - id: bun-lock-document-ts
     resource: ../../packages/bun/src/BunLockDocument.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: c65080b276f5bc8c
 ---

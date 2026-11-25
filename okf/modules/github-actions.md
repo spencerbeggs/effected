@@ -3,7 +3,7 @@ type: Module
 title: github-actions
 description: The GitHub Actions runner runtime — environment, inputs/outputs/state, workflow commands, storage, reporting and the sbom attestation seam.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/github-actions
 tags:
   - architecture
@@ -11,7 +11,7 @@ tags:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-11-22T05:32:31Z
-integrity:
+x-okfit-integrity:
   generated:
     body: dc872f5b55320fcc
 ---

@@ -3,7 +3,7 @@ type: Interface
 title: "effected.toml: the build config's tables, defaults and discovery"
 description: "The contract of effected.toml: every [package.build], [package.bundle] and [action] key with its default, the two tiers it is discovered in and how they merge (objects per key, arrays and scalars replace), the strict single decode that fails an unknown key with its path, and the two keys through which code enters a build."
 status: draft
-kind: config
+x-okfit-kind: config
 resource: ../../packages/bundler/src/config/BuildConfig.ts
 tags:
   - dx
@@ -32,7 +32,7 @@ sources:
 generated:
   by: "claude-code/sonnet-5.5"
   at: 2026-11-20T17:34:26Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 918c45108b89a461
 ---

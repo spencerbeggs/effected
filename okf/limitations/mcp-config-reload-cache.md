@@ -3,7 +3,7 @@ type: Limitation
 title: A long-lived MCP server does not see an edit to an imported native module until it restarts
 description: "The schema tools reload the config on every call, but a config's imported .mjs, .cjs or .js under type module, and a sibling workspace package resolved to built output, stay cached by Node's ESM loader, so an edit to one is not seen until the effected-mcp process restarts; .ts, .mts, untyped .js and .json do reload. Fixing it would take a child process per call."
 status: draft
-bounds: ../modules/mcp.md
+x-okfit-bounds: ../modules/mcp.md
 tags:
   - dx
   - architecture
@@ -17,7 +17,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-05T06:55:47Z
-integrity:
+x-okfit-integrity:
   generated:
     body: c7959150016ff6f1
 ---

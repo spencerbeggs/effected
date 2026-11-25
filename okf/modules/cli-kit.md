@@ -3,13 +3,13 @@ type: Module
 title: "@effected/cli-kit"
 description: The presentation boundary of an effect/cli program — audience, colour, theme, messages, logging, failure reporting and schema-issue renderers in a React-free root, with interactive Ink screens behind ./ui and their test harness behind ./ui/testing.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/cli-kit
 tags: [dx]
 generated:
   by: "okfit/claude-code"
   at: 2026-11-05T17:16:21Z
-integrity:
+x-okfit-integrity:
   generated:
     body: a0a90d909180dbba
 ---

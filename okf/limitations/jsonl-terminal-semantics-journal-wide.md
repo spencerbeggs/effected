@@ -3,13 +3,13 @@ type: Limitation
 title: jsonl terminal and quiescent semantics are journal-wide, not per-scope
 description: A journal partitioned by scope cannot collapse independent per-scope loops into one file today, because terminal/quiescent state and current-state reads are both journal-wide, not sliced.
 status: stable
-bounds: ../modules/jsonl.md
+x-okfit-bounds: ../modules/jsonl.md
 tags:
   - architecture
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-integrity:
+x-okfit-integrity:
   generated:
     body: f31adb581c56a323
 ---

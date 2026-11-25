@@ -3,7 +3,7 @@ type: Module
 title: npm
 description: The dependency-resolution contracts a manifest library defines but cannot implement, the npm vocabulary shared across the kit, and the registry/tarball/publish services that replace a shelled-out npm CLI.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/npm
 tags:
   - architecture
@@ -11,7 +11,7 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-13T06:27:13Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 6fa4cb9005e8e487
 ---

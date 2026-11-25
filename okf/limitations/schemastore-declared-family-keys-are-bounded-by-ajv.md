@@ -3,7 +3,7 @@ type: Limitation
 title: A declared-family key must be a name ajv can register, and its payload cannot carry an $id
 description: "The x-ai- namespace admits any key by prefix, but the engine gate rejects the whole document — as a root-pathed finding — when a key uses a character outside ajv's keyword grammar or when an $id (or repeated $anchor) sits anywhere inside a declared-family payload; the bound is ajv's, and ajv is the gate SchemaStore itself runs."
 status: draft
-bounds: ../modules/schemastore.md
+x-okfit-bounds: ../modules/schemastore.md
 tags:
   - compat
 sources:
@@ -14,7 +14,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-05T06:55:47Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 73c751c449964d32
 ---

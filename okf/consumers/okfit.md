@@ -8,7 +8,7 @@ tags: [architecture, dx]
 generated:
   by: "okfit/claude-code"
   at: 2026-11-05T06:55:47Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 44bd6fbce954d245
 ---

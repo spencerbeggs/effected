@@ -3,14 +3,14 @@ type: Limitation
 title: A cursor-less jsonl query reads the whole file into memory
 description: Unlike latest and last-valid-line reads, query and the replay half of a resumed subscription are not window-bounded; a cursor-less query over a large journal pays for the whole file.
 status: stable
-bounds: ../interfaces/jsonl-slice.md
+x-okfit-bounds: ../interfaces/jsonl-slice.md
 tags:
   - architecture
   - performance
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-integrity:
+x-okfit-integrity:
   generated:
     body: d7880b82e76fc9ca
 ---

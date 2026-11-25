@@ -3,7 +3,7 @@ type: Interface
 title: "@effected/workspaces/testing: the repo-shape checks"
 description: SourceBoundary, ImportGraph, WorkspaceLayering and PackedInstall, the four checks a monorepo runs in its own test suite to keep source boundaries, the import graph, the package graph and the packed install honest.
 status: draft
-kind: api
+x-okfit-kind: api
 resource: ../../packages/workspaces/src/testing.ts
 tags:
   - architecture
@@ -49,7 +49,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-22T03:59:52Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 62931cad0b02e516
 ---

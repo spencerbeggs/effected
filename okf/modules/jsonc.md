@@ -3,7 +3,7 @@ type: Module
 title: jsonc
 description: Pure-tier JSONC parsing, editing and formatting as Effect Schema classes, with RFC 8785 fingerprints.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/jsonc
 tags:
   - dx
@@ -18,7 +18,7 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-11-06T20:09:15Z
-integrity:
+x-okfit-integrity:
   generated:
     body: dedfd5c26da3aece
 ---

@@ -3,7 +3,7 @@ type: Module
 title: workspace
 description: The monorepo root — layout, build pipeline, dependency resolution and vendored source.
 status: stable
-kind: workspace
+x-okfit-kind: workspace
 resource: ../..
 tags:
   - architecture
@@ -11,7 +11,7 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-25T19:35:42Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 6a43cfe9c7eaf23b
 ---

@@ -3,7 +3,7 @@ type: Decision
 title: The ajv engine lives in the effected tool, and the library returns to boundary tier
 description: "The one shipped SchemaValidator engine is AjvValidator.layer — and the one shipped InstanceValidator engine AjvInstanceValidator.layer — both in @effected/engine's schema subpath, so ajv is a cost only the effected tool pays; @effected/schemastore keeps the contracts and their doubles, drops ajv and ajv-formats, and retiers from integrated back to boundary."
 status: stable
-supersedes: schemastore-retier-to-integrated.md
+x-okfit-supersedes: schemastore-retier-to-integrated.md
 tags:
   - architecture
   - bundle
@@ -26,7 +26,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-06T01:55:28Z
-integrity:
+x-okfit-integrity:
   generated:
     body: f56c84b0ccdf21ab
   verified:

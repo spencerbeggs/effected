@@ -3,8 +3,8 @@ type: Incident
 title: The plugin's catalog paired 4.0.3 satellites with core effect 4.0.2
 description: "pnpm-plugin-effect 0.13.15 shipped an effect catalog with the @effect/* satellites at ^4.0.3 and effect at ^4.0.2, after upstream published every 4.0.3 satellite but not core; a fresh resolve died at import, and the catalog now locks exact versions behind version-scoped overrides."
 status: draft
-occurred: "2026-10-10"
-guard: ../../packages/pnpm-plugin-effected/__test__/catalog.test.ts
+x-okfit-occurred: "2026-10-10"
+x-okfit-guard: ../../packages/pnpm-plugin-effected/__test__/catalog.test.ts
 tags:
   - release
   - deps
@@ -31,7 +31,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-31T18:50:20Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 39f2805ec190ddad
 ---

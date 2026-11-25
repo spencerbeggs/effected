@@ -7,7 +7,7 @@ tags: [compat, architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 4d71df942c08b36e
   verified:

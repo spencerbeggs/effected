@@ -3,7 +3,7 @@ type: Interface
 title: "@effected/workspaces duplicate-copy checking"
 description: DuplicateCheck — a lockfile-only report of every package resolving at two or more versions and who pulls each copy, with the kit predicate that names the Layer-mismatch trap.
 status: stable
-kind: api
+x-okfit-kind: api
 resource: ../../packages/workspaces/src/DuplicateCheck.ts
 tags:
   - architecture
@@ -25,7 +25,7 @@ verified:
     at: 2026-09-24T00:11:50.663Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
-integrity:
+x-okfit-integrity:
   generated:
     body: dc9d9bdd2a38278b
   verified:

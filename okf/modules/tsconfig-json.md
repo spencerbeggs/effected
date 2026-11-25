@@ -3,14 +3,14 @@ type: Module
 title: tsconfig-json
 description: Read, decode, validate, resolve and construct tsconfig.json files with zero typescript imports.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/tsconfig-json
 tags:
   - dx
 generated:
   by: "okfit/claude-code"
   at: 2026-11-06T20:09:15Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 32fba74d958e9d1c
 ---

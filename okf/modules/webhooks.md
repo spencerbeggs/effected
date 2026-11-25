@@ -3,9 +3,9 @@ type: Module
 title: "@effected/webhooks"
 description: Inbound webhook signature verification as pure functions over a header lookup, the raw body and the receive time, with presets for Standard Webhooks, GitHub, Stripe, Sanity, a generic HMAC header and a shared secret.
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/webhooks
-layer: L2
+x-okfit-layer: L2
 tags:
   - architecture
   - security
@@ -26,7 +26,7 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-11-07T01:50:02Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 4afaeab3f315d6f1
 ---

@@ -3,9 +3,9 @@ type: Module
 title: "@effected/env"
 description: The boundary package that detects who is running a program and in what terminal — agent, CI and its run, session, colour level, hyperlink support and width — through Config, and reads shell export files in one strict dialect, with no node imports and no import-time reads.
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/env
-layer: boundary
+x-okfit-layer: boundary
 tags: [architecture, bundle, dx]
 sources:
   - id: boundary-test
@@ -14,7 +14,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-05T19:24:39Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 4a5911bb46d845b3
 ---

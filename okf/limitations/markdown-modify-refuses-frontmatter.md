@@ -3,13 +3,13 @@ type: Limitation
 title: MarkdownFormat.modify refuses frontmatter, list items, table rows and the root
 description: The node-replacement edit API fails typed rather than replacing a frontmatter node, a list item, a table row, or the document root.
 status: stable
-bounds: ../modules/markdown.md
+x-okfit-bounds: ../modules/markdown.md
 tags:
   - architecture
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 016d270274695b2f
 ---

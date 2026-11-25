@@ -3,13 +3,13 @@ type: Module
 title: "@effected/spdx"
 description: SPDX license identifiers, exceptions and license expressions modeled as pure Effect Schema classes, owning the grammar rather than depending on a parser package.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/spdx
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-10-07T21:32:23Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 78dfea390eda0a86
 ---

@@ -3,7 +3,7 @@ type: Interface
 title: actions-runtime
 description: The runner runtime a GitHub Action composes through Action.run — environment, config-backed inputs, logging, outputs/state, secrets and the App-token bridge.
 status: stable
-kind: runtime
+x-okfit-kind: runtime
 resource: ../../packages/github-actions/src/Action.ts
 tags:
   - architecture
@@ -20,7 +20,7 @@ verified:
     at: 2026-10-29T00:43:21Z
   - by: human:spencer
     at: 2026-11-21T00:44:55Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 9ed04e9321ad30c0
   verified:

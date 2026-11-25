@@ -3,13 +3,13 @@ type: Limitation
 title: config-file has no file-watching capability
 description: The package offers no way to be notified when a loaded config file changes on disk.
 status: stable
-bounds: ../modules/config-file.md
+x-okfit-bounds: ../modules/config-file.md
 tags:
   - dx
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 5dd67157593d7ef3
 ---

@@ -3,14 +3,14 @@ type: Module
 title: lockfiles
 description: Pure lockfile parsing for bun, npm and pnpm, normalized into one unified model, plus pure integrity checking and a pure before/after lockfile comparison.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/lockfiles
 tags:
   - dx
 generated:
   by: "okfit/claude-code"
   at: 2026-11-25T13:41:08Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 66913fe7a547dd90
 ---

@@ -3,7 +3,7 @@ type: Decision
 title: The blob transport is internal and HttpClient-based
 description: "@effected/github-actions moves bytes against a signed blob url with its own Azure Blob REST transport over HttpClient and FileSystem, in internal/blobTransport.ts, and ships no Azure SDK; the three-module Azure confinement is retired and the reachability suite instead asserts that no @azure package is reachable and that only the three transfer modules reach the transport."
 status: stable
-supersedes: azure-blob-confined-to-three-modules.md
+x-okfit-supersedes: azure-blob-confined-to-three-modules.md
 tags:
   - architecture
   - bundle
@@ -19,7 +19,7 @@ sources:
 verified:
   - by: human:spencer
     at: 2026-11-16T16:59:20Z
-integrity:
+x-okfit-integrity:
   generated:
     body: aab4b5de62db32ab
   verified:

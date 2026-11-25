@@ -3,7 +3,7 @@ type: Module
 title: pnpm
 description: Everything pnpm owns alone — its effective settings (PnpmSettings), its registry, proxy and TLS view as an npm NpmConfig (PnpmNpmConfig), the pnpm 12 settings catalog on the ./settings subpath (PnpmSettingsCatalog with entries and read), release-age gate (ReleaseAgeGate), package-name pattern lists (PnpmMatcher), versioning block, overrides grammar, pnpm-lock.yaml documents (PnpmLockDocument, PnpmEnvDocument, PnpmExtension) and its pnpm-workspace.yaml editor (PnpmWorkspaceFile) — over the npm vocabulary it shares.
 status: draft
-kind: package
+x-okfit-kind: package
 resource: ../../packages/pnpm
 tags:
   - architecture
@@ -29,7 +29,7 @@ sources:
     resource: ../../packages/pnpm/src/settings/PnpmSettingsCatalog.ts
   - id: settings-inventory
     resource: ../../packages/pnpm/__test__/fixtures/pnpm-12.20.0-settings.README.md
-integrity:
+x-okfit-integrity:
   generated:
     body: e7e775396227129b
 ---

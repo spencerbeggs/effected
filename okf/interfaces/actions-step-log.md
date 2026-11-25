@@ -3,7 +3,7 @@ type: Interface
 title: actions-step-log
 description: "The rendering contract of ActionLogger's step log: phases and steps, the quiet window, the held, live and failure forms, result marks, nesting, concurrency, and the five GitHub-log constraints they are built on."
 status: draft
-kind: runtime
+x-okfit-kind: runtime
 resource: ../../packages/github-actions/src/ActionLogger.ts
 tags:
   - architecture
@@ -18,7 +18,7 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-11-21T22:35:23Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 959e8407d5a5e496
 ---

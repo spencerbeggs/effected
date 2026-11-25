@@ -18,7 +18,7 @@ sources:
     resource: ../../.repos/effect/packages/effect/src/SemVerRange.ts
   - id: core-parity-test
     resource: ../../packages/semver/__test__/core-parity.test.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: d7abe2e95a3f8c0a
   verified:

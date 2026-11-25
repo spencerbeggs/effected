@@ -21,7 +21,7 @@ generated:
 verified:
   - by: human:spencer
     at: 2026-10-10T23:15:48Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 567722c87dcdb679
 ---

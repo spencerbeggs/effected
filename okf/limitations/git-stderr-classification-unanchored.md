@@ -3,13 +3,13 @@ type: Limitation
 title: Git error classification uses unanchored substring matching on stderr
 description: A path or ref name that literally contains one of the classification phrases could theoretically misclassify; anchoring is deferred until a real collision is observed.
 status: stable
-bounds: ../decisions/git-classification-happens-once.md
+x-okfit-bounds: ../decisions/git-classification-happens-once.md
 tags:
   - architecture
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-integrity:
+x-okfit-integrity:
   generated:
     body: c26da2ba09b0ab21
 ---

@@ -3,7 +3,7 @@ type: Interface
 title: actions-reporting
 description: CheckState, ManagedDocument, GitHubMarkdown and CheckDocument — the living-document surfaces an action reports progress into.
 status: stable
-kind: api
+x-okfit-kind: api
 resource: ../../packages/github-actions/src
 tags:
   - architecture
@@ -16,7 +16,7 @@ verified:
     at: 2026-09-24T00:12:29.767Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
-integrity:
+x-okfit-integrity:
   generated:
     body: ccef981ebe664a6b
   verified:

@@ -3,13 +3,13 @@ type: Module
 title: "@effected/github-references"
 description: GitHub's issue-reference grammar as pure functions, extracted from @effected/github.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/github-references
 tags: [bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 989d8c3e20ed123d
 ---

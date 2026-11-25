@@ -3,7 +3,7 @@ type: Interface
 title: "@effected/jsonl journal service"
 description: The write half of @effected/jsonl — append, atomicity, publish ordering, shutdown, and the cooperative-writer process model with its watcher.
 status: stable
-kind: api
+x-okfit-kind: api
 resource: ../../packages/jsonl/src/Journal.ts
 tags:
   - architecture
@@ -17,7 +17,7 @@ verified:
     at: 2026-10-08T06:10:55Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 63edcad93bcfb661
   verified:

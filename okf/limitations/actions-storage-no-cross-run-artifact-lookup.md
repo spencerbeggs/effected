@@ -3,13 +3,13 @@ type: Limitation
 title: There is no cross-run artifact lookup
 description: The artifact module cannot fetch an artifact produced by a different workflow run; the API exists on GitHub's side but has no call site shaping it here yet.
 status: stable
-bounds: ../interfaces/actions-storage.md
+x-okfit-bounds: ../interfaces/actions-storage.md
 tags:
   - architecture
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 065e7c258e797312
 ---

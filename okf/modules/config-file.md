@@ -3,7 +3,7 @@ type: Module
 title: config-file
 description: Composable config-file loading built around a codec × resolver × strategy pipeline, carrying all four config codecs.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/config-file
 tags:
   - dx
@@ -11,7 +11,7 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-08T12:10:34Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 97704b8b13a009f9
 ---

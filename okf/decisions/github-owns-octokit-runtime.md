@@ -7,7 +7,7 @@ tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-11-16T17:04:15Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 9a11c882da0ec9ec
   verified:

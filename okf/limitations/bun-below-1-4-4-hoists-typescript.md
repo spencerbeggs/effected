@@ -4,14 +4,14 @@ title: bun below 1.4.4 hoists api-extractor's typescript over the tool's peer
 description: A consumer installing @effected/plugin with bun 1.4.3 or older gets typescript 6.0.3 hoisted from @microsoft/api-extractor over the tool's typescript peer range, so effected-mcp and effected package build fail at startup while --version still works; declare typescript directly or use bun 1.4.4 or newer.
 status: stable
 stale_after: "2027-05-07T00:00:00Z"
-bounds: ../interfaces/build-commands.md
+x-okfit-bounds: ../interfaces/build-commands.md
 tags:
   - compat
   - deps
 generated:
   by: "claude-code/fable-5.1"
   at: 2026-11-07T02:00:52Z
-integrity:
+x-okfit-integrity:
   generated:
     body: fd1812c033d52303
 ---

@@ -3,7 +3,7 @@ type: Module
 title: scratchpad
 description: A committed but never-published pnpm workspace member that lets agents write typed probes fast — the evidence ladder's rung 3 tooled instead of hand-rolled.
 status: stable
-kind: harness
+x-okfit-kind: harness
 resource: ../../scratchpad
 tags:
   - dx
@@ -14,7 +14,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-09T00:05:23Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 0a6dd3f5f2f383db
 ---

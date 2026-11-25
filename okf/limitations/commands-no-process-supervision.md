@@ -3,12 +3,12 @@ type: Limitation
 title: "@effected/commands does not supervise or archive processes"
 description: Reap-after-detach, readiness polling, and archive helpers are deliberately absent, and stay a level up; the one exception is RunOnce's signal-0 liveness probe, which asks whether a lock owner exists and never signals or supervises it.
 status: stable
-bounds: ../modules/commands.md
+x-okfit-bounds: ../modules/commands.md
 tags: [bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-10-27T13:22:20Z
-integrity:
+x-okfit-integrity:
   generated:
     body: d77327d7ecede403
 ---

@@ -14,7 +14,7 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-11-02T14:55:07Z
-integrity:
+x-okfit-integrity:
   generated:
     body: a650acc6d3368794
 ---

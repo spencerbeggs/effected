@@ -11,7 +11,7 @@ generated:
 sources:
   - id: repo
     resource: "https://github.com/savvy-web/silk-runtime-action"
-integrity:
+x-okfit-integrity:
   generated:
     body: 4f46c3f1264b3b95
 ---

@@ -3,9 +3,9 @@ type: Module
 title: store
 description: Durable local state for Effect v4 — a schema-versioned migrated SqlClient and a TTL key-value cache, sharing one migration-ledger engine over a single SQLite driver dependency.
 status: stable
-kind: package
+x-okfit-kind: package
 resource: ../../packages/store
-layer: L1
+x-okfit-layer: L1
 tags:
   - architecture
   - performance
@@ -17,7 +17,7 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-11-06T20:09:15Z
-integrity:
+x-okfit-integrity:
   generated:
     body: c40f106ce95e7c45
 ---
