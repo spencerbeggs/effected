@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: The vitest suite splits into a fast tier with coverage and slow, hostile and full tiers run beside it
-description: "EFFECTED_TEST_TIER takes fast, slow, hostile and full. fast (ci:test, coverage and thresholds) excludes SLOW_TESTS and every .hostile.test.ts file at discovery; slow then hostile (ci:test:slow, coverage off) run on every pull request beside the Silk workflow; full (ci:test:full) runs the .parity, .corpus and .property files at full depth on the release pull request. A file's kind is its suffix, and an unset tier runs everything but the hostile files."
+description: "EFFECTED_TEST_TIER takes fast, slow, hostile and full. fast (ci:test, coverage and thresholds) excludes SLOW_TESTS and every .hostile.test.ts file at discovery; slow (ci:test:slow) and hostile (ci:test:hostile), coverage off, each run in a job of its own on every pull request beside the Silk workflow; full (ci:test:full) runs the .parity, .corpus and .property files at full depth on the release pull request. A file's kind is its suffix, and an unset tier runs everything but the hostile files. A tier builds only the packages its tests read built output from, and in the fast tier a project's files share a process."
 status: stable
 tags:
   - testing
@@ -24,16 +24,20 @@ sources:
     resource: ../../packages/testing/__test__/Growth.hostile.test.ts
   - id: root-package-json
     resource: ../../package.json
+  - id: test-builds
+    resource: ../../lib/scripts/test-builds.ts
+  - id: vitest-setup
+    resource: ../../vitest.setup.ts
   - id: owner-design
     resource: conversation with the repository owner
     author: human:spencer
     last_modified: 2026-11-24T00:00:00Z
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-25T13:41:08Z
+  at: 2026-11-25T19:35:42Z
 integrity:
   generated:
-    body: e409d1590983ba5e
+    body: e2831e6dc92a5ae3
   verified:
     by: human:spencer
     at: 2026-11-25T13:46:34Z
@@ -62,8 +66,8 @@ Two things then grew past that split. The step reached 38 minutes with 87% of th
 `EFFECTED_TEST_TIER` selects a run. It takes `fast`, `slow`, `hostile` and `full`; any other value is refused. `lib/scripts/test-tiers.ts` holds the rules and `vitest.config.ts` wires them to project discovery.[^test-tiers]
 
 - **`fast`** — what `pnpm ci:test` runs, with coverage and its thresholds. Each project excludes its `SLOW_TESTS` files and every hostile file (`**/*.hostile.test.{ts,tsx}`) from **discovery**, through `test.exclude`. The depth-aware files run here at sample depth.
-- **`slow`** — what `pnpm ci:test:slow` runs first, with `--coverage.enabled=false`. Each project includes only its `SLOW_TESTS` files, and a project with none is dropped.[^root-package-json]
-- **`hostile`** — what `pnpm ci:test:slow` runs after `slow`, coverage off, with `fileParallelism: false`. It includes every `*.hostile.test.ts` file, selected by suffix, and a project with none is dropped. These files bound how work grows with its input, and a growth ratio needs the runner to itself: run in parallel with the other slow files, they failed two of four Slow Tests runs, each just past its bound (#1387).
+- **`slow`** — what `pnpm ci:test:slow` runs, with `--coverage.enabled=false`. Each project includes only its `SLOW_TESTS` files, and a project with none is dropped.[^root-package-json]
+- **`hostile`** — what `pnpm ci:test:hostile` runs, coverage off, with `fileParallelism: false`. It includes every `*.hostile.test.ts` file, selected by suffix, and a project with none is dropped. These files bound how work grows with its input, and a growth ratio needs the runner to itself: run in parallel with the other slow files, they failed two of four Slow Tests runs, each just past its bound (#1387).
 - **`full`** — what `pnpm ci:test:full` runs, coverage off. Each project includes only its depth-aware files, the ones named `.parity.test.ts`, `.corpus.test.ts` or `.property.test.ts`, and gets `EFFECTED_TEST_DEPTH=full` in its test environment.
 - **Unset** — every local run — runs everything **except the hostile files**, at sample depth. `pnpm test:hostile` runs the hostile tier and `pnpm test:full` the full tier, each with coverage off.[^root-package-json]
 
@@ -83,9 +87,28 @@ The tag reaches a file only because the config passes `discoverStrategy: strateg
 
 ### Where each tier runs
 
-`.github/workflows/slow-tests.yml` runs `pnpm ci:test:slow`, the slow tier and then the hostile tier, on every pull request to `main`, on pushes to `main` and on dispatch, as its own job beside the Silk workflow rather than after it, so a pull request waits for the slower of the two rather than their sum.[^slow-tests-yml]
+`.github/workflows/slow-tests.yml` runs two jobs on every pull request to `main`, on pushes to `main` and on dispatch: `Slow Tests` runs `pnpm ci:test:slow` and `Hostile Tests` runs `pnpm ci:test:hostile`. Both run beside the Silk workflow rather than after it, so a pull request waits for the slowest of the three rather than their sum. The hostile tier has a job of its own so that it neither waits for the slow tier's larger build nor goes unreported when a slow test fails. That job also prints the growth checks nearest their bounds, from the report [the test kit](../modules/testing.md#growth) writes, since a check's margin differs by machine and a pass does not show it.[^slow-tests-yml]
 
 `.github/workflows/full-tests.yml` runs the full tier. On a pull request to `main` its one job runs only when the head branch is `changeset-release/main` and the pull request comes from this repository. `lib/scripts/full-test-projects.ts` selects the packages: those the pull request changes, plus every package that depends on one through `dependencies`, `peerDependencies` or `optionalDependencies`, kept when they own a depth-aware test file.[^full-test-projects] The release pull request's diff is version bumps and changelogs, so a changed path under a package means the package is in the release, and a dependent is included because a release of a parser can break the parity of the linter built on it. On dispatch it runs the packages named, or every package with depth-aware tests when none is named; a name that is unknown or has no depth-aware tests fails the run. It is one job, so a required check named `Full Tests` reports skipped on an ordinary pull request.[^full-tests-yml] The workflow blocks a release only once `Full Tests` is a required check in the repository ruleset, which is a repository setting and not something the workflow sets.
+
+### What each tier builds
+
+Workspace links resolve to source, so a test needs a build only when it reads built output, and only of the package it reads. `lib/scripts/test-builds.ts` holds the list, `READS_OWN_BUILD`, and both the CI scripts and the pre-test build in `vitest.setup.ts` take their turbo filters from it.[^test-builds][^vitest-setup]
+
+- The fast, hostile and full tiers build the twelve listed packages alone, with no dependency closure.
+- The slow tier, and a run with no tier, which includes the slow files, add `@effected/plugin...`: the packed-install e2e packs the plugin with everything it depends on.
+
+The list was measured, not reasoned. With every `dist/prod` removed and the pre-test build off (`EFFECTED_TEST_NO_BUILD=1`), the fast tier failed in eleven packages; with those built, one plugin test still failed for want of the engine's build; with twelve built, the fast, hostile and full tiers pass from a clean tree. The fast tier had built the plugin's whole closure, 41 packages, which took about six minutes on a runner whenever a source file had changed. A runner starts from a clean checkout, so a test that comes to read a build the list does not name fails there rather than passing on a stale one.
+
+### Which files share a process
+
+A process per test file is vitest's default, and it was 38% of the fast tier's worker time on a runner: about a thousand files each loading the same modules. `isolatesFiles` in `lib/scripts/test-tiers.ts` turns it off per project.[^test-tiers]
+
+- In the fast tier and in a run with no tier, a project's files share a process.
+- `@effected/bundler` and `@effected/cli-kit` keep a process per file. Their tests assert on what a fresh process has or has not loaded, such as Ink not being loaded until a screen needs it. They are the two projects that failed when isolation was off everywhere.
+- The hostile, slow and full tiers keep a process per file. A growth check reads the CPU time of its own process, and in the other two the time saved is not worth the risk.
+
+A test that passes only because an earlier file left state behind is the cost of sharing. The fast tier passed with its file order shuffled under two seeds when the rule was set; a project whose tests come to depend on a fresh process joins `NEEDS_FRESH_PROCESS`.
 
 ## Why discovery, not a tag filter
 
@@ -107,11 +130,13 @@ The full tier is the exception, and deliberately: it proves parity over a whole 
 - **A nightly full run, or filing an issue when one fails.** The owner chose the release-pull-request gate plus dispatch.[^owner-design]
 
 [^vitest-config]: `vitest.config.ts` — `SLOW_TESTS`, the `hostile` tag and its timeout, `discoverStrategy: strategy`, `fileParallelism: false` under the hostile tier, and the per-project `exclude`/`include`/`env` in `buildProject`.
-[^test-tiers]: `lib/scripts/test-tiers.ts` — `TIERS`, `HOSTILE_GLOB`, `DEPTH_SUFFIXES`, `parseTier`, `parseDepth`, `validateLists` and `projectSelection`.
+[^test-tiers]: `lib/scripts/test-tiers.ts` — `TIERS`, `HOSTILE_GLOB`, `DEPTH_SUFFIXES`, `parseTier`, `parseDepth`, `validateLists`, `projectSelection`, `NEEDS_FRESH_PROCESS` and `isolatesFiles`.
 [^slow-tests-yml]: `.github/workflows/slow-tests.yml` — the `Slow Tests` job and its header comment.
 [^full-tests-yml]: `.github/workflows/full-tests.yml` — the `Full Tests` job, its `if:` and its header comment.
 [^full-test-projects]: `lib/scripts/full-test-projects.ts` — `affectedProjects` and `requestedProjects`.
 [^test-kinds-test]: `__test__/test-kinds.test.ts` — the four rules and `ALLOWED_CLOCKS`.
 [^growth-control]: `packages/testing/__test__/Growth.hostile.test.ts` — "gives a test in a hostile file a one-minute timeout".
 [^owner-design]: The design the repository owner approved on 2026-11-24: the full run gates the release pull request and runs on dispatch, with no nightly schedule.
-[^root-package-json]: `package.json` — `ci:test` sets `EFFECTED_TEST_TIER=fast`; `ci:test:slow` runs `EFFECTED_TEST_TIER=slow` and then `EFFECTED_TEST_TIER=hostile`, and `ci:test:full`, `test:hostile` and `test:full` set their tier, each with `--coverage.enabled=false`.
+[^root-package-json]: `package.json` — `ci:test` sets `EFFECTED_TEST_TIER=fast`; `ci:test:slow`, `ci:test:hostile`, `ci:test:full`, `test:hostile` and `test:full` each set their tier with `--coverage.enabled=false`, and each `ci:test*` script first builds its tier's packages through `lib/scripts/test-builds.ts`.
+[^test-builds]: `lib/scripts/test-builds.ts` — `READS_OWN_BUILD`, `buildFilters` and `buildCommand`.
+[^vitest-setup]: `vitest.setup.ts` — the pre-test build and `EFFECTED_TEST_NO_BUILD`.
