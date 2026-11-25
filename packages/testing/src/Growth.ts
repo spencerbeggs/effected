@@ -30,6 +30,10 @@ const SAMPLES = 5;
 const ROUNDS = 3;
 /** A workload still under the floor after this many repetitions is not measurable. */
 const MAX_REPETITIONS = 200_000;
+/** Once a size has been sampled for this long, it is not sampled again in the round: a slow size is already clear. */
+const SAMPLING_BUDGET_MS = 1000;
+/** A ratio this many times its bound is not measured again: no retry brings it back under. */
+const HOPELESS = 8;
 
 const UNMEASURED =
 	"the workload could not be measured: it stays under 5 ms of CPU after 200,000 repetitions, so its ratio would " +
@@ -59,10 +63,15 @@ const calibrate = (run: () => unknown): number => {
 	}
 };
 
-/** The fastest of `SAMPLES` batches, per run. */
+/** The fastest of up to `SAMPLES` batches, per run: fewer once the sampling budget is spent, and never fewer than one. */
 const fastest = (run: () => unknown, repetitions: number): number => {
 	let best = Number.POSITIVE_INFINITY;
-	for (let sample = 0; sample < SAMPLES; sample += 1) best = Math.min(best, batch(run, repetitions) / repetitions);
+	let spent = 0;
+	for (let sample = 0; sample < SAMPLES && spent < SAMPLING_BUDGET_MS; sample += 1) {
+		const elapsed = batch(run, repetitions);
+		spent += elapsed;
+		best = Math.min(best, elapsed / repetitions);
+	}
 	return best;
 };
 
@@ -93,7 +102,7 @@ const measure = (
 		largeMs = Math.min(largeMs, fastest(large, largeRepetitions));
 		ratio = largeMs / smallMs;
 		if (!Number.isFinite(ratio) || !(smallMs > 0)) throw new Error(`Growth: ${UNMEASURED}`);
-		if (ratio < options.bound) break;
+		if (ratio < options.bound || ratio >= options.bound * HOPELESS) break;
 	}
 	return {
 		ratio,
@@ -135,7 +144,9 @@ const assertOrder = (
  * ratio holds on any runner where an elapsed-time ceiling does not. Time is CPU time of the process, user plus
  * system, which counts the collector's threads too. Each size is timed as the fastest of five samples, a sample
  * shorter than 5 ms is a batch of repetitions, and a ratio at or over the bound is measured again, up to three
- * rounds. A test file that reads this is named `.hostile.test.ts`, which runs it one file at a time.
+ * rounds. A size that takes over a second is sampled once, and a ratio eight times its bound is not measured again,
+ * so a regression to exponential work fails in about the time of two runs of it. A test file that reads this is
+ * named `.hostile.test.ts`, which runs it one file at a time.
  */
 export const Growth: {
 	/** CPU milliseconds this process has used: user plus system. */

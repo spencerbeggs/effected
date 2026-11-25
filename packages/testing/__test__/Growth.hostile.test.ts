@@ -79,6 +79,25 @@ describe("Growth.measure", () => {
 	});
 });
 
+describe("Growth.measure on work far past its bound", () => {
+	// A regression from linear to exponential can make the large size take seconds a run. Measuring it again cannot
+	// bring a ratio thousands of times the bound back under it, so the measurement stops after the first round and
+	// stops sampling a slow size once it has spent a second on it.
+	it("does not keep re-measuring a ratio no retry could rescue", { timeout: 60_000 }, () => {
+		let largeRuns = 0;
+		const result = Growth.measure(
+			(size) => () => {
+				if (size > 1000) largeRuns += 1;
+				linear(size > 1000 ? 100_000_000 : 20_000);
+			},
+			{ from: 1000, bound: 10 },
+		);
+		assert.isAbove(result.ratio, 1000);
+		// One calibration run and one kept sample; three rounds of five would be sixteen.
+		assert.isAtMost(largeRuns, 3);
+	});
+});
+
 describe("Growth.cpuNow", () => {
 	it("moves forward as the process works", () => {
 		const started = Growth.cpuNow();
