@@ -1,0 +1,72 @@
+name: Full Tests
+
+# The full-depth run: every .parity, .corpus and .property test file of the selected packages with
+# EFFECTED_TEST_DEPTH=full and coverage off. On a pull request it runs only for the release PR
+# (changeset-release/main) and only for the packages that PR changes plus their dependents; the
+# head-branch check lives on the job's `if:` because `pull_request` has no head-branch filter. The
+# release PR's diff is version bumps and changelogs, so a changed path under a package means that
+# package is in the release. On dispatch it runs the named packages, or every package with
+# depth-aware tests. Ordinary pull requests run these files at sample depth in the Silk workflow.
+#
+# One job, so a required check named "Full Tests" reports skipped on an ordinary pull request and
+# success when the release touches no package with depth-aware tests.
+#
+# A `pull_request` from a FORK cannot be the release PR: the same-repository check on the job's
+# `if:` keeps a fork branch named changeset-release/main from running it.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: Comma-separated package names; empty runs every package with depth-aware tests
+        required: false
+        default: ""
+
+concurrency:
+  group: full-tests-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write # signs the job in to the hosted turbo cache
+jobs:
+  full:
+    name: Full Tests
+    if: >-
+      github.event_name == 'workflow_dispatch' || (github.head_ref == 'changeset-release/main' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Setup Runtime
+        uses: savvy-web/silk-runtime-action@v2
+        with:
+          turbo-api: https://cache.savvyweb.systems
+
+      - name: Select projects
+        id: select
+        env:
+          PACKAGES: ${{ inputs.packages }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            projects=$(pnpm exec tsx lib/scripts/full-test-projects.ts --packages "$PACKAGES")
+          else
+            projects=$(pnpm exec tsx lib/scripts/full-test-projects.ts --changed-against origin/main)
+          fi
+          echo "projects=$projects" >> "$GITHUB_OUTPUT"
+          echo "Selected: ${projects:-none}"
+
+      - name: Run the full tier
+        if: steps.select.outputs.projects != ''
+        env:
+          PROJECTS: ${{ steps.select.outputs.projects }}
+        run: pnpm run ci:test:full $PROJECTS
