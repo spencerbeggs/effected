@@ -1856,6 +1856,21 @@ importers:
         specifier: catalog:effected:build
         version: 7.1.0-beta
 
+  packages/testing:
+    devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.5
+        version: 4.1.5(effect@4.1.5)(vitest@5.1.1)
+      '@types/node':
+        specifier: catalog:effected:build
+        version: 26.6.6
+      effect:
+        specifier: 4.1.5
+        version: 4.1.5
+      typescript:
+        specifier: catalog:effected:build
+        version: 7.1.0-beta
+
   packages/toml:
     dependencies:
       '@effected/source':

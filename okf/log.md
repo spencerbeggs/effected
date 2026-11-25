@@ -3,6 +3,7 @@
 ## 2026-11-25
 
 * Updated @effected/markdown-lint
+* Added @effected/testing
 
 ## 2026-11-24
 
