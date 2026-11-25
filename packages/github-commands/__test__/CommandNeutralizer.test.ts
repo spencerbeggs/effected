@@ -86,47 +86,7 @@ describe("CommandNeutralizer: the runner's two parsers", () => {
 });
 
 describe("CommandNeutralizer: exhaustive over a small alphabet, judged by the independent oracle", () => {
-	// Every string up to length 5 over the characters that make or break a command: the colon, the hash, the bracket,
-	// ordinary and .NET whitespace (a space, a tab, NEL), the three line break characters and a letter.
-	//
-	// Length 5 is enough. The longest trigger is three characters (`##[`, or whitespace then `::`), so five holds a
-	// one-character line break, a whole trigger and one character before it: every way a trigger meets a single break
-	// or what precedes it. A CRLF break with a character before it and a three-character trigger needs six; the CRLF
-	// cases in the tests above cover it.
-	// Length 6 was 597,871 strings walked by four tests and ran past the CI runner's 5 s test timeout; length 5 is
-	// 66,430.
-	const ALL = strings([":", "#", "[", " ", "\t", "\u0085", "\r", "\n", "x"], 5);
-
-	it(`no output line is a command, for all ${ALL.length} strings`, () => {
-		for (const text of ALL) {
-			assert.deepStrictEqual(commandLines(CommandNeutralizer.text(text)), [], JSON.stringify(text));
-		}
-	});
-
-	it("only the marker is added: removing it gives back the input's own lines", () => {
-		for (const text of ALL) {
-			const out = CommandNeutralizer.lines(text).map((line) => line.replaceAll(MARK, ""));
-			assert.deepStrictEqual(out, text.split(LINE_BREAK), JSON.stringify(text));
-		}
-	});
-
-	it("a line the oracle does not read as a command is returned exactly as it was", () => {
-		for (const text of ALL) {
-			const inputLines = text.split(LINE_BREAK);
-			const out = CommandNeutralizer.lines(text);
-			inputLines.forEach((line, index) => {
-				if (!isCommand(line)) assert.strictEqual(out[index], line, JSON.stringify(text));
-			});
-		}
-	});
-
-	it("is idempotent for every one of them", () => {
-		for (const text of ALL) {
-			const once = CommandNeutralizer.text(text);
-			assert.strictEqual(CommandNeutralizer.text(once), once, JSON.stringify(text));
-		}
-	});
-
+	// The sweep over every string up to a length is in `CommandNeutralizer.property.test.ts`.
 	it("a string that already carries zero-width spaces, which the runner skips, is still made safe", () => {
 		for (const text of strings([":", "#", "[", ZWSP, "\n"], 6)) {
 			assert.deepStrictEqual(commandLines(CommandNeutralizer.text(text)), [], JSON.stringify(text));

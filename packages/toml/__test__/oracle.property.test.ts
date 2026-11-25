@@ -37,6 +37,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { assert, describe, it } from "@effect/vitest";
+import { Depth } from "@effected/testing";
 import { Arbitrary, Effect, Schema } from "effect";
 import { parse as oracleParse, stringify as oracleStringify } from "smol-toml";
 import { Toml } from "../src/Toml.js";
@@ -290,7 +291,11 @@ const documentArb = tableArb(3);
  * the seed deliberately (with a green run) when fresh coverage is wanted;
  * the corpus differential below is exhaustive and does not depend on it.
  */
-const ORACLE_CHECK_OPTIONS: Arbitrary.CheckOptions = { runs: 250, seed: 20260710 };
+const ORACLE_CHECK_OPTIONS: Arbitrary.CheckOptions = {
+	// 250 cases on a pull request, and ten times that at full depth.
+	runs: Depth.pick({ sample: 250, full: 2_500 }),
+	seed: 20260710,
+};
 
 describe("smol-toml differential oracle", () => {
 	it.effect.prop(
