@@ -378,6 +378,12 @@ class InlineParser implements InlineScanner {
 
 		let closer = this.delimiters;
 		while (closer !== undefined && closer.previous !== stackBottom) {
+			// Nothing above the bottom (a link with no delimiters inside it): the walk would pass the bottom and run to
+			// the stack's base, ending at nothing all the same, at a cost of every delimiter still open below.
+			if (closer === stackBottom) {
+				closer = undefined;
+				break;
+			}
 			closer = closer.previous;
 		}
 

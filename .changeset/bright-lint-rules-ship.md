@@ -17,7 +17,11 @@
 
 ### The markdownlint 0.42 rule set
 
-`@effected/markdown-lint/rules` exports 22 built-in rules (`MD001` through `MD060`), one named export each. `@effected/markdown-lint/rules/all` exports `rules`, the full list, and `uncovered`, the built-ins not ported.
+`@effected/markdown-lint/rules` exports all 53 built-in rules (`MD001` through `MD060`), one named export each. `@effected/markdown-lint/rules/all` exports `rules`, the full list, and `uncovered`, the built-ins not ported, which is empty.
+
+Every markdownlint 0.42 rule has a port, so `rules` reports on the same document everything markdownlint does. The rules most documents trip are among the later additions: `MD007` and `MD029` for list indentation and numbering, `MD034` for bare URLs, `MD044` for proper names, `MD051` and `MD052` for fragment and reference links, `MD053` for unused definitions, and `MD055`, `MD056` and `MD058` for tables.
+
+`LintReport` and the fix information a diagnostic carries gain an optional `deletesLine`, and `MarkdownLint.applyFixes` applies a whole-line deletion as markdownlint does. `MD053` uses it to remove an unused link reference definition.
 
 ### Configuration and inline comments
 
@@ -29,6 +33,11 @@
 ### Configuration files
 
 `MarkdownlintConfigFile.read` and `resolve`, with `MarkdownlintConfigError`, come from the new `@effected/markdown-lint/config` subpath. They read `.markdownlint.jsonc`, `.json`, `.yaml` and `.yml`, follow `extends`, and find the nearest file as markdownlint-cli2 does. They need `FileSystem` and `Path` in `R`; the package root never imports them.
+
+## Bug Fixes
+
+* `MD032`, `MD027` and the table rules end lists, paragraphs and tables at a directive line, as markdownlint does.
+* `MD022`'s fix keeps a container's line prefix, `MD009` reads the line after indented code as markdownlint does, and `MD044` and `MD014` report on the last line of an unclosed fence.
 
 ## Dependencies
 

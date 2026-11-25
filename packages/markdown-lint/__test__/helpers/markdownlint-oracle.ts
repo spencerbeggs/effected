@@ -72,9 +72,39 @@ export const markdownlintLint = (options: MarkdownlintOptions): Record<string, R
 /** The installed markdownlint's version. */
 export const oracleVersion = (): string => main.getVersion();
 
-/** Lint `source` with markdownlint's built-in rules under `config`. */
-export const oracleLint = (source: string, config: Record<string, unknown>): ReadonlyArray<OracleFinding> =>
-	sync.lint({ strings: { input: source }, config }).input ?? [];
+// A rule that reports nothing and asks markdownlint for micromark tokens. markdownlint parses with micromark only
+// when an enabled rule's `parser` is `"micromark"`, and its MD052 and MD053 (`parser: "none"`) read their reference
+// data from those tokens: enabled alone they see none and report nothing (a recorded divergence). With this rule
+// beside them they read what they read under the default config, where micromark rules are enabled.
+const micromarkCompanion = {
+	names: ["micromark-companion"],
+	description: "Asks markdownlint to parse with micromark",
+	tags: ["oracle"],
+	parser: "micromark",
+	function: () => undefined,
+};
+
+/**
+ * Lint `source` with markdownlint's built-in rules under `config`; with `micromark`, beside a rule that makes
+ * markdownlint parse with micromark whatever else is enabled. Not memoized: repeats are rare across the suite and a
+ * key over a config's JSON would merge configs that serialize alike (`NaN`, `Infinity`, `-0`).
+ */
+export const oracleLint = (
+	source: string,
+	config: Record<string, unknown>,
+	options?: { readonly micromark?: boolean },
+): ReadonlyArray<OracleFinding> => {
+	const micromark = options?.micromark === true;
+	return (
+		(micromark
+			? sync.lint({
+					strings: { input: source },
+					config: { ...config, "micromark-companion": true },
+					customRules: [micromarkCompanion],
+				}).input
+			: sync.lint({ strings: { input: source }, config }).input) ?? []
+	);
+};
 
 /**
  * markdownlint's `applyFixes`, over the source as given: a leading byte order
@@ -90,3 +120,39 @@ export const oracleLineEnding = (source: string): string => internal.getPreferre
 
 /** markdownlint's built-in rules, in its own order. */
 export const oracleRules = (): ReadonlyArray<OracleRule> => builtIn.default;
+
+interface OracleToken {
+	readonly type: string;
+	readonly startLine: number;
+	readonly startColumn: number;
+	readonly text: string;
+	readonly children: ReadonlyArray<OracleToken>;
+}
+
+const parseSpecifier = new URL("../../node_modules/markdownlint/lib/micromark-parse.mjs", import.meta.url).href;
+const micromarkParse: { readonly parse: (markdown: string) => ReadonlyArray<OracleToken> } = await import(
+	parseSpecifier
+);
+
+/**
+ * markdownlint's `data` tokens for `source`, as `[line, column, text]`, in document order: the text MD044 scans as
+ * `data`. Those under the parts MD044 passes over (a link's destination and title, a full reference's label, a
+ * definition, a fence's info) and the copies markdownlint's undefined-reference shim makes are left out.
+ */
+export const oracleDataTokens = (source: string): ReadonlyArray<readonly [number, number, string]> => {
+	const skipped = new Set(["resource", "reference", "definition", "codeFencedFence", "undefinedReference"]);
+	const found: Array<readonly [number, number, string]> = [];
+	const walk = (tokens: ReadonlyArray<OracleToken>): void => {
+		for (const token of tokens) {
+			if (skipped.has(token.type)) continue;
+			if (token.type === "data") found.push([token.startLine, token.startColumn, token.text]);
+			walk(token.children);
+		}
+	};
+	// markdownlint parses the content after its front matter, and numbers lines from the source's start.
+	const frontMatter =
+		/^---[^\S\r\n]*(?:\r\n|\r|\n)[\s\S]*?(?:\r\n|\r|\n)---\s*?(?:\r\n|\r|\n|$)/.exec(source)?.[0] ?? "";
+	const lines = frontMatter === "" ? 0 : frontMatter.split(/\r\n|\r|\n/).length - 1;
+	walk(micromarkParse.parse(source.slice(frontMatter.length)));
+	return found.map(([line, column, text]) => [line + lines, column, text] as const);
+};

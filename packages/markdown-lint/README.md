@@ -111,7 +111,7 @@ Under markdownlint the adapter leaves all of this to markdownlint, which hands t
 
 ## Built-in rules
 
-`@effected/markdown-lint/rules` ports markdownlint's built-in rules over kit trees, one named export per rule, each held finding for finding to markdownlint 0.42 by a differential test over markdownlint's own fixture corpus. Import only the rules you run; `@effected/markdown-lint/rules/all` exports `rules`, every port in markdownlint's order, and `uncovered`, the names of the built-in rules with no port yet:
+`@effected/markdown-lint/rules` ports markdownlint's built-in rules over kit trees, one named export per rule, each held finding for finding to markdownlint 0.42 by a differential test over markdownlint's own fixture corpus. Import only the rules you run; `@effected/markdown-lint/rules/all` exports `rules`, every port in markdownlint's order, and `uncovered`, the names of the built-in rules not ported (currently none):
 
 ```ts
 import { MarkdownLint } from "@effected/markdown-lint";
@@ -120,7 +120,7 @@ import { rules, uncovered } from "@effected/markdown-lint/rules/all";
 
 MarkdownLint.lint(source, [MD022, MD041]);
 const everything = MarkdownLint.lint(source, rules);
-console.log(`not checked: ${uncovered.join(", ")}`);
+if (uncovered.length > 0) console.log(`not checked: ${uncovered.join(", ")}`);
 ```
 
 `MarkdownLint.applyFixes(source, findings)` applies the findings' fixes the way `markdownlint-cli2 --fix` does, including its line-ending normalization.

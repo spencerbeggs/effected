@@ -23,7 +23,7 @@ import { Definition } from "../../MarkdownNode.js";
 import type { BlockConstruct, BlockNode } from "../blockTypes.js";
 import { makeBlockNode } from "../blockTypes.js";
 import { parseReference } from "../references.js";
-import { sliceWithSegments, sourceOffsetAt } from "../segments.js";
+import { sliceWithSegments } from "../segments.js";
 
 const C_OPEN_BRACKET = 0x5b;
 
@@ -41,29 +41,63 @@ export const extractDefinitions = (block: BlockNode): void => {
 		return;
 	}
 
-	while (block.stringContent.charCodeAt(0) === C_OPEN_BRACKET) {
-		const reference = parseReference(block.stringContent);
+	// One pass over the paragraph's text, never sliced per definition: each definition parses at `pos`, its offsets
+	// come from a cursor over the segments that only moves forward, and the nodes and the paragraph's remainder are
+	// spliced once. Splitting them off one at a time re-sliced and re-scanned every segment and searched the parent's
+	// children per definition, quadratic in a run of them (`pathological.e2e.test.ts`).
+	const text = block.stringContent;
+	const segments = block.segments;
+	let segment = 0;
+	// `sourceOffsetAt` for a non-decreasing `index`: past a segment's end and before the next one's start, the end.
+	const offsetAt = (index: number, fallback: number): number => {
+		while (segment < segments.length) {
+			const current = segments[segment] as (typeof segments)[number];
+			if (index < current.textOffset + current.length) break;
+			segment += 1;
+		}
+		const current = segments[segment];
+		const previous = segments[segment - 1];
+		const previousEnd = previous === undefined ? fallback : previous.sourceOffset + previous.length;
+		if (current === undefined || index < current.textOffset) {
+			return previousEnd;
+		}
+		return current.sourceOffset + (index - current.textOffset);
+	};
+
+	const nodes: BlockNode[] = [];
+	let pos = 0;
+	let line = block.startLine;
+	let startOffset = block.startOffset;
+	while (text.charCodeAt(pos) === C_OPEN_BRACKET) {
+		const reference = parseReference(text, pos);
 		if (reference === undefined) {
-			return;
+			break;
 		}
 
-		const consumed = block.stringContent.slice(0, reference.length);
-		const startOffset = sourceOffsetAt(block.segments, 0, block.startOffset);
-		const linesConsumed = (consumed.match(/\n/g) ?? []).length;
+		const end = pos + reference.length;
+		const nodeStart = offsetAt(pos, startOffset);
+		let linesConsumed = 0;
+		for (let at = pos; at < end; at += 1) {
+			if (text.charCodeAt(at) === 0x0a) linesConsumed += 1;
+		}
 		// The node ends at the definition's last content character. The parse
 		// consumes trailing whitespace and the line ending to validate the
 		// definition, but that consumption is not part of the node's span —
 		// mdast-util ends definitions at content end, pinned by the interop
 		// corpus.
-		const contentLength = consumed.replace(/[ \t\r\n]+$/, "").length;
-		const endOffset = sourceOffsetAt(block.segments, contentLength, startOffset);
-		const contentLines = (consumed.slice(0, contentLength).match(/\n/g) ?? []).length;
+		let contentEnd = end;
+		while (contentEnd > pos && " \t\r\n".includes(text.charAt(contentEnd - 1))) contentEnd -= 1;
+		const endOffset = offsetAt(contentEnd, nodeStart);
+		let contentLines = 0;
+		for (let at = pos; at < contentEnd; at += 1) {
+			if (text.charCodeAt(at) === 0x0a) contentLines += 1;
+		}
 
-		const node = makeBlockNode("definition", startOffset, block.startLine, block.depth);
+		const node = makeBlockNode("definition", nodeStart, line, block.depth);
 		node.parent = parent;
 		node.open = false;
 		node.endOffset = endOffset;
-		node.endLine = block.startLine + contentLines;
+		node.endLine = line + contentLines;
 		node.data.definition = {
 			key: reference.key,
 			identifier: reference.identifier,
@@ -71,17 +105,24 @@ export const extractDefinitions = (block: BlockNode): void => {
 			url: reference.url,
 			...(reference.title === undefined ? {} : { title: reference.title }),
 		};
+		nodes.push(node);
 
-		const at = parent.children.indexOf(block);
-		parent.children.splice(at === -1 ? parent.children.length : at, 0, node);
-
-		// Advance the paragraph past what the definition took with it.
-		const remaining = sliceWithSegments(block.segments, reference.length, block.stringContent.length);
-		block.stringContent = block.stringContent.slice(reference.length);
-		block.segments.splice(0, block.segments.length, ...remaining);
-		block.startLine += linesConsumed;
-		block.startOffset = remaining[0]?.sourceOffset ?? endOffset;
+		// Advance past what the definition took with it.
+		pos = end;
+		line += linesConsumed;
+		startOffset = offsetAt(pos, endOffset);
 	}
+
+	if (nodes.length === 0) {
+		return;
+	}
+	const at = parent.children.indexOf(block);
+	parent.children.splice(at === -1 ? parent.children.length : at, 0, ...nodes);
+	const remaining = sliceWithSegments(segments, pos, text.length);
+	block.stringContent = text.slice(pos);
+	block.segments.splice(0, block.segments.length, ...remaining);
+	block.startLine = line;
+	block.startOffset = remaining[0]?.sourceOffset ?? (nodes[nodes.length - 1] as BlockNode).endOffset;
 };
 
 /**

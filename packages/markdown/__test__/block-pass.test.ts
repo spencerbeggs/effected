@@ -501,6 +501,75 @@ describe("link reference definitions", () => {
 		assert.isFalse(Object.hasOwn(definition ?? {}, "title"));
 	});
 
+	// CommonMark §4.7 allows spaces or tabs (and up to one line ending) around a definition's destination and title,
+	// and spaces or tabs after it; commonmark.js matches spaces only there, where cmark and micromark take tabs.
+	// A table interrupting a paragraph takes its last line as the header; the lines above it are reclaimed as a
+	// paragraph, whose definitions upstream (cmark-gfm) and micromark read as definitions.
+	describe("definitions directly above a table", () => {
+		const types = (source: string) => parseBlocks(source, "gfm").root.children.map((child) => child.type);
+		it("reads a definition right above the header row", () => {
+			const { root, refmap } = parseBlocks("[t]: https://example.com\n| a | b |\n| - | - |\n| [x][t] | d |\n", "gfm");
+			assert.deepStrictEqual(
+				root.children.map((child) => child.type),
+				["definition", "table"],
+			);
+			assert.strictEqual(refmap.get("T")?.url, "https://example.com");
+		});
+
+		it("reads several, and keeps text after them", () => {
+			assert.deepStrictEqual(types("[a]: /a\n[b]: /b\n| a |\n| - |\n"), ["definition", "definition", "table"]);
+			assert.deepStrictEqual(types("[a]: /a\ntext\n| a |\n| - |\n"), ["definition", "paragraph", "table"]);
+		});
+
+		it("leaves a definition after text as text, as anywhere", () => {
+			assert.deepStrictEqual(types("text\n[a]: /a\n| a |\n| - |\n"), ["paragraph", "table"]);
+		});
+
+		it("reads a definition with a title", () => {
+			assert.deepStrictEqual(types('[a]: /a "t"\n| a |\n| - |\n'), ["definition", "table"]);
+		});
+	});
+
+	describe("tabs as a definition's whitespace", () => {
+		const definitionOf = (source: string) => {
+			const [first] = parseBlocks(source).root.children;
+			return first?.type === "definition" ? { url: first.url, title: first.title } : first?.type;
+		};
+		for (const [name, source, title] of [
+			["after the destination", "[a]: /u\t\n", undefined],
+			["before the destination", "[a]:\t/u\n", undefined],
+			["on both sides of the destination", "[a]:\t/u\t\n", undefined],
+			["before the title", '[a]: /u\t"t"\n', "t"],
+			["after the title", '[a]: /u "t"\t\n', "t"],
+			["all around", '[a]:\t/u\t"t"\t\n', "t"],
+			["before the line ending ahead of the destination", "[a]:\t\n/u\n", undefined],
+			["mixed with spaces", "[a]: \t /u \t\n", undefined],
+			["around an angle-bracketed destination", "[a]:\t<u>\t\n", undefined],
+			["before a single-quoted title", "[a]: /u\t'x'\n", "x"],
+			["before a parenthesized title", "[a]: /u\t(x)\n", "x"],
+		] as const) {
+			it(`reads a tab ${name}`, () => {
+				const url = source.includes("<u>") ? "u" : "/u";
+				assert.deepStrictEqual(definitionOf(source), { url, title });
+			});
+		}
+
+		it("reads tabbed definitions inside a blockquote and a list item", () => {
+			assert.deepStrictEqual(parseBlocks("> [a]:\t/u\t\n\n- [b]:\t/v\t\n").refmap.has("A"), true);
+			assert.deepStrictEqual(parseBlocks("> [a]:\t/u\t\n\n- [b]:\t/v\t\n").refmap.has("B"), true);
+		});
+
+		it("reads tabs around an inline link's destination and title, through the same scanner", () => {
+			const [paragraph] = parseBlocks('[x](\t/u\t"t"\t)\n').root.children;
+			const [link] = paragraph?.type === "paragraph" ? paragraph.children : [];
+			assert.deepStrictEqual(link?.type === "link" ? [link.url, link.title] : link?.type, ["/u", "t"]);
+		});
+
+		it("still refuses text after the destination", () => {
+			assert.strictEqual(definitionOf("[a]: /u\tx\n"), "paragraph");
+		});
+	});
+
 	describe("the refmap", () => {
 		it("keys definitions by their case-folded label", () => {
 			const { refmap } = parseBlocks("[Foo Bar]: /url\n");

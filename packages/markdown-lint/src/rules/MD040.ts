@@ -11,6 +11,7 @@ import type * as Lint from "@effected/markdown-lint";
 import { codeNodes } from "../internal/code-blocks.js";
 import { errorContext } from "../internal/lines.js";
 import { inMathBlock, mathFlowBlocks } from "../internal/math-flow.js";
+import { flagSetting, rawSetting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 // An opening fence line from its fence on: the fence, then the info word and the meta after it.
@@ -32,10 +33,9 @@ export const MD040: Lint.LintRule = LintRule.make({
 	tags: ["code", "language"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md040.md",
 	check: (context, report) => {
-		const allowed = Array.isArray(context.config.allowed_languages)
-			? (context.config.allowed_languages as ReadonlyArray<unknown>)
-			: [];
-		const languageOnly = !!context.config.language_only;
+		const languages = rawSetting(context.config, "allowed_languages");
+		const allowed = Array.isArray(languages) ? (languages as ReadonlyArray<unknown>) : [];
+		const languageOnly = flagSetting(context.config, "language_only");
 		const math = mathFlowBlocks(context);
 		for (const code of codeNodes(context) as ReadonlyArray<Code>) {
 			// Strict: a list or fence starting on a math opener line holds the opener (see `inMathBlock`).

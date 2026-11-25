@@ -16,24 +16,34 @@ import type { RawInlineSegment } from "./blockTypes.js";
  * The absolute source offset of `textIndex` within a segmented content run.
  *
  * An index that falls between segments resolves to the end of the segment
- * before it, which is the closest real source position there is.
+ * before it, which is the closest real source position there is. The
+ * segments run in increasing `textOffset` order, so the one an index falls
+ * in or after is found by binary search: one paragraph has a segment per
+ * line, and every inline node maps its offsets through them.
  */
 export const sourceOffsetAt = (
 	segments: ReadonlyArray<RawInlineSegment>,
 	textIndex: number,
 	fallback: number,
 ): number => {
-	let offset = fallback;
-	for (const segment of segments) {
-		if (textIndex < segment.textOffset) {
-			return offset;
+	// The last segment starting at or before `textIndex`.
+	let low = 0;
+	let high = segments.length - 1;
+	let found = -1;
+	while (low <= high) {
+		const middle = (low + high) >>> 1;
+		if ((segments[middle] as RawInlineSegment).textOffset <= textIndex) {
+			found = middle;
+			low = middle + 1;
+		} else {
+			high = middle - 1;
 		}
-		if (textIndex < segment.textOffset + segment.length) {
-			return segment.sourceOffset + (textIndex - segment.textOffset);
-		}
-		offset = segment.sourceOffset + segment.length;
 	}
-	return offset;
+	if (found < 0) return fallback;
+	const segment = segments[found] as RawInlineSegment;
+	return textIndex < segment.textOffset + segment.length
+		? segment.sourceOffset + (textIndex - segment.textOffset)
+		: segment.sourceOffset + segment.length;
 };
 
 /**

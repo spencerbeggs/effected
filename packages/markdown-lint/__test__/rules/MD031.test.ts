@@ -12,6 +12,7 @@ import {
 	runRule,
 	settingsDifferential,
 } from "../helpers/differential.js";
+import { directiveBlockGrid, directiveListEnds } from "../helpers/table-grid.js";
 
 const extra = [
 	{ name: "tight fence", source: "text\n```js\ncode\n```\ntext\n" },
@@ -126,7 +127,22 @@ describe("MD031 blanks-around-fences", () => {
 		},
 		DIFFERENTIAL_TIMEOUT,
 	);
+
+	// markdownlint's directive extension ends a paragraph (and a lazy list item, and a table) before a directive line,
+	// and reads an indented line after one as code: beside each block kind, in each container.
+	it(
+		"agrees with markdownlint beside directive lines",
+		() => {
+			const result = differential(MD031, { extra: [...directiveBlockGrid, ...directiveListEnds] });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DIRECTIVE_BLOCKS);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD031 findings over the corpus (LF and CRLF) and the extras.
 const ORACLE_FINDINGS_DEFAULT = 180;
+
+// markdownlint's MD031 findings over the corpus (LF and CRLF) and the blocks beside directive lines.
+const ORACLE_FINDINGS_DIRECTIVE_BLOCKS = 173;

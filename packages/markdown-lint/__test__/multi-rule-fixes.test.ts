@@ -11,7 +11,13 @@ import { MD032 } from "../src/rules/MD032.js";
 import { DIFFERENTIAL_TIMEOUT, corpus, fixesDifferential } from "./helpers/differential.js";
 import { oracleApplyFixes, oracleLint } from "./helpers/markdownlint-oracle.js";
 
-const byName = (...names: ReadonlyArray<string>) => rules.filter((rule) => names.includes(rule.name));
+// The wired rules with these names, in markdownlint's order. A name no wired rule has throws: a pair named before its
+// rule is wired would otherwise run, and pin, the other rule alone.
+const byName = (...names: ReadonlyArray<string>) => {
+	const missing = names.filter((name) => !rules.some((rule) => rule.name === name));
+	if (missing.length > 0) throw new Error(`no wired rule named ${missing.join(", ")}`);
+	return rules.filter((rule) => names.includes(rule.name));
+};
 
 // A marker change and a blank-line insert at one column, under each line ending.
 const extra = [
@@ -44,21 +50,71 @@ const shuffled = <A>(items: ReadonlyArray<A>, seed: string): ReadonlyArray<A> =>
 };
 
 // markdownlint's findings with a fix over every input, per case.
-const ORACLE_FIXES_ALL = 3054;
+const ORACLE_FIXES_ALL = 6606;
 const ORACLE_FIXES_MD004_MD032 = 396;
 const ORACLE_FIXES_MD022_MD009 = 452;
 const ORACLE_FIXES_MD031_MD032 = 368;
 const ORACLE_FIXES_MD012_MD047 = 90;
 const ORACLE_FIXES_MD009_MD010 = 542;
+const ORACLE_FIXES_MD020_MD009 = 333;
+const ORACLE_FIXES_MD021_MD009 = 359;
+const ORACLE_FIXES_MD005_MD009 = 309;
+const ORACLE_FIXES_MD007_MD004 = 655;
+const ORACLE_FIXES_MD027_MD009 = 454;
+const ORACLE_FIXES_MD029_MD005 = 437;
+const ORACLE_FIXES_MD030_MD004 = 324;
+const ORACLE_FIXES_MD030_MD007 = 479;
+const ORACLE_FIXES_MD030_MD005 = 116;
+const ORACLE_FIXES_MD014_MD010 = 334;
+const ORACLE_FIXES_MD038_MD009 = 615;
+const ORACLE_FIXES_MD037_MD009 = 850;
+const ORACLE_FIXES_MD049_MD037 = 773;
+const ORACLE_FIXES_MD050_MD049 = 340;
+const ORACLE_FIXES_MD044_MD049 = 494;
+const ORACLE_FIXES_MD011_MD009 = 371;
+const ORACLE_FIXES_MD039_MD009 = 518;
+const ORACLE_FIXES_MD034_MD009 = 416;
+const ORACLE_FIXES_MD053_MD009 = 299;
+const ORACLE_FIXES_MD053_MD012 = 102;
+const ORACLE_FIXES_MD054_MD039 = 429;
+const ORACLE_FIXES_MD051_MD039 = 282;
+const ORACLE_FIXES_MD058_MD022 = 244;
+const ORACLE_FIXES_MD058_MD031 = 269;
+const ORACLE_FIXES_MD058_MD032 = 197;
 // The inputs on which fixes from two or more of the case's rules land on one line, the case the file exists for.
-const MEETING_ALL = 35;
+const MEETING_ALL = 50;
 const MEETING_MD004_MD032 = 17;
 const MEETING_MD022_MD009 = 3;
 const MEETING_MD031_MD032 = 13;
 // MD012 fixes a blank run and MD047 the last line's end: they never fix one line together in the corpus or the extras.
 const MEETING_MD012_MD047 = 0;
 const MEETING_MD009_MD010 = 3;
-const MEETING_SAMPLE = 8;
+const MEETING_MD020_MD009 = 2;
+const MEETING_MD021_MD009 = 2;
+const MEETING_MD005_MD009 = 2;
+const MEETING_MD007_MD004 = 14;
+const MEETING_MD027_MD009 = 2;
+const MEETING_MD029_MD005 = 2;
+const MEETING_MD030_MD004 = 8;
+const MEETING_MD030_MD007 = 5;
+const MEETING_MD030_MD005 = 2;
+const MEETING_MD014_MD010 = 2;
+const MEETING_MD038_MD009 = 2;
+const MEETING_MD037_MD009 = 2;
+const MEETING_MD049_MD037 = 2;
+const MEETING_MD050_MD049 = 5;
+const MEETING_MD044_MD049 = 2;
+const MEETING_MD011_MD009 = 2;
+const MEETING_MD039_MD009 = 5;
+const MEETING_MD034_MD009 = 2;
+const MEETING_MD053_MD009 = 2;
+const MEETING_MD053_MD012 = 0;
+const MEETING_MD054_MD039 = 2;
+const MEETING_MD051_MD039 = 2;
+const MEETING_MD058_MD022 = 2;
+const MEETING_MD058_MD031 = 2;
+const MEETING_MD058_MD032 = 2;
+const MEETING_SAMPLE = 11;
 
 describe("applyFixes over several rules' fixes", () => {
 	// Recorded divergence "findings come in rule order": lint returns the rules' findings in the order of the rules it
@@ -114,21 +170,348 @@ describe("applyFixes over several rules' fixes", () => {
 		assert.strictEqual(fixed, "- a\r\n- b\r\n");
 	});
 
-	const cases: ReadonlyArray<readonly [string, ReadonlyArray<string>, number, number]> = [
+	// A case's own inputs, beside the shared extras: for pairs whose fixes the corpus never puts on one line.
+	const cases: ReadonlyArray<
+		readonly [string, ReadonlyArray<string>, number, number, ReadonlyArray<{ name: string; source: string }>?]
+	> = [
 		["every ported rule", rules.map((rule) => rule.name), ORACLE_FIXES_ALL, MEETING_ALL],
 		["MD004 and MD032", ["MD004", "MD032"], ORACLE_FIXES_MD004_MD032, MEETING_MD004_MD032],
 		["MD022 and MD009", ["MD022", "MD009"], ORACLE_FIXES_MD022_MD009, MEETING_MD022_MD009],
 		["MD031 and MD032", ["MD031", "MD032"], ORACLE_FIXES_MD031_MD032, MEETING_MD031_MD032],
 		["MD012 and MD047", ["MD012", "MD047"], ORACLE_FIXES_MD012_MD047, MEETING_MD012_MD047],
 		["MD009 and MD010", ["MD009", "MD010"], ORACLE_FIXES_MD009_MD010, MEETING_MD009_MD010],
+		// MD020 rewrites a closed heading's whole line, trailing whitespace included, where MD009 trims it.
+		[
+			"MD020 and MD009",
+			["MD020", "MD009"],
+			ORACLE_FIXES_MD020_MD009,
+			MEETING_MD020_MD009,
+			[
+				{ name: "closed heading and trailing spaces, LF", source: "#Heading#  \n\n## Heading##   \n" },
+				{ name: "closed heading and trailing spaces, CRLF", source: "#Heading#  \r\n\r\n## Heading##   \r\n" },
+			],
+		],
+		// MD021 deletes spaces inside the hashes and MD009 the spaces after them.
+		[
+			"MD021 and MD009",
+			["MD021", "MD009"],
+			ORACLE_FIXES_MD021_MD009,
+			MEETING_MD021_MD009,
+			[
+				{ name: "spaced closed heading and trailing spaces, LF", source: "#  Heading  #  \n\n##   Heading ##   \n" },
+				{
+					name: "spaced closed heading and trailing spaces, CRLF",
+					source: "#  Heading  #  \r\n\r\n## Heading   ##   \r\n",
+				},
+			],
+		],
+		// MD005 re-indents an ordered item and MD009 trims the same line's end. (MD005 fixes only ordered items and MD004
+		// only unordered ones, so those two never fix one line.)
+		[
+			"MD005 and MD009",
+			["MD005", "MD009"],
+			ORACLE_FIXES_MD005_MD009,
+			MEETING_MD005_MD009,
+			[
+				{ name: "re-indented items and trailing spaces, LF", source: "1. a  \n 2. b   \n  3. c \n" },
+				{ name: "re-indented items and trailing spaces, CRLF", source: " 9. a  \r\n10. b\r\n  11. c   \r\n" },
+			],
+		],
+		// MD007 re-indents a sublist item and MD004 changes its marker, on one line.
+		[
+			"MD007 and MD004",
+			["MD007", "MD004"],
+			ORACLE_FIXES_MD007_MD004,
+			MEETING_MD007_MD004,
+			[
+				{ name: "re-indented sublists and markers, LF", source: "- a\n   * b\n + c\n> - d\n>    + e\n" },
+				{ name: "re-indented sublists and markers, CRLF", source: "- a\r\n   * b\r\n + c\r\n" },
+			],
+		],
+		// MD027 deletes the spaces past a blockquote marker and MD009 a line's trailing spaces: on a blank quote line
+		// they are the same spaces.
+		[
+			"MD027 and MD009",
+			["MD027", "MD009"],
+			ORACLE_FIXES_MD027_MD009,
+			MEETING_MD027_MD009,
+			[
+				{ name: "quote spaces and trailing spaces, LF", source: ">   \n>  a  \n>\t \n" },
+				{ name: "quote spaces and trailing spaces, CRLF", source: ">   \r\n>  a  \r\n" },
+			],
+		],
+		// MD029 renumbers an ordered item and MD005 re-indents it, on one line.
+		[
+			"MD029 and MD005",
+			["MD029", "MD005"],
+			ORACLE_FIXES_MD029_MD005,
+			MEETING_MD029_MD005,
+			[
+				{ name: "renumbered and re-indented items, LF", source: "1. a\n 3. b\n  5. c\n" },
+				{ name: "renumbered and re-indented items, CRLF", source: "1. a\r\n 3. b\r\n  5. c\r\n" },
+			],
+		],
+		// MD030 respaces after a marker; MD004 changes the marker, MD007 an unordered item's indent and MD005 an
+		// ordered item's, on the same line. (MD007 fixes only unordered items and MD005 only ordered ones.)
+		[
+			"MD030 and MD004",
+			["MD030", "MD004"],
+			ORACLE_FIXES_MD030_MD004,
+			MEETING_MD030_MD004,
+			[
+				{ name: "respaced items and markers, LF", source: "-  a\n*   b\n" },
+				{ name: "respaced items and markers, CRLF", source: "-  a\r\n*   b\r\n" },
+			],
+		],
+		[
+			"MD030 and MD007",
+			["MD030", "MD007"],
+			ORACLE_FIXES_MD030_MD007,
+			MEETING_MD030_MD007,
+			[
+				{ name: "respaced and re-indented sublists, LF", source: "- a\n   -  b\n -   c\n" },
+				{ name: "respaced and re-indented sublists, CRLF", source: "- a\r\n   -  b\r\n -   c\r\n" },
+			],
+		],
+		[
+			"MD030 and MD005",
+			["MD030", "MD005"],
+			ORACLE_FIXES_MD030_MD005,
+			MEETING_MD030_MD005,
+			[
+				{ name: "respaced and re-indented ordered items, LF", source: "1. a\n 2.  b\n  3.   c\n" },
+				{ name: "respaced and re-indented ordered items, CRLF", source: "1. a\r\n 2.  b\r\n  3.   c\r\n" },
+			],
+		],
+		// MD014 deletes a command's `$` and the whitespace after it, and MD010 rewrites a tab in that whitespace.
+		[
+			"MD014 and MD010",
+			["MD014", "MD010"],
+			ORACLE_FIXES_MD014_MD010,
+			MEETING_MD014_MD010,
+			[
+				{ name: "dollar, tab and command, LF", source: "```\n$\tls\n$ cd\tx\n```\n" },
+				{ name: "dollar, tab and command, CRLF", source: "```\r\n$\tls\r\n$ cd\tx\r\n```\r\n" },
+			],
+		],
+		// MD038 deletes the spaces inside a code span and MD009 the spaces after it, on one line.
+		[
+			"MD038 and MD009",
+			["MD038", "MD009"],
+			ORACLE_FIXES_MD038_MD009,
+			MEETING_MD038_MD009,
+			[
+				{ name: "padded code spans and trailing spaces, LF", source: "a `  x` b   \n`y  `  \n" },
+				{ name: "padded code spans and trailing spaces, CRLF", source: "a `  x` b   \r\n`y  `  \r\n" },
+			],
+		],
+		// MD037 deletes the spaces inside emphasis markers and MD009 the spaces at the line's end.
+		[
+			"MD037 and MD009",
+			["MD037", "MD009"],
+			ORACLE_FIXES_MD037_MD009,
+			MEETING_MD037_MD009,
+			[
+				{ name: "spaced markers and trailing spaces, LF", source: "a ** bold ** c   \n_ x _  \n" },
+				{ name: "spaced markers and trailing spaces, CRLF", source: "a ** bold ** c   \r\n_ x _  \r\n" },
+			],
+		],
+		// MD049 swaps an emphasis's markers and MD037 deletes the spaces inside bare ones, on one line.
+		[
+			"MD049 and MD037",
+			["MD049", "MD037"],
+			ORACLE_FIXES_MD049_MD037,
+			MEETING_MD049_MD037,
+			[
+				{ name: "swapped and spaced markers, LF", source: "*a* and _b_ and * c * end\n" },
+				{ name: "swapped and spaced markers, CRLF", source: "*a* and _b_ and * c * end\r\n" },
+			],
+		],
+		// MD050 swaps a strong's markers and MD049 an emphasis's, on one line and in one span.
+		[
+			"MD050 and MD049",
+			["MD050", "MD049"],
+			ORACLE_FIXES_MD050_MD049,
+			MEETING_MD050_MD049,
+			[
+				{ name: "strong and emphasis in both styles, LF", source: "**a** *b* and __c__ _d_ and ___e___\n" },
+				{ name: "strong and emphasis in both styles, CRLF", source: "**a** *b* and __c__ _d_ and ___e___\r\n" },
+			],
+		],
+		// MD044 writes a name and MD049 swaps the emphasis markers around it, on one line.
+		[
+			"MD044 and MD049",
+			["MD044", "MD049"],
+			ORACLE_FIXES_MD044_MD049,
+			MEETING_MD044_MD049,
+			[
+				{
+					name: "names in swapped emphasis, LF",
+					source:
+						'<!-- markdownlint-configure-file {"MD044":{"names":["JavaScript"]}} -->\n\n*javascript* and _javascript_\n',
+				},
+				{
+					name: "names in swapped emphasis, CRLF",
+					source:
+						'<!-- markdownlint-configure-file {"MD044":{"names":["JavaScript"]}} -->\r\n\r\n*javascript* and _javascript_\r\n',
+				},
+			],
+		],
+		// MD011 rewrites a reversed link and MD009 trims the line's end.
+		[
+			"MD011 and MD009",
+			["MD011", "MD009"],
+			ORACLE_FIXES_MD011_MD009,
+			MEETING_MD011_MD009,
+			[
+				{ name: "MD011 and MD009, LF", source: "(a)[b] and (c)[d]   \n(e)[f]  \n" },
+				{ name: "MD011 and MD009, CRLF", source: "(a)[b] and (c)[d]   \r\n(e)[f]  \r\n" },
+			],
+		],
+		// MD039 deletes the spaces inside a link's brackets and MD009 the line's trailing spaces.
+		[
+			"MD039 and MD009",
+			["MD039", "MD009"],
+			ORACLE_FIXES_MD039_MD009,
+			MEETING_MD039_MD009,
+			[
+				{ name: "MD039 and MD009, LF", source: "a [ b ](u) c   \n[d ](u)  \n" },
+				{ name: "MD039 and MD009, CRLF", source: "a [ b ](u) c   \r\n[d ](u)  \r\n" },
+			],
+		],
+		// MD034 wraps a bare URL in angle brackets and MD009 trims the line's end.
+		[
+			"MD034 and MD009",
+			["MD034", "MD009"],
+			ORACLE_FIXES_MD034_MD009,
+			MEETING_MD034_MD009,
+			[
+				{ name: "MD034 and MD009, LF", source: "see https://u.v and a@b.co   \nwww.u.v  \n" },
+				{ name: "MD034 and MD009, CRLF", source: "see https://u.v and a@b.co   \r\nwww.u.v  \r\n" },
+			],
+		],
+		// MD053 deletes an unused definition's line while MD009 trims that line's end and the next one's.
+		[
+			"MD053 and MD009",
+			["MD053", "MD009"],
+			ORACLE_FIXES_MD053_MD009,
+			MEETING_MD053_MD009,
+			[
+				{ name: "MD053 and MD009, LF", source: "x\n\n[a]: u   \n[b]: v  \n[c]: w\n\n[c]\n[d]: z   " },
+				{ name: "MD053 and MD009, CRLF", source: "x\r\n\r\n[a]: u   \r\n[b]: v  \r\n[c]: w\r\n\r\n[c]\r\n[d]: z   " },
+			],
+		],
+		// MD053 deletes unused definitions' lines between the runs of blank lines MD012 collapses.
+		[
+			"MD053 and MD012",
+			["MD053", "MD012"],
+			ORACLE_FIXES_MD053_MD012,
+			MEETING_MD053_MD012,
+			[
+				{ name: "MD053 and MD012, LF", source: "x\n\n\n[a]: u\n\n\n[b]: v\n[b]: w\n\n\n[b]\n" },
+				{ name: "MD053 and MD012, CRLF", source: "x\r\n\r\n\r\n[a]: u\r\n\r\n\r\n[b]: v\r\n[b]: w\r\n\r\n\r\n[b]\r\n" },
+			],
+		],
+		// MD054 rewrites full references and autolinks to inline links while MD039 deletes the spaces inside their labels.
+		[
+			"MD054 and MD039",
+			["MD054", "MD039"],
+			ORACLE_FIXES_MD054_MD039,
+			MEETING_MD054_MD039,
+			[
+				{
+					name: "MD054 and MD039, LF",
+					source:
+						'See [ the docs ][d] and <https://a.example> and [ x ](u).\n\n[d]: https://d.example\n\n<!-- markdownlint-configure-file { "MD054": { "full": false, "autolink": false } } -->\n',
+				},
+				{
+					name: "MD054 and MD039, CRLF",
+					source:
+						'See [ the docs ][d] and <https://a.example> and [ x ](u).\r\n\r\n[d]: https://d.example\r\n\r\n<!-- markdownlint-configure-file { "MD054": { "full": false, "autolink": false } } -->\r\n',
+				},
+			],
+		],
+		// MD051 rewrites a fragment differing in case while MD039 deletes the spaces inside the same link's label.
+		[
+			"MD051 and MD039",
+			["MD051", "MD039"],
+			ORACLE_FIXES_MD051_MD039,
+			MEETING_MD051_MD039,
+			[
+				{
+					name: "MD051 and MD039, LF",
+					source:
+						"# Getting Started\n\nSee [ the guide ](#Getting-Started) and [ more ](#GETTING-STARTED) and [x](#nope).\n",
+				},
+				{
+					name: "MD051 and MD039, CRLF",
+					source:
+						"# Getting Started\r\n\r\nSee [ the guide ](#Getting-Started) and [ more ](#GETTING-STARTED) and [x](#nope).\r\n",
+				},
+			],
+		],
+		// MD058 inserts blank lines around tables while MD022 inserts them around the headings beside them, a table on the first line and one in a blockquote.
+		[
+			"MD058 and MD022",
+			["MD058", "MD022"],
+			ORACLE_FIXES_MD058_MD022,
+			MEETING_MD058_MD022,
+			[
+				{
+					name: "MD058 and MD022, LF",
+					source: "| a |\n| - |\n# H\n| b |\n| - |\n## H2\n\n> # Q\n> | c |\n> | - |\n> ## Q2\n",
+				},
+				{
+					name: "MD058 and MD022, CRLF",
+					source: "| a |\r\n| - |\r\n# H\r\n| b |\r\n| - |\r\n## H2\r\n\r\n> # Q\r\n> | c |\r\n> | - |\r\n> ## Q2\r\n",
+				},
+			],
+		],
+		// MD058 inserts blank lines around tables while MD031 inserts them around the fences beside them, a table on the last line.
+		[
+			"MD058 and MD031",
+			["MD058", "MD031"],
+			ORACLE_FIXES_MD058_MD031,
+			MEETING_MD058_MD031,
+			[
+				{
+					name: "MD058 and MD031, LF",
+					source: "```\nx\n```\n| a |\n| - |\n```\ny\n```\n\n> ```\n> z\n> ```\n> | b |\n> | - |\n\n| c |\n| - |",
+				},
+				{
+					name: "MD058 and MD031, CRLF",
+					source:
+						"```\r\nx\r\n```\r\n| a |\r\n| - |\r\n```\r\ny\r\n```\r\n\r\n> ```\r\n> z\r\n> ```\r\n> | b |\r\n> | - |\r\n\r\n| c |\r\n| - |",
+				},
+			],
+		],
+		// MD058 inserts blank lines around tables while MD032 inserts them around the lists beside them.
+		[
+			"MD058 and MD032",
+			["MD058", "MD032"],
+			ORACLE_FIXES_MD058_MD032,
+			MEETING_MD058_MD032,
+			[
+				{ name: "MD058 and MD032, LF", source: "Text\n\n- i\n\n| a |\n| - |\n- j\n\n> | b |\n> | - |\n> 1. k\n" },
+				{
+					name: "MD058 and MD032, CRLF",
+					source: "Text\r\n\r\n- i\r\n\r\n| a |\r\n| - |\r\n- j\r\n\r\n> | b |\r\n> | - |\r\n> 1. k\r\n",
+				},
+			],
+		],
 	];
-	for (const [label, names, oracleFixes, meeting] of cases) {
+	it("refuses a rule name no wired rule has", () => {
+		assert.throws(() => byName("MD009", "MD999"), /no wired rule named MD999/);
+	});
+
+	for (const [label, names, oracleFixes, meeting, own = []] of cases) {
 		it(
 			`agrees with markdownlint on ${label} together`,
 			() => {
-				const result = fixesDifferential(byName(...names), { extra });
+				const inputs = [...extra, ...own];
+				const result = fixesDifferential(byName(...names), { extra: inputs });
 				assert.deepStrictEqual(result.divergences, []);
-				assert.strictEqual(result.compared, corpus.length * 3 + extra.length);
+				assert.strictEqual(result.compared, corpus.length * 3 + inputs.length);
 				assert.strictEqual(result.oracleFixes, oracleFixes);
 				assert.strictEqual(result.meeting, meeting);
 			},

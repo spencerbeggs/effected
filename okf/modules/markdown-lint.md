@@ -1,7 +1,7 @@
 ---
 type: Module
 title: "@effected/markdown-lint"
-description: "A markdownlint-compatible lint rule shape over @effected/markdown trees: one LintRule definition with markdownlint metadata, a pure programmatic host (MarkdownLint) resolving markdownlint configuration and inline comments, a markdownlint custom-rule adapter (MarkdownlintAdapter), 22 ported built-in rules on ./rules held to markdownlint by a differential harness, and a ./config reader of markdownlint config files; every line, range and fix derived from kit offsets by PositionMapping."
+description: "A markdownlint-compatible lint rule shape over @effected/markdown trees: one LintRule definition with markdownlint metadata, a pure programmatic host (MarkdownLint) resolving markdownlint configuration and inline comments, a markdownlint custom-rule adapter (MarkdownlintAdapter), 53 ported built-in rules on ./rules held to markdownlint by a differential harness, and a ./config reader of markdownlint config files; every line, range and fix derived from kit offsets by PositionMapping."
 status: draft
 kind: package
 resource: ../../packages/markdown-lint
@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T07:14:20Z
+  at: 2026-11-25T01:07:31Z
 integrity:
   generated:
-    body: 397b4c00dda5454f
+    body: 7d72541edcb7c078
 ---
 
 # `@effected/markdown-lint`
@@ -66,8 +66,8 @@ their own markdownlint and the package cannot pin it.
 | Entry | Holds | May import |
 | --- | --- | --- |
 | `.` | `LintRule`, `LintContext`, `LintDiagnostic`, `PositionMapping`, `LintConfig`, `InlineDirectives`, the `MarkdownLint` host and the `MarkdownlintAdapter` | `@effected/markdown` and `effect`; never a rule module, `./config`, `node:` or a format engine |
-| `./rules` | the 22 ported built-in rules, one free-standing named export each (`MD001` … `MD060`) | the root, through the package's own name for types |
-| `./rules/all` | `rules`, every port in markdownlint's order, and `uncovered`, the 31 built-in rule names with no port yet | the rule modules |
+| `./rules` | the 53 ported built-in rules, one free-standing named export each (`MD001` … `MD060`) | the root, through the package's own name for types |
+| `./rules/all` | `rules`, every port in markdownlint's order, and `uncovered`, the built-in rule names with no port: none since every built-in rule is ported | the rule modules |
 | `./config` | `MarkdownlintConfigFile` and `MarkdownlintConfigError` | the root, `@effected/jsonc`, `@effected/yaml`, `FileSystem` and `Path` |
 
 The rules are separate exports so a consumer pays only for the rules it
@@ -261,18 +261,136 @@ markdownlint's configuration and not markdownlint-cli2's options files is
 
 ## The ported rules
 
-`./rules` ports 22 of markdownlint 0.42's 53 built-in rules: MD001, MD003,
-MD004, MD009, MD010, MD012, MD013, MD018, MD019, MD022, MD023, MD024, MD025,
-MD026, MD031, MD032, MD033, MD040, MD041, MD045, MD047 and MD060. Each is an
+`./rules` ports all 53 of markdownlint 0.42's built-in rules: MD001, MD003, MD004, MD005, MD007, MD009, MD010, MD011, MD012, MD013, MD014, MD018, MD019, MD020, MD021, MD022, MD023, MD024, MD025, MD026, MD027, MD028, MD029, MD030, MD031, MD032, MD033, MD034, MD035, MD036, MD037, MD038, MD039, MD040, MD041, MD042, MD043, MD044, MD045, MD046, MD047, MD048, MD049, MD050, MD051, MD052, MD053, MD054, MD055, MD056, MD058, MD059 and MD060. Each is an
 ordinary `LintRule` carrying markdownlint's own names, description, tags and
 documentation link, and a rule with settings reads them from
 `LintContext.config` under markdownlint's names and defaults, coerced as
-markdownlint coerces them. `./rules/all`'s `uncovered` lists the
-other 31 by first name. The metadata gate in `rules-metadata.test.ts` reads
+markdownlint coerces them. `./rules/all`'s `uncovered`, which
+lists any built-in rule with no port, is empty. The metadata gate in `rules-metadata.test.ts` reads
 the installed markdownlint's rule list and requires every port's metadata
 to equal it, both lists to be in markdownlint's order, every built-in rule
 to be ported or uncovered exactly once, and `./rules` to export exactly
 `./rules/all`'s rules.
+
+MD034 reads micromark's GFM literal autolinks. micromark tokenizes a
+literal as it reads the text, before emphasis and brackets resolve, where
+the kit's parser follows cmark-gfm and links in a pass after them, so the
+kit's literals are only a starting point. For a URL or `www.` literal the
+rule re-reads the kit's: `ftp://` is no literal; a `www.` in another case
+(`WWW.`) is one; a URL ends before a trailing `]`; and text after a `[`
+inside inline math, which the kit's parser takes as an open bracket, is
+re-read with the math blanked. An email address is micromark's own scan of
+the source: it starts at a `+-._` or alphanumeric character not preceded by
+one or by `/` (so an `_` before it is its own, an escaped character or a
+scheme's `:` ends what comes before, and `mailto:a@b.co` links `a@b.co`),
+its domain takes `-`, `_` and alphanumerics with a `.` only before an
+alphanumeric, and it needs a dot and a final ASCII letter, so on a second
+`@` micromark keeps the first address where cmark-gfm retries at the later
+one. No literal is linked while a `[` or `![` before it in the block is
+unbalanced, a `]` balancing the latest opener whether or not it makes a
+link; a bracket inside inline math opens and closes nothing. Over the
+literal-autolink grid (`__test__/helpers/autolink-grid.ts`, 25 shapes in
+18 placements) these readings agree finding for finding; over the address
+and math-bracket grids (28 addresses in 12 placements, 5 targets in 14
+math placements) one input diverges, of a class pinned by name in both
+directions: micromark's address consumes the `_` run right before it, so
+its emphasis pairs differently from the kit's, and with it which inline
+HTML tags are siblings for markdownlint's tag pairing. markdownlint reports
+an address inside an element the kit leaves out where the `_` after the
+address's trailing `.` opens emphasis pairing with a later `_` across the
+close tag (`<i>_a@b.co._</i> x_`); the kit reports one markdownlint leaves
+out where the kit's emphasis, opened by the run micromark gave the address,
+pairs with a `_` after the close tag (`<b>_a@b.co</b>_`, `__`, any tag
+name). Only an address does it, never a URL or `www.` literal, which takes
+no `_`, and only a `_` run, never `*`. Closing it would mean re-deriving
+micromark's emphasis over the delimiters an address consumed (8 inputs
+pinned, beside 8 neighbours that agree). Porting it found two
+kit parser defects, fixed in `@effected/markdown`: an address after an
+escape or entity was positioned inside it, and the email postprocess went
+quadratic on a run of many text nodes.
+
+MD053's fix is markdownlint's whole-line delete: it reports with
+`LintReport.deletesLine`, so its `fixInfo` is `deleteCount: -1` whatever the
+edit's span, and `MarkdownLint.applyFixes` removes each run of deleted
+lines as markdownlint does (a run reaching the source's end taking the line
+break before it), alone and beside other rules' edits on those lines.
+
+MD042, MD052, MD053 and MD054 read markdownlint's reference link and image
+data through one internal helper (`src/internal/references.ts`): the
+definitions (link and footnote, first wins, the rest duplicates) and the
+references and shortcuts that use a label. Formed references come from the
+kit tree. Undefined ones are markdownlint's micromark-parse shim, emulated
+over each inline block's events: at a `]` closing no link, from the latest
+label start still in the event list (a formed link's is resolved away), the
+data-like text since (data, line endings, code spans, inline HTML,
+autolinks, math and emphasis sequences; never an escape, a character
+reference, a label marker, a resource or a reference), when not empty and
+holding no `]`, is an undefined shortcut; a shim right after the previous
+pairs with it, collapsed when nothing lies between its brackets, otherwise
+full and labelled by the second. micromark's label end takes the `]` (so the
+shim spans it) only for the latest start not yet failed and still active (a
+formed link deactivates the link starts before it). A task list item's
+checkbox is text there, `![^1]` wraps a defined footnote call in an image,
+and a paragraph opening with a leaf or container directive line
+(`::name[label]`, `:::name[label]`, which markdownlint's directive
+extension parses) has that line read as no text. Over the corpus and the
+reference grid (`__test__/helpers/reference-grid.ts`, 18 forms with and
+without definitions in 18 placements, and 30 label shapes) the data agrees
+entry for entry, in markdownlint's map order.
+
+MD051 builds the fragments a document defines as markdownlint does:
+`#top`, each heading's GitHub fragment (its data, escapes' values, code
+and math data, links' labels; never an image, a reference, a resource, a
+character reference, an autolink, inline HTML, an emphasis sequence, or a
+setext heading's line endings and prefixes), suffixed `-1`, `-2` on a
+repeat, a heading's `{#anchor}`s, and each opening HTML tag's `id` (an
+`<a>`'s `name`), HTML blocks' tags included. It checks every link's
+destinations (its images' and the links in its images' labels too, as
+markdownlint reads them all under the link) and every definition's, a
+docfx tab heading's link left out. Over the fragment grid
+(`__test__/helpers/fragment-grid.ts`, 35 heading shapes in 8 link forms)
+and 19 anchor shapes it agrees finding for finding.
+
+MD055, MD056, MD058 and MD060 read tables through one internal helper
+(`src/internal/tables.ts`): the kit's `table` nodes give the tables and
+their lines, and each row's tokens are read from its raw line as micromark
+tokenizes it (its text after its containers' markers and indentation,
+trailing whitespace included, split at each pipe no backslash escapes, a
+code span, inline math or a link hiding none), its cells opening at each
+pipe, the last pipe and the blanks after it closing the last cell. The
+delimiter row holds its indentation, so it and its first cell start past
+the containers' markers alone. markdownlint's directive extension ends a
+table before a leaf directive (`::name`), a container directive's opening
+(`:::name`) and an open container directive's closing fence (`:::`), each
+with an optional `[label]` then `{attributes}` and nothing after, read past
+the line's containers in any of them, where the kit's parser reads one more
+row; the directive grid (`directiveGrid`, 32 lines in 4 containers, with
+and without a container directive open) agrees finding for finding. Over the table grid
+(`__test__/helpers/table-grid.ts`, 36 shapes in 9 placements, CRLF and bare
+CR among them) and the corpus, the kit's tables start and end where
+micromark's do, row for row, with one parser-reading difference (below).
+
+markdownlint parses leaf and container directives (its directive extension,
+inline ones off), which the kit's parser reads as paragraph text. One
+internal helper (`src/internal/directives.ts`) reads them in micromark's
+own grammar (micromark-extension-directive's name, label and attributes
+factories): `directiveLines`, each leaf (`::name`), container opening
+(`:::name`) and open container's closing fence (`:::`), past the line's
+containers (a lazy line's blockquote markers too) and never inside a code,
+HTML or math block or the front matter; `directiveIndentedCode`, the lines
+indented four or more after one, which micromark reads as code; and
+`paragraphBreaks`, those lines and a math block's, where micromark ends a
+paragraph inside one of the kit's and starts another. The tables end
+before a directive line; MD032 ends a list before a directive line left of
+its top-level item's content, the next item at any depth opening another
+list; MD027 reads the indented lines as code; the reference data scans
+each paragraph segment alone and reads the definitions opening one.
+`directiveGrid` is pinned by MD056 and MD058, `directiveBlockGrid`
+by MD012, MD022, MD027, MD031, MD032, MD046 and MD058, the reference
+shapes after a break by MD052, MD053 and MD054 (and the setext headings
+holding references, by MD052 and MD053), and
+`directive-readings.test.ts` pins 27 inputs through all 53 rules, the
+remaining differences named below and in Known limitations.
 
 ## Failure posture
 
@@ -341,11 +459,31 @@ plain synchronous function; no logging, no metrics.
   `README.md` records the tag, the commit and the count. Never edit a fixture
   by hand; re-run the script after re-pinning the submodule.
 - **Hostile-input ceilings.** `hostile-inputs.test.ts` lints seven shapes that
-  once made a lint with all 22 rules superlinear (a 400-column table with CJK
+  once made a lint with every rule superlinear (a 400-column table with CJK
   cells, 2,000 unclosed fences in list items, a 9,000-block mixed document,
   3,000 lines in blockquotes 40 deep with inline HTML, one paragraph of
   60,000 code-span, link and lone `$` groups, one 198 KB line holding an
-  inline data-URI image, one line of 16,000 HTML comments), `applyFixes` over
+  inline data-URI image, one line of 16,000 HTML comments), two shapes MD036
+  reads (2,000 HTML blocks each holding an emphasis line, one paragraph of
+  40,000 emphasis spans), two shapes MD030's list end reads (a blockquote of
+  20,000 one-item lists, a list nested 40 deep in a blockquote before 20,000
+  quoted blank lines), one line of 20,000 reversed links beside code spans
+  (MD011), 2,000 images holding references beside 2,000 definitions (MD039,
+  MD042, MD059), one image label naming an 80 KB definition 8,000 times
+  (once a `RangeError`: a label's re-parse appended each named definition's
+  source, where it now appends one stand-in per distinct label), one line of
+  20,000 bracketed spans and addresses and one
+  line of 24,000 unclosed inline HTML tags, and 10,000 URLs in emphasis
+  after a bracket in inline math, the block's rest re-read once (MD034),
+  one line of 20,000 undefined references and 20,000 uses of one label
+  beside 20,000 duplicate definitions (MD052), 20,000 unused definitions
+  (MD053), 5,000 repeated headings with 20,000 fragments in another case
+  (MD051), a table of 20,000 rows and a row of 50,000 pipes (the table
+  readers), ratio guards for MD054 over every style disallowed, MD051 over
+  repeated headings, MD055 over a tall table and a run of pipes, the math
+  re-read, undefined references, alternating images and links, label
+  starts closed in reverse, images naming one long definition and images
+  nested in one label (MD049 and MD052), `applyFixes` over
   90,000 fixes, and three settings that drive a loop or a repeat
   (`lines_above: 1e999` and `spaces_per_tab: 1e9` in a `configure-file`
   comment, `lines_above: 1e8`), and holds each to a 5,000 ms ceiling: far
@@ -395,6 +533,66 @@ plain synchronous function; no logging, no metrics.
   LF and CRLF, 2 inputs). Its content is one empty line numbered one past
   its per-line enabled state. The kit reports nothing there, which the pin
   asserts. Pinned by a test as an upstream failure, not a port difference.
+- **A list opening `01.` interrupts a paragraph here, not there.**
+  micromark lets an ordered list interrupt a paragraph only when its
+  number's first digit is `1`; CommonMark (and the kit, after its reference
+  parser) reads the start number, so `- Item\n  01. One` nests a list in the
+  kit and continues the paragraph in micromark. MD029 under `style: one` or
+  `zero` then reports that list's items, which markdownlint never sees
+  (`list-item-prefix-alignment.md`, LF and CRLF), and MD030 under an
+  `ol_single` other than its default reports their spacing. Matching it needs
+  the parser to read micromark's rule. Pinned by tests (MD029 2 inputs under
+  each of `one` and `zero`; MD030 2 under each of two `ol_single` cases).
+- **A quoted blank line closes a footnote in a blockquote here.** The kit
+  ends a footnote definition nested in a blockquote at a quoted blank line
+  (the parser difference [`markdown`](markdown.md) records), where micromark
+  keeps it open, so in `> [^1]: x\n>     - a\n>     - b\n>\n>     - c` the
+  kit reads `- c` as a new list and markdownlint as the same, now
+  multi-line, list. MD030 under single and multi counts that differ reports
+  it. Pinned by a test (1 input of the list-end grid).
+- MD038 where a line ending is a code span's padding (`` `\n  x  \n` ``):
+  markdownlint's range for the spaces beside it runs past the line's end,
+  and it throws on its own `range`; the kit reports the spaces, its range
+  cut to the line. Pinned by a test as an upstream failure (4 inputs of the
+  code-span grid).
+- MD042 for an empty link spanning lines: markdownlint's range (the link's
+  end column less its start column) runs past the first line, and it throws
+  on its own `range`; the kit reports the link, its range cut to the line.
+  Pinned by a test as an upstream failure (2 inputs: a label across lines,
+  and a label ending in a line break).
+- MD039 for a label ending in non-ASCII whitespace on its first line:
+  markdownlint's `trimEnd` trims any Unicode whitespace (a no-break, em,
+  en, ideographic or narrow no-break space, a byte order mark, a vertical
+  tab) but its re2 space pattern, whose `\s` is ASCII, matches none, so it
+  reports the line before the closing bracket's, line 0, and throws on its
+  own `lineNumber`; the kit reports the label's line, with no range. Pinned
+  by a test as an upstream failure (9 inputs). Off the first line the kit
+  reads such whitespace as markdownlint does.
+- MD027 after a tab right behind a blockquote marker (`>\ttab`):
+  markdownlint reports a range over the partly consumed tab and throws on
+  its own `range`; the kit reports nothing. Pinned by a test as an upstream
+  failure (1 input).
+- MD007 under a negative `indent`: markdownlint's fix deletes past the end
+  of a nested item's line, and markdownlint throws on its own `fixInfo`; the
+  kit's deletion stops at the line's end. Pinned by a test as an upstream
+  failure (3 inputs under `indent: -2`).
+- **A fractional or NaN MD007 indent fixes whole columns.** markdownlint's
+  fix counts are the raw arithmetic (`deleteCount: 1.5`, `padEnd(0.5)`,
+  `NaN`), which its own `applyFixes` truncates. A kit edit is whole
+  characters, so its `fixInfo` carries the truncated count, and none where
+  that leaves nothing to do. The text the fixes leave is markdownlint's.
+  Pinned by a test (31 inputs over `indent: 1.5`, `indent: "x"` and
+  `start_indent: 2.5`).
+- MD043 under any `headings` that leaves a required heading unmatched:
+  markdownlint 0.42.2 throws on the same all-front-matter file
+  (`front-matter-no-crlf.md`, LF and CRLF) when it reports the end of file,
+  numbered one past its per-line enabled state; the kit reports it on the
+  last line. Under a `%` entry, markdownlint also throws on an empty heading
+  the walk reads against it, taking a level from a failed match
+  (`MD030-warning-message.md`, `headings-without-content.md`, LF and CRLF,
+  and one extra); the kit reads no match and reports the heading. Pinned by
+  a test as upstream failures (2 inputs under each of ten settings cases, 5
+  more under the `%` case).
 - MD012 under `maximum: 0` on a document of nothing but blank lines:
   markdownlint deletes every line. n lines hold n - 1 line breaks, so n
   disjoint kit edits cannot each delete one: the last line's delete is an
@@ -428,15 +626,33 @@ plain synchronous function; no logging, no metrics.
   1e999`, where the kit stops at the edge and counts the rest at once (the
   same count for any finite setting, pinned against markdownlint up to 500).
   A repeat is capped at 1,000: MD010's spaces per tab (markdownlint throws
-  `RangeError` at `spaces_per_tab: 1e9`) and the blank lines an MD022 fix
-  inserts. No fix differs below the cap. Pinned by ceiling tests.
+  `RangeError` at `spaces_per_tab: 1e9`), the blank lines an MD022 fix
+  inserts, and the spaces an MD007 or MD030 fix pads (`indent: 1e9`,
+  `ul_single: 1e9`). An empty MD044 name, whose pattern matches nothing at
+  every word boundary and loops markdownlint forever, is passed over. No fix differs below the cap. Pinned by ceiling tests.
 - **The kit reads a setting markdownlint throws on.** An invalid
   `front_matter_title` pattern (`"("`) reads as the default pattern in
   MD001, MD025 and MD041, where markdownlint's `new RegExp` throws; a truthy
   `ignore_code_languages` that is not a list reads as no languages in MD010,
-  where markdownlint calls `.map` on it and throws; a value whose conversion
+  where markdownlint calls `.map` on it and throws; a truthy MD043
+  `headings` that is not a list, or a `%` entry that does not compile when
+  the walk compares it with a heading of its level (markdownlint compiles it
+  only then), reads as the default (no required headings), and an item that
+  is not a string (`[["# A"]]`) reads through `String`, where markdownlint
+  throws; an MD044 `names` list holding a value that is no string reads as
+  no names, where markdownlint calls string methods on it and throws; an
+  MD059 `prohibited_texts` that is truthy but no list, or a list holding a
+  value that is no string, reads as the default, where markdownlint calls
+  `.map` and string methods on it and throws; an MD052 `ignored_labels`
+  or MD053 `ignored_definitions` that is truthy but not iterable (a number,
+  `true`, a plain object) reads as the default (`["x"]`, `["//"]`), where
+  markdownlint's `new Set` throws (a string is the set of its characters
+  in both); a
+  value whose conversion
   to a primitive throws reads as absent. Pinned by tests (MD001 42 inputs,
-  MD025 32, MD041 32, MD010 33, each a markdownlint throw).
+  MD025 32, MD041 32, MD010 33, each a markdownlint throw; MD043 by seven
+  hand-written cases, the oracle throwing on each; MD052 and MD053 by a
+  hand-written case each over a number, `true` and an object).
 - **A fractional MD013 limit reports no range.** markdownlint reports a
   fractional limit's overflow as fractional columns (`[51.5, 69.5]`); a kit
   range is whole columns, so the kit's finding carries none, with the same
@@ -470,8 +686,111 @@ plain synchronous function; no logging, no metrics.
   column. The kit reports it once, as 0.42.1 did; a defined reference is
   reported once by both. Pinned by a test (MD033 4 inputs). The same copy
   takes `autolink*`, `codeText*`, `attentionSequence` and `mathText*`
-  events, so expect the same double count when MD034, MD038, MD049 or MD050
-  is ported.
+  events, but MD049 and MD050 were ported without a double count. MD054
+  is not spared: markdownlint reports an autolink in an undefined
+  reference's label twice, the kit once. Pinned by a test (MD054 3 inputs,
+  under `autolink: false`). MD034 is spared: micromark links no literal while a label opener
+  before it is unbalanced, so a bracket holds none to copy. MD038 is spared: the copy takes a code span's `codeTextData` and
+  `codeTextPadding` but not its `codeText` token, which MD038 walks, so it
+  reports a code span in an undefined reference once (the code-span grid
+  pins `[\`  x\`][undef]`).
+- **A list re-split by a directive line.** micromark ends a list before a
+  directive line left of its item's content and opens new lists past it;
+  MD032 reads that split, but MD005, MD007 and MD029 read the kit's one
+  list (`- a\n  - b\n::leaf\n  - c\n- d`: markdownlint's MD005 on line 5
+  and MD007 on line 4; `1. a\n::leaf\n2. b`: its MD029 on line 3). Pinned
+  by a test (3 inputs, `directive-readings.test.ts`).
+- **Other rules read a directive line as paragraph text.** MD033, MD034,
+  MD036 and MD041 read the kit's paragraph, the directive line in it:
+  markdownlint's MD041 on a setext heading whose text is a directive's
+  neighbour, its MD036 on a lone emphasis line before a directive, its
+  MD034 on a URL in a directive's label, and the kit's MD033 on a tag a
+  directive line splits. Pinned by a test (4 inputs).
+- **A directive line as a list item's content.** micromark ends the item's
+  paragraph at it, so the next unindented line is no lazy continuation; the
+  kit reads one (`- ::leaf\ntext`, `- :::note\ntext`: markdownlint's
+  MD032 on line 1; `- :::note\n| a |\n| - |`: its MD032 on line 1 and
+  MD058 on line 2). Pinned by a test (3 inputs,
+  `recorded-divergences.test.ts`).
+- **A container directive's content in a blockquote.** micromark reads the
+  whitespace past the quote marker inside a container directive as its
+  content's indentation; the kit reads paragraph text and reports MD027
+  (`> :::note\n>  text\n> :::`: kit-only MD027 on line 2). Pinned by a test
+  (1 input).
+- **A definition right after a closing fence, to MD034.** The reference
+  data reads it as a definition, as micromark does; MD034 reads the kit's
+  tree, where it is paragraph text, and reports its URL
+  (`:::note\ninside\n:::\n[r]: https://r.example`: kit-only MD034 on line
+  4). Pinned by a test (1 input).
+- **MD027 on a quoted math block's inner line.** micromark has no
+  `linePrefix` there; the kit, reading no math in its tree, reports the
+  whitespace (`> $$\n> x\n>      foo\n> $$`: kit-only MD027 on line 3).
+  Pinned by a test (1 input).
+- **Container readings found by fuzzing.** Four composed documents differ
+  in a container's reading, unminimised: MD028 after quoted math and a lazy
+  line (kit only, `> $$\n> math\n> $$\n[collapsed][]\n \n> x`); MD032
+  after an unclosed fence in a list item, a whitespace line and a quote
+  (kit only); MD032 on math in a list item before a table-like line
+  (markdownlint only, two lines); a top-level table after a quoted table
+  (kit-only MD055, MD056 and MD058). Pinned by a test (4 inputs, the
+  documents as found).
+- **markdownlint throws on `text\n:::\n---\n`.** Its MD026 reports a range
+  its own validation refuses, and the lint fails; the kit reports MD026
+  and MD041. Pinned by a test.
+- **A setext heading after a definition.** micromark's heading token starts
+  at the definition, so markdownlint reports no MD022 (and, with the
+  definition indented, its MD023 on the definition's line); the kit's
+  heading starts on its text and MD022 asks for a blank line above it
+  (`[d]: /u\nTitle\n---`: kit-only MD022 on line 2; the same with the
+  definition indented one space: that, and markdownlint's MD023 on line
+  1). Pinned by a test (2 inputs).
+- **A setext heading directly after a math block or a leaf directive.**
+  micromark ends the math block or reads the directive line, and its
+  heading starts on the line after, so markdownlint's MD022 asks for a
+  blank line above the heading (and inserts it) and its MD041 reports the
+  document's first line, which is no heading. The kit's parser reads the
+  block's lines as the heading's text: its heading starts on the
+  document's first line, with nothing above it, so the kit reports
+  neither and leaves the text as is (`$$\nm\n$$\nTitle\n===`:
+  markdownlint's MD022 on line 4 and MD041 on line 1; `::leaf\nTitle\n===`:
+  its MD022 on line 2 and MD041 on line 1; with text and a blank line
+  before the math, its MD022 alone). References in the heading read as
+  they do in a paragraph (see the reference shapes). Pinned by a test (4
+  inputs).
+- **A list after nested container directives close.** In
+  `:::a\n:::b\n- a\n:::\n- b\n:::\n- c\n:::\n- d` both read the same
+  directive lines (lines 1 and 2 open, 4 and 6 close; line 8 is no
+  directive). markdownlint reports MD032 on lines 3, 3 and 5; the kit
+  reports those, MD032 on line 5 a second time, and MD032 on line 7. The
+  cause is not found. Pinned by a test (1 input).
+- **A table whose header row looks like a delimiter row.** micromark reads
+  `a\n[x][y]\n| - | - |\n| - | - |\nb` as a table with `| - | - |` its
+  header; the kit's parser reads none, so the table rules miss
+  markdownlint's MD055 and MD056 on line 5 and MD058 on line 3. Pinned by
+  a test (1 input).
+- **MD025 with undefined references in a container.** In
+  `- [javascript][]\n  # H\n  [*javascript*][used]\n  # H\n    [u6]: /u6`
+  the kit reports MD025 on line 4 and markdownlint nothing; the cause is
+  not found. Pinned by a test (1 input).
+- **A table row that is a lone `|`.** micromark continues a table through
+  it; the kit's parser, following cmark-gfm (a row must hold a cell to
+  continue a table, `matches` in `extensions/table.c`), ends the table
+  before it and reads the line as a paragraph. The table rules read the
+  kit's table. Pinned by a test (MD055, MD056 and MD058 2 inputs each).
+- **An MD051 `ignored_pattern` that does not compile.** markdownlint
+  passes the setting to `new RegExp`, which throws on a pattern that does
+  not compile (`(`), and the lint fails. The kit reads it as the default,
+  `^$`. A pattern that compiles runs as written in both. Pinned by a test
+  (4 patterns).
+- **MD052 and MD053 enabled with no micromark rule beside them.**
+  markdownlint parses with micromark only when an enabled rule's `parser`
+  is `"micromark"`, and its MD052 and MD053 (`parser: "none"`) read their
+  reference data from those tokens: enabled with none beside them (a
+  config of `default: false` and MD052 alone), they read none and report
+  nothing. The kit reports what they report under markdownlint's default
+  config, which enables many micromark rules. The differential runs the
+  oracle beside a rule that asks for micromark (`READS_MICROMARK_UNASKED`
+  in `__test__/helpers/differential.ts`). Pinned by a test (1 input).
 - **Findings come in rule order.** `MarkdownLint.lint` returns findings in
   the order of the rules it was given, each rule's in the order it reported
   them; markdownlint sorts its results by rule name, then line. With the
@@ -520,6 +839,46 @@ plain synchronous function; no logging, no metrics.
 
 ## Known limitations
 
+- **Open container directives are tracked across the document.** The kit
+  keeps one stack of open container directives for the whole document;
+  micromark keeps one per container. An opening inside a blockquote is
+  still open below it, and a later `:::` closes it in the kit; a closing
+  fence closes the innermost opening whether or not its container holds
+  it. It moves list ends (`> :::a\n> - x\n\n- a\n:::\n- b`: kit-only MD032
+  on lines 4 and 6), table ends (`> :::a\n> x\n\n| a |\n| - |\n:::\n| b |`:
+  markdownlint's MD055 on line 6, the kit's MD058 on line 5) and MD027's
+  reading of a quoted line. Tracking per container would mean following
+  each container's own lines through the directive pass. Pinned by tests
+  (1 input in `directive-readings.test.ts`, 2 in
+  `recorded-divergences.test.ts`).
+- **The settings routing gate reads source text.** `settings-routing.test.ts`
+  fails a rule module that reads a property of a value named `config`
+  (`context.config.x`, a destructured `config.x`, `config[...]`), comments
+  set aside. A config reached under another name (`const c =
+  context.config; c.x`) passes it, and so does a read after a `//` inside a
+  string on the same line.
+
+- **A user-supplied pattern runs as written.** MD051's `ignored_pattern`
+  is compiled and run against each fragment as markdownlint runs it, with
+  no bound on its matching time: a pattern whose matching takes
+  exponential time on a long fragment (`(a+)+$`: 5,064 ms on 26 `a`s and a
+  `!`, doubling with each `a`) takes that time in the kit too. The setting
+  is the config author's, not the document's. Telling such a pattern apart
+  syntactically misreads safe ones, so the kit does not try.
+- **MD054's inline fix doubles an escape already written.** Rewriting a
+  reference or a disallowed form as an inline link or image, MD054 escapes
+  `[` and `]` in the label and `(` and `)` in the destination, exactly as
+  markdownlint's `md054.mjs` does, and escapes no backslash. So a label
+  holding an escaped bracket (`[a \] b][ref]` with `[ref]: /u`, under
+  `full: false` with inline allowed) is fixed to `[a \\] b](/u)`: the
+  escaped backslash closes the label early and the link is lost. An image
+  label (`![a \] b][ref]`) loses its image the same way, and a destination
+  written with escaped parentheses (`[ref]: /u\(v\)`) is fixed to
+  `(/u\\(v\\))`, which changes the URL from `/u(v)` to `/u\(v\)`. It is
+  kept for parity, not a divergence: both engines apply the same text,
+  pinned in `MD054.test.ts`. The two CodeQL "incomplete string escaping"
+  alerts on those escaping lines in `MD054.ts` are dismissed for this
+  reason; moving the lines could reopen them.
 - Fixes from several findings can meet (MD022's two headings asking for the
   blank line between them). `MarkdownEdit.applyAll` applies every edit and
   refuses an overlap; apply findings with `MarkdownLint.applyFixes`, which

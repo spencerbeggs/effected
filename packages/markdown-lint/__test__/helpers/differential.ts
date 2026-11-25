@@ -132,11 +132,21 @@ interface Comparison {
 	readonly reason: string | undefined;
 }
 
-const compareOne = (rule: LintRule, config: Record<string, unknown>, input: DifferentialInput): Comparison => {
+/**
+ * The ported rules markdownlint runs with `parser: "none"` that read its micromark tokens (its reference data):
+ * markdownlint parses with micromark only when an enabled rule asks, so the oracle runs them beside a rule that
+ * does (see `oracleLint`), as markdownlint's default config does.
+ */
+export const READS_MICROMARK_UNASKED: ReadonlySet<string> = new Set(["MD052", "MD053"]);
+
+/** One input compared under `config` (the whole lint config): what markdownlint found, and why the two differ if they do. */
+export const compareOne = (rule: LintRule, config: Record<string, unknown>, input: DifferentialInput): Comparison => {
 	const found = (reason: string | undefined): Comparison => ({ oracleFindings: oracleFindings.length, reason });
 	let oracleFindings: ReadonlyArray<OracleFinding>;
 	try {
-		oracleFindings = oracleLint(input.source, config).filter((finding) => finding.ruleNames[0] === rule.name);
+		oracleFindings = oracleLint(input.source, config, { micromark: READS_MICROMARK_UNASKED.has(rule.name) }).filter(
+			(finding) => finding.ruleNames[0] === rule.name,
+		);
 	} catch (error) {
 		// markdownlint itself can fail on an input (an upstream bug). Nothing compares against it, but the kit
 		// side still runs, and what it did goes in the reason, so a pin can say what the kit reports there.
@@ -314,7 +324,9 @@ export const settingsAppliedTextDivergences = (
 	for (const settings of cases) {
 		const config = { default: false, [rule.name]: settings };
 		for (const input of inputs) {
-			const oracle = oracleLint(input.source, config).filter((finding) => finding.ruleNames[0] === rule.name);
+			const oracle = oracleLint(input.source, config, { micromark: READS_MICROMARK_UNASKED.has(rule.name) }).filter(
+				(finding) => finding.ruleNames[0] === rule.name,
+			);
 			const kit = MarkdownLint.lint(input.source, [rule], { config });
 			if (MarkdownLint.applyFixes(input.source, kit) !== oracleApplyFixes(input.source, oracle))
 				divergences.push({ settings: JSON.stringify(settings), fixture: input.name, reason: "applied text differs" });
@@ -369,7 +381,9 @@ export const fixesDifferential = (
 		let oracle: ReadonlyArray<OracleFinding>;
 		try {
 			// A fixture's own inline config can enable a rule outside `rules`; only theirs are compared.
-			oracle = oracleLint(input.source, config).filter((finding) => names.has(finding.ruleNames[0] ?? ""));
+			oracle = oracleLint(input.source, config, {
+				micromark: [...names].some((name) => READS_MICROMARK_UNASKED.has(name)),
+			}).filter((finding) => names.has(finding.ruleNames[0] ?? ""));
 		} catch (error) {
 			divergences.push({
 				fixture: input.name,

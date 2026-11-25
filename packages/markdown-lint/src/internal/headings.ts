@@ -5,7 +5,10 @@
 import type { Heading, MarkdownNode } from "@effected/markdown";
 import { Option } from "effect";
 import type { LintContext } from "../LintContext.js";
+import { codeBlockLines } from "./code-blocks.js";
+import { flowNodes } from "./containers.js";
 import { LINE_BREAK } from "./line-endings.js";
+import { nodeLines } from "./lines.js";
 import { mathFlowLines } from "./math-flow.js";
 import { perReading } from "./memo.js";
 import { stringSetting } from "./settings.js";
@@ -108,3 +111,16 @@ export const headingText = (context: LintContext, heading: Heading): string =>
 /** The document's top-level blocks after its front matter: micromark's top-level content tokens. @internal */
 export const contentBlocks = (context: LintContext): ReadonlyArray<MarkdownNode> =>
 	(context.document.root.children as ReadonlyArray<MarkdownNode>).filter((node) => node.type !== "frontmatter");
+
+/**
+ * The lines markdownlint's ATX line rules (MD018, MD020) skip: those of its
+ * `codeFenced`, `codeIndented`, `htmlFlow` and `mathFlow` tokens. Computed
+ * once per reading and shared.
+ * @internal
+ */
+export const atxLineRuleSkippedLines: (context: LintContext) => ReadonlySet<number> = perReading((context) => {
+	const skipped = new Set(codeBlockLines(context));
+	for (const line of nodeLines(flowNodes(context, new Set(["html"])))) skipped.add(line);
+	for (const line of mathFlowLines(context)) skipped.add(line);
+	return skipped;
+});

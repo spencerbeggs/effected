@@ -16,7 +16,7 @@ import { InlineDirectives } from "../InlineDirectives.js";
 import type { LintConfigRecord, LintSeverity } from "../LintConfig.js";
 import { LintConfig } from "../LintConfig.js";
 import type { LintContext, LintFrontmatter, LintReport } from "../LintContext.js";
-import { LintDiagnostic } from "../LintDiagnostic.js";
+import { LintDiagnostic, LintFixInfo } from "../LintDiagnostic.js";
 import type { LintRule } from "../LintRule.js";
 import { PositionMapping } from "../PositionMapping.js";
 import { registerUnmaskedSource } from "./memo.js";
@@ -191,7 +191,12 @@ export const makeContext = (reading: Reading, rule: LintRule, run: RuleRun): Lin
 				detail: report.detail === undefined || report.detail === "" ? Option.none() : Option.some(report.detail),
 				context: report.context === undefined || report.context === "" ? Option.none() : Option.some(report.context),
 				range,
-				fixInfo: edit === undefined ? Option.none() : mapping.fixInfo(edit, lineNumber),
+				fixInfo:
+					edit === undefined
+						? Option.none()
+						: report.deletesLine === true
+							? Option.some(LintFixInfo.make({ deleteCount: -1 }))
+							: mapping.fixInfo(edit, lineNumber),
 				edit: edit === undefined ? Option.none() : Option.some(edit),
 			});
 		},

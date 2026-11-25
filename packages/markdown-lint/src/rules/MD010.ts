@@ -6,7 +6,7 @@
 import type * as Lint from "@effected/markdown-lint";
 import { codeNodes, fencedInterior } from "../internal/code-blocks.js";
 import { firstContentLine } from "../internal/lines.js";
-import { REPEAT_CAP, coercedNumber, flagSettingOn, stringListSetting } from "../internal/settings.js";
+import { REPEAT_CAP, coercedNumber, flagSettingOn, rawSetting, stringListSetting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 // A token's extent by 1-based line and column, as markdownlint's micromark tokens carry it.
@@ -59,9 +59,9 @@ export const MD010: Lint.LintRule = LintRule.make({
 	check: (context, report) => {
 		const includeCode = flagSettingOn(context.config, "code_blocks");
 		const ignored = new Set(
-			stringListSetting(context.config.ignore_code_languages).map((language) => language.toLowerCase()),
+			stringListSetting(rawSetting(context.config, "ignore_code_languages")).map((language) => language.toLowerCase()),
 		);
-		const spacesPerTab = context.config.spaces_per_tab;
+		const spacesPerTab = rawSetting(context.config, "spaces_per_tab");
 		// Capped (see REPEAT_CAP): markdownlint throws past V8's string limit.
 		const multiplier = spacesPerTab === undefined ? 1 : Math.min(REPEAT_CAP, Math.max(0, coercedNumber(spacesPerTab)));
 		const boxes: Array<TokenBox> = [];

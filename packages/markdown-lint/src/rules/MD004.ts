@@ -7,6 +7,7 @@
 import type { List, MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
 import { inMathBlock, mathFlowBlocks } from "../internal/math-flow.js";
+import { stringSetting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 type Style = "asterisk" | "dash" | "plus";
@@ -49,7 +50,7 @@ export const MD004: Lint.LintRule = LintRule.make({
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md004.md",
 	check: (context, report) => {
 		// markdownlint's `String(params.config.style || "consistent")`, an unknown name read as `dash`.
-		const style = String(context.config.style || "consistent");
+		const style = stringSetting(context.config, "style", "consistent");
 		let expectedStyle: string = validStyles.has(style) ? style : "dash";
 		const nestingStyles: Array<Style> = [];
 		const math = mathFlowBlocks(context);

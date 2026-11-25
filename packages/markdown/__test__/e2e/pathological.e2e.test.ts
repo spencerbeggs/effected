@@ -34,6 +34,16 @@
 //     one-member category unions (`MarkdownNode.ts`, see `RowContent`)
 //     passes constructed instances through: 7.4s → 2.8s.
 //
+//  7. The email-literal postprocess mapped each match back to source by walking
+//     the merged run's text nodes from the start, O(nodes) per address: a run
+//     split by brackets or escapes into many nodes went quadratic. A forward
+//     cursor makes it linear (guard at the bottom).
+//  8. Link reference definition extraction split a paragraph's leading
+//     definitions off one at a time, each re-slicing and re-scanning the
+//     paragraph's line segments and searching the parent's children: a run of
+//     consecutive definitions went quadratic. One pass makes it linear (guard
+//     at the bottom).
+//
 // Three cases nest deeper than `MAX_NESTING_DEPTH` by construction and are
 // REFUSED rather than parsed — a typed guard trip in milliseconds, which is
 // the hardening posture working as designed rather than a hang. They are
@@ -42,6 +52,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { parseBlocks } from "../../src/internal/blockParser.js";
 import { isGuardExceeded } from "../../src/internal/carriers.js";
+import { Markdown } from "../../src/Markdown.js";
 import { renderHtml } from "./support/htmlWriter.js";
 import { PATHOLOGICAL_CASES } from "./support/pathological/cases.js";
 
@@ -226,6 +237,105 @@ describe("pathological inputs", () => {
 		// TIMEOUT_MS is 8000): generous against instrumented linear cost —
 		// two orders of magnitude of headroom — while anything worse than
 		// the measured quadratic fails HERE instead of grinding the runner.
+		8000 * 40 + 5000,
+	);
+
+	// The linearity guard for definition extraction (defect 8). A paragraph's leading definitions were split off one
+	// at a time, each re-slicing the paragraph's per-line segments, re-scanning them for its source offsets and
+	// splicing its node in by a search of the parent's children: O(definitions) per definition. 20k consecutive
+	// definitions took 1.5s, ~14x per input quadrupling. One pass with a forward segment cursor and one splice makes
+	// it linear. Same method and threshold as the guards above.
+	it(
+		"consecutive link reference definitions scale linearly",
+		() => {
+			const timeAt = (reps: number): number => {
+				const input = Array.from({ length: reps }, (_, index) => `[r${index}]: /u${index}\n`).join("");
+				let best = Number.POSITIVE_INFINITY;
+				for (let pass = 0; pass < 5; pass += 1) {
+					const started = cpuNow();
+					parseBlocks(input, "gfm");
+					best = Math.min(best, cpuNow() - started);
+				}
+				return best;
+			};
+			timeAt(500);
+			const small = timeAt(2500);
+			const large = timeAt(10000);
+			const ratio = large / Math.max(small, 1);
+			assert.isBelow(
+				ratio,
+				8,
+				`4x the input cost ${ratio.toFixed(1)}x the CPU time (${small.toFixed(1)}ms -> ${large.toFixed(1)}ms); ` +
+					"linear is ~4x, the per-definition re-slice was ~16x",
+			);
+		},
+		8000 * 40 + 5000,
+	);
+
+	// The linearity guard for the email-literal postprocess (defect 7). The postprocess maps each match's offsets in a
+	// merged run of text nodes back to source; that lookup walked the run's nodes from the start on every call, so a
+	// run that brackets or escapes split into many nodes cost O(nodes) per address: 20k reps of `[a] b@c.de ` took
+	// 5.6s, ~16x per input quadrupling. A forward cursor over the nodes makes the mapping linear. Same method and
+	// threshold as the guard above.
+	it(
+		"email literals in a run of many text nodes scale linearly",
+		() => {
+			const timeAt = (reps: number): number => {
+				const input = "[a] b@c.de ".repeat(reps);
+				let best = Number.POSITIVE_INFINITY;
+				for (let pass = 0; pass < 5; pass += 1) {
+					const started = cpuNow();
+					parseBlocks(input, "gfm");
+					best = Math.min(best, cpuNow() - started);
+				}
+				return best;
+			};
+			timeAt(500);
+			const small = timeAt(2500);
+			const large = timeAt(10000);
+			const ratio = large / Math.max(small, 1);
+			assert.isBelow(
+				ratio,
+				8,
+				`4x the input cost ${ratio.toFixed(1)}x the CPU time (${small.toFixed(1)}ms -> ${large.toFixed(1)}ms); ` +
+					"linear is ~4x, the per-call node walk was ~16x",
+			);
+		},
+		8000 * 40 + 5000,
+	);
+
+	// The linearity guard for one long paragraph of inline nodes, two paths of it. Each node's position maps its
+	// index in the paragraph's content back to the source through the paragraph's segments, one per line, and a scan
+	// from the first segment cost O(lines) per node. And each link's emphasis pass walked the delimiter stack from its
+	// top for the first delimiter above the link's opener, passing it when there was none and running to the stack's
+	// base, every earlier line's emphasis delimiters still open there. Before both fixes 4x the lines cost 14.7x here
+	// under coverage (61/212/727ms at 4k/8k/16k lines uninstrumented for the first path alone). Same clock, sampling
+	// and threshold as the guard above.
+	it(
+		"a long paragraph of inline nodes scales linearly",
+		() => {
+			const timeAt = (lines: number): number => {
+				const input = "*a* [b](/u) c\n".repeat(lines);
+				let best = Number.POSITIVE_INFINITY;
+				for (let pass = 0; pass < 5; pass += 1) {
+					const started = cpuNow();
+					Markdown.parseResult(input);
+					best = Math.min(best, cpuNow() - started);
+				}
+				return best;
+			};
+
+			timeAt(1000);
+			const small = timeAt(4000);
+			const large = timeAt(16000);
+			const ratio = large / Math.max(small, 1);
+			assert.isBelow(
+				ratio,
+				8,
+				`4x the input cost ${ratio.toFixed(1)}x the CPU time (${small.toFixed(1)}ms -> ${large.toFixed(1)}ms); ` +
+					"linear is ~4x, the quadratic paths were ~15x",
+			);
+		},
 		8000 * 40 + 5000,
 	);
 });

@@ -27,9 +27,17 @@
 
 import { assert, describe, it } from "@effect/vitest";
 import { frontMatterLineCount, maskHtmlComments } from "../src/internal/reading.js";
+import type { LintRule } from "../src/LintRule.js";
 import { MarkdownLint } from "../src/MarkdownLint.js";
 import { rules } from "../src/rules/all.js";
 import { MD009 } from "../src/rules/MD009.js";
+import { MD034 } from "../src/rules/MD034.js";
+import { MD049 } from "../src/rules/MD049.js";
+import { MD051 } from "../src/rules/MD051.js";
+import { MD052 } from "../src/rules/MD052.js";
+import { MD053 } from "../src/rules/MD053.js";
+import { MD054 } from "../src/rules/MD054.js";
+import { MD055 } from "../src/rules/MD055.js";
 
 const CEILING_MS = 5_000;
 
@@ -78,6 +86,135 @@ const dataUriLine = (repeats: number): string =>
 // The comment mask re-read each comment's line from its start: many comments on one line.
 const commentsOnOneLine = (count: number): string => `x${"<!--a-->".repeat(count)}\n`;
 
+// MD036 reads each top-level HTML block's re-read and each paragraph's children: emphasis lines inside HTML blocks,
+// and one paragraph of emphasis spans.
+const htmlBlocksOfEmphasis = (count: number): string =>
+	`# T\n\n${Array.from({ length: count }, (_, index) => `<div>\n\n**Section ${index}**\n\n</div>\n`).join("\n")}`;
+// `pairs` repeats of an emphasis and a strong: twice as many spans.
+const emphasisSpans = (pairs: number): string => `# T\n\n${"*a* **b** ".repeat(pairs)}\n`;
+
+// MD030 reads each list's end from the next block after it: alternating markers make every item a list.
+const quotedListsOfTwoMarkers = (count: number): string =>
+	`# T\n\n${Array.from({ length: count }, (_, index) => `> ${index % 2 === 0 ? "-" : "+"}  item ${index}`).join("\n")}\n`;
+
+// Every nested list that ends on one line walks the quoted blank lines after it: depth times run.
+const deepQuotedListThenBlanks = (depth: number, blanks: number): string =>
+	`# T\n\n${Array.from({ length: depth }, (_, index) => `> ${"  ".repeat(index)}- item ${index}`).join("\n")}\n${">\n".repeat(blanks)}> text\n`;
+
+// MD038 reads a code span's tokens back from its source: one span of 100,000 space-separated words over many lines.
+const longCodeSpan = (words: number): string =>
+	`# T\n\n\`  ${Array.from({ length: words }, (_, index) => (index % 10 === 9 ? `w${index}\n` : `w${index} `)).join("")}  \`\n`;
+
+// MD037 pairs bare markers and reads the spaces beside each on its line: one line of 30,000 spaced marker pairs.
+const spacedMarkersOnOneLine = (pairs: number): string => `# T\n\n${"a * b * ".repeat(pairs)}\n`;
+
+// MD011 checks each reversed link against every code span and math span: one line of 20,000 of each.
+const reversedLinksBesideCode = (count: number): string => `# T\n\n${"`c` (a)[b] ".repeat(count)}\n`;
+
+// Image descriptions are re-parsed with the document's definitions when they can hold a reference.
+const imagesAndDefinitions = (count: number): string =>
+	`# T\n\n${Array.from({ length: count }, (_, index) => `![a [r${index}] *b*](i${index}.png)`).join("\n\n")}\n\n${Array.from({ length: count }, (_, index) => `[r${index}]: #`).join("\n")}\n`;
+
+// An image's label is re-parsed with the definitions it names: one label naming one definition 8,000 times, whose title
+// is 80 KB, once grew the re-parsed text past the longest string (`RangeError: Invalid string length`).
+const labelNamingOneDefinition = (uses: number, title: number): string =>
+	`# T\n\nSee ![${"[x] ".repeat(uses)}](i.png)\n\n[x]: http://e.com "${"t".repeat(title)}"\n`;
+// Many images naming one definition as long as the document: the definition's source was re-parsed per image.
+const imagesNamingOneLongDefinition = (count: number): string =>
+	`# T\n\n${"![[x]](i.png)\n\n".repeat(Math.ceil(count / 10))}[x]: http://e.com "${"t".repeat(count * 4)}"\n`;
+// One image's label holding many images: each nested image copied the whole label's offsets.
+const imagesNestedInOneLabel = (count: number): string =>
+	`# T\n\n![${"![a](b)".repeat(Math.ceil(count / 4))}](i.png)\n`;
+
+// Images nested in one another's labels: each level's label was read by a recursive call, which overflowed the stack
+// (MD049 by 2,000 levels, MD052 by 4,000), where markdownlint reads every level.
+const deeplyNestedImages = (depth: number): string => `# T\n\n${"![".repeat(depth)}a${"](b)".repeat(depth)}\n`;
+
+// MD034 checks each literal against the unbalanced label spans before it: one line of 20,000 bracketed addresses.
+const bracketedAddresses = (count: number): string => `# T\n\n${"[a] b@c.de ".repeat(count)}\n`;
+
+// MD034 pairs each inline HTML open tag with its close among the same siblings: one line of 24,000 unclosed tags,
+// which a forward scan per open tag made quadratic (16,000 took 4.8 s with MD034 alone).
+const unclosedInlineTags = (count: number): string => `# T\n\n${"<b> x ".repeat(count)}\n`;
+
+// MD034 re-reads a block holding a `www.` in another case, and the rest of a block after a `[` in inline math, once
+// each: 10,000 URLs and other-case hosts in emphasis after one, on one line.
+const urlsAfterMathBracket = (count: number): string => `# T\n\n$[$ ${"*https://a.b* WWW.c.d ".repeat(count)}\n`;
+
+// The reference data MD052 and MD053 read: each failed label end shims back to the latest label start, a formed link
+// deactivates the link starts before it, and a label end takes the latest start not yet failed.
+const undefinedReferences = (count: number): string => `# T\n\n${"[a] [b][c] [d][] ".repeat(count)}\n`;
+const imagesAndLinks = (count: number): string => `# T\n\n${"![a] [b](u) ".repeat(count)}\n`;
+const openersThenClosers = (count: number): string => `# T\n\n${"[".repeat(count)}x${"]".repeat(count)}\n`;
+const unusedDefinitions = (count: number): string =>
+	`# T\n\n${Array.from({ length: count }, (_, index) => `[u${index}]: https://u.example/${index}\n`).join("")}`;
+const usesOfOneLabel = (count: number): string =>
+	`# T\n\n${"[r] [x][r] ".repeat(count)}\n\n${"[r]: u\n".repeat(count)}`;
+
+// MD054 reads every autolink, link and image with each style disallowed.
+const linkStyles = (count: number): string =>
+	`# T\n\n${"<https://a.example> [t](https://a.example) [t][r] [r][] [r] ![i][r] ".repeat(count)}\n\n[r]: https://r.example\n`;
+
+// MD051 suffixes each repeated heading's fragment and looks each link's fragment up in every case: every link names
+// the last repeat in another case, which a search of the fragments in order finds only at their end; four links a
+// heading, so the lookups outweigh the parse.
+const repeatedHeadings = (count: number): string =>
+	`${"# Same\n\n".repeat(count)}${`[x](#SAME-${count - 1}) `.repeat(count * 4)}\n`;
+
+// The table readers (MD055, MD056, MD058, MD060) read every row's raw line: a table of many rows, and a row that is one
+// long run of pipes.
+const tallTable = (count: number): string => `# T\n\n| a | b |\n| - | - |\n${"| c | d\n".repeat(count)}\ntext\n`;
+const pipeRun = (count: number): string => `# T\n\n| a | b |\n| - | - |\n${"|".repeat(count)}\n`;
+
+const cpuNow = (): number => {
+	const used = process.cpuUsage();
+	return (used.user + used.system) / 1000;
+};
+
+// 10,000 against 2,500 of `make`'s unit under `rule` alone: the ratio of their best CPU times.
+const scalingRatio = (
+	make: (count: number) => string,
+	rule: LintRule,
+	config: Record<string, unknown>,
+): { readonly value: number; readonly detail: string } => {
+	const timeAt = (count: number): number => {
+		const source = make(count);
+		let best = Number.POSITIVE_INFINITY;
+		for (let pass = 0; pass < 5; pass += 1) {
+			const started = cpuNow();
+			MarkdownLint.lint(source, [rule], { config: { default: false, [rule.name]: config } });
+			best = Math.min(best, cpuNow() - started);
+		}
+		return best;
+	};
+	timeAt(500);
+	const small = timeAt(2_500);
+	const large = timeAt(10_000);
+	return { value: large / Math.max(small, 1), detail: `${small.toFixed(1)} ms -> ${large.toFixed(1)} ms` };
+};
+
+const scalingShapes: ReadonlyArray<
+	readonly [name: string, make: (count: number) => string, rule: LintRule, config: Record<string, unknown>]
+> = [
+	["re-reads URLs after a bracket in inline math", (count) => urlsAfterMathBracket(count), MD034, {}],
+	["reads undefined references and chains", undefinedReferences, MD052, { shortcut_syntax: true }],
+	["reads alternating images and links", imagesAndLinks, MD052, { shortcut_syntax: true }],
+	["re-parses image labels naming one long definition", imagesNamingOneLongDefinition, MD049, {}],
+	["reads image labels naming one long definition", imagesNamingOneLongDefinition, MD052, { shortcut_syntax: true }],
+	["re-parses images nested in one label", imagesNestedInOneLabel, MD049, {}],
+	["reads images nested in one label", imagesNestedInOneLabel, MD052, { shortcut_syntax: true }],
+	["reads label starts closed in reverse", openersThenClosers, MD052, { shortcut_syntax: true }],
+	["checks fragments against repeated headings", repeatedHeadings, MD051, {}],
+	["reads a tall table's rows", tallTable, MD055, {}],
+	["reads a row of many pipes", pipeRun, MD055, {}],
+	[
+		"checks every link style",
+		linkStyles,
+		MD054,
+		{ autolink: false, inline: false, full: false, collapsed: false, shortcut: false, url_inline: false },
+	],
+];
+
 const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["a 400-column table with CJK cells", wideTable(400, 150)],
 	["2,000 unclosed fences in list items", unclosedFences(2000)],
@@ -86,6 +223,26 @@ const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["a paragraph of 60,000 code spans, links and lone dollar signs", atomicDollars(60000)],
 	["a 198 KB line holding an inline data-URI image", dataUriLine(18000)],
 	["one line of 16,000 HTML comments", commentsOnOneLine(16000)],
+	["2,000 HTML blocks each holding an emphasis line", htmlBlocksOfEmphasis(2000)],
+	["a paragraph of 40,000 emphasis spans", emphasisSpans(20000)],
+	["a blockquote of 20,000 one-item lists", quotedListsOfTwoMarkers(20000)],
+	["a list nested 40 deep in a blockquote, then 20,000 quoted blank lines", deepQuotedListThenBlanks(40, 20000)],
+	["one code span of 100,000 words over 10,000 lines", longCodeSpan(100000)],
+	["one line of 30,000 spaced emphasis-marker pairs", spacedMarkersOnOneLine(30000)],
+	["one line of 20,000 reversed links beside code spans", reversedLinksBesideCode(20000)],
+	["2,000 images holding references, beside 2,000 definitions", imagesAndDefinitions(2000)],
+	["one image label naming one 80 KB definition 8,000 times", labelNamingOneDefinition(8000, 80000)],
+	["one line of 20,000 bracketed spans and addresses", bracketedAddresses(20000)],
+	["one line of 24,000 unclosed inline HTML tags", unclosedInlineTags(24000)],
+	["10,000 URLs in emphasis after a bracket in inline math", urlsAfterMathBracket(10000)],
+	["one line of 20,000 undefined references, collapsed and full", undefinedReferences(20000)],
+	["20,000 uses of one label beside 20,000 duplicate definitions", usesOfOneLabel(20000)],
+	["20,000 unused definitions", unusedDefinitions(20000)],
+	// Sized for a shared runner, this costs about 600 ms alone, so the ceiling only catches a gross blowup: the guard on
+	// MD051's lookups is its ratio twin in `scalingShapes`, which fails the quadratic lookup at 9.5x.
+	["5,000 repeated headings and 20,000 fragments in another case", repeatedHeadings(5000)],
+	["a table of 20,000 rows", tallTable(20000)],
+	["a table row of 50,000 pipes", pipeRun(50000)],
 ];
 
 describe("hostile inputs", () => {
@@ -96,6 +253,39 @@ describe("hostile inputs", () => {
 			const elapsed = performance.now() - start;
 			assert.isAbove(findings.length, 0);
 			assert.isBelow(elapsed, CEILING_MS, `${name}: ${elapsed.toFixed(0)} ms`);
+		});
+	}
+
+	// The re-parse reads only whether a label is defined, so it stays as long as the label whatever the definition holds.
+	for (const rule of [MD049, MD052, MD053, MD054]) {
+		it(`lints one image label naming one 80 KB definition 8,000 times under ${rule.name} without throwing`, () => {
+			const source = labelNamingOneDefinition(8000, 80000);
+			assert.doesNotThrow(() => MarkdownLint.lint(source, [rule]));
+		});
+	}
+
+	// Every level is still re-parsed in turn, so the cost grows with depth times the label (see the module concept).
+	for (const rule of [MD049, MD052]) {
+		it(`lints 4,000 images nested in one another's labels under ${rule.name} without throwing`, {
+			timeout: 60_000,
+		}, () => {
+			const source = deeplyNestedImages(4000);
+			assert.doesNotThrow(() => MarkdownLint.lint(source, [rule]));
+		});
+	}
+
+	// Scaling guards, as `@effected/markdown`'s pathological suite guards its own linear scans: a ceiling alone lets a
+	// cheaper superlinear scan through at these sizes, a ratio does not. CPU time, not wall time, so load descheduling
+	// the process cannot stretch one side; the minimum of five samples, since a pause only ever adds time. Linear is
+	// about 4x for 4x the input, a per-item rescan about 16x.
+	for (const [name, make, rule, config] of scalingShapes) {
+		it(`${name} in time linear in the input`, { timeout: 60_000 }, () => {
+			const ratio = scalingRatio(make, rule, config);
+			assert.isBelow(
+				ratio.value,
+				8,
+				`4x the input cost ${ratio.value.toFixed(1)}x the CPU time (${ratio.detail}); linear is about 4x`,
+			);
 		});
 	}
 });
@@ -167,6 +357,45 @@ describe("hostile settings", () => {
 		const elapsed = performance.now() - start;
 		assert.lengthOf(findings, 1);
 		assert.strictEqual(MarkdownLint.applyFixes(source, findings).split("\n")[4], `${" ".repeat(1_000)}x`);
+		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
+	});
+
+	it("lints a sublist under indent: 1e9 under the ceiling, its fix capped", { timeout: 30_000 }, () => {
+		const source = '<!-- markdownlint-configure-file {"MD007":{"indent":1e9}} -->\n\n# T\n\n- a\n  - b\n';
+		const start = performance.now();
+		const findings = MarkdownLint.lint(source, rules).filter((finding) => finding.ruleNames[0] === "MD007");
+		const elapsed = performance.now() - start;
+		assert.lengthOf(findings, 1);
+		assert.strictEqual(MarkdownLint.applyFixes(source, findings).split("\n")[5], `${" ".repeat(1_002)}- b`);
+		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
+	});
+
+	it("lints a list under ul_single: 1e9 under the ceiling, its fix capped", { timeout: 30_000 }, () => {
+		const source = '<!-- markdownlint-configure-file {"MD030":{"ul_single":1e9}} -->\n\n# T\n\n- a\n';
+		const start = performance.now();
+		const findings = MarkdownLint.lint(source, rules).filter((finding) => finding.ruleNames[0] === "MD030");
+		const elapsed = performance.now() - start;
+		assert.lengthOf(findings, 1);
+		assert.strictEqual(MarkdownLint.applyFixes(source, findings).split("\n")[4], `-${" ".repeat(1_000)}a`);
+		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
+	});
+
+	it("lints proper names under a list of 1,000 names under the ceiling", { timeout: 30_000 }, () => {
+		const names = Array.from({ length: 1_000 }, (_, index) => `Name${index}`);
+		const source = `${Array.from({ length: 2_000 }, (_, index) => `name${index % 1_000} and www.name${index}.com and \`name1\``).join("\n\n")}\n`;
+		const start = performance.now();
+		const findings = MarkdownLint.lint(source, rules, { config: { default: false, MD044: { names } } });
+		const elapsed = performance.now() - start;
+		assert.isAbove(findings.length, 0);
+		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
+	});
+
+	it("lints a one-letter proper name matching 100,000 words under the ceiling", { timeout: 30_000 }, () => {
+		const source = `${"a ".repeat(100_000)}\n`;
+		const start = performance.now();
+		const findings = MarkdownLint.lint(source, rules, { config: { default: false, MD044: { names: ["A", "A B"] } } });
+		const elapsed = performance.now() - start;
+		assert.isAbove(findings.length, 0);
 		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
 	});
 

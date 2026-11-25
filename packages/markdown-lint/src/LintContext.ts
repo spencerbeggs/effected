@@ -63,6 +63,15 @@ export interface LintReport {
 	readonly range?: boolean | MarkdownRangeLike;
 	/** A fix, as a kit offset edit over the context's `source`. */
 	readonly fix?: LintEditLike;
+	/**
+	 * Whether `fix` deletes the diagnostic's whole line, as markdownlint's
+	 * `deleteCount: -1` does: its `fixInfo` is that delete whatever the
+	 * edit's span (the only line of a source with no line ending has no
+	 * terminator to take), and `MarkdownLint.applyFixes` removes the line as
+	 * markdownlint does, a run of deleted lines at the source's end taking the
+	 * line break before it. The edit should span the line.
+	 */
+	readonly deletesLine?: boolean;
 }
 
 /**

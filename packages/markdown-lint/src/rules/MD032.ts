@@ -5,31 +5,21 @@
 // the last content line is read from the list's last descendant. The fix's
 // blockquote prefix is read from the raw line.
 
-import type { Code, Heading, List, MarkdownNode } from "@effected/markdown";
+import type { List, ListItem, MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
-import { blockQuotePrefixText, flowNodesWithAncestors, isLazyLine } from "../internal/containers.js";
+import {
+	blockQuotePrefixText,
+	flowNodesWithAncestors,
+	isLazyLine,
+	itemContentColumn,
+	lastContentLine,
+} from "../internal/containers.js";
+import { directiveLines } from "../internal/directives.js";
 import { preferredLineEnding } from "../internal/line-endings.js";
 import type { LineRange } from "../internal/lines.js";
 import { contentLine, errorContext, isBlankLine } from "../internal/lines.js";
 import { inMathBlock, mathFlowBlocks } from "../internal/math-flow.js";
 import { LintRule } from "../LintRule.js";
-
-// The line a node's last content token ends on: the last line holding its text, not a line break or the blank
-// lines a block the kit closes late carries. A setext heading ends on its underline.
-const lastContentLine = (node: MarkdownNode, lines: ReadonlyArray<string>): number => {
-	const children = "children" in node ? (node.children as ReadonlyArray<MarkdownNode>) : [];
-	const last = children.at(-1);
-	if (node.type === "heading" && (node as Heading).headingStyle === "setext") return node.position.end.line;
-	if (last !== undefined) return lastContentLine(last, lines);
-	let line = node.position.end.line;
-	if (node.type === "code" && (node as Code).fenceChar === undefined) {
-		// An indented code block's trailing blank lines are micromark's `lineEndingBlank`, not content.
-		while (line > node.position.start.line && (lines[line - 1] ?? "").trim() === "") line--;
-	} else if (node.position.end.column === 1 && line > node.position.start.line) {
-		line--;
-	}
-	return line;
-};
 
 // The list's last descendant, when it is a paragraph.
 const lastParagraph = (node: MarkdownNode): MarkdownNode | undefined => {
@@ -64,6 +54,42 @@ const mathCutLine = (
 	return cut;
 };
 
+// The kit reads a directive line as paragraph text, so one left of the content of the top-level item it falls in
+// continues the list lazily. markdownlint's directive extension ends the paragraph, and the list, before it: the list
+// ends on the line before, and the next list item after it, at any depth, opens another list. The cut lines, in
+// order; a directive line indented to the top-level item's content is a block of that item in both.
+const directiveCuts = (context: Lint.LintContext, list: MarkdownNode): ReadonlyArray<number> => {
+	const directives = directiveLines(context);
+	if (directives.size === 0) return [];
+	const items = ("children" in list ? (list.children as ReadonlyArray<MarkdownNode>) : []).filter(
+		(child) => child.type === "listItem",
+	);
+	const cuts: Array<number> = [];
+	for (const line of [...directives.keys()].sort((a, b) => a - b)) {
+		if (line <= list.position.start.line || line > list.position.end.line) continue;
+		const item = items.findLast((each) => each.position.start.line <= line);
+		if (item === undefined) continue;
+		const column = (context.lines[line - 1] ?? "").indexOf(":");
+		if (column >= 0 && column < itemContentColumn(item as ListItem)) cuts.push(line);
+	}
+	return cuts;
+};
+
+// The first list item, at any depth in `list`, starting after `line`.
+const itemAfter = (list: MarkdownNode, line: number): number | undefined => {
+	let found: number | undefined;
+	const visit = (node: MarkdownNode): void => {
+		if (node.type === "listItem" && node.position.start.line > line) {
+			if (found === undefined || node.position.start.line < found) found = node.position.start.line;
+		}
+		for (const child of "children" in node ? (node.children as ReadonlyArray<MarkdownNode>) : []) {
+			if (child.position.end.line > line) visit(child);
+		}
+	};
+	visit(list);
+	return found;
+};
+
 /**
  * MD032 `blanks-around-lists`: lists are surrounded by blank lines.
  *
@@ -83,35 +109,55 @@ export const MD032: Lint.LintRule = LintRule.make({
 		for (const { node, ancestors } of flowNodesWithAncestors(context, new Set(["list"]))) {
 			const list = node as List;
 			if (ancestors.some((ancestor) => ancestor.type === "list")) continue;
-			const firstLine = list.position.start.line;
 			// Strict: a list or fence starting on a math opener line holds the opener (see `inMathBlock`).
-			if (inMathBlock(math, firstLine)) continue;
-			const firstText = context.lines[firstLine - 1] as string;
-			if (!isBlankLine(contentLine(context, firstLine - 1))) {
-				const offset = context.mapping.lineStart(firstLine);
-				report(
-					context.diagnostic({
-						at: { offset, length: 0 },
-						context: errorContext(firstText.trim()),
-						fix: { offset, length: 0, content: `${blockQuotePrefixText(context, firstLine)}${lineEnding}` },
-					}),
-				);
+			if (inMathBlock(math, list.position.start.line)) continue;
+			// The lists markdownlint reads here: the kit's list, split at each directive line that cuts it.
+			const segments: Array<{ readonly first: number; readonly last: number }> = [];
+			let first: number | undefined = list.position.start.line;
+			for (const cut of directiveCuts(context, list as MarkdownNode)) {
+				if (first === undefined) break;
+				if (cut <= first) continue;
+				segments.push({ first, last: cut - 1 });
+				first = itemAfter(list as MarkdownNode, cut);
 			}
-			const lastLine =
-				mathCutLine(context, list as MarkdownNode, math) ?? lastContentLine(list as MarkdownNode, context.lines);
-			if (!isBlankLine(contentLine(context, lastLine + 1))) {
-				const lastText = context.lines[lastLine - 1] as string;
-				report(
-					context.diagnostic({
-						at: { offset: context.mapping.lineStart(lastLine), length: 0 },
-						context: errorContext(lastText.trim()),
-						fix: {
-							offset: context.mapping.lineStart(lastLine + 1),
-							length: 0,
-							content: `${blockQuotePrefixText(context, lastLine)}${lineEnding}`,
-						},
-					}),
-				);
+			const mathCut = mathCutLine(context, list as MarkdownNode, math);
+			if (first !== undefined) {
+				segments.push({ first, last: mathCut ?? lastContentLine(list as MarkdownNode, context.lines) });
+			} else {
+				const final = segments.pop();
+				if (final !== undefined) {
+					segments.push({
+						first: final.first,
+						last: mathCut === undefined ? final.last : Math.min(final.last, mathCut),
+					});
+				}
+			}
+			for (const { first: firstLine, last: lastLine } of segments) {
+				const firstText = context.lines[firstLine - 1] as string;
+				if (!isBlankLine(contentLine(context, firstLine - 1))) {
+					const offset = context.mapping.lineStart(firstLine);
+					report(
+						context.diagnostic({
+							at: { offset, length: 0 },
+							context: errorContext(firstText.trim()),
+							fix: { offset, length: 0, content: `${blockQuotePrefixText(context, firstLine)}${lineEnding}` },
+						}),
+					);
+				}
+				if (!isBlankLine(contentLine(context, lastLine + 1))) {
+					const lastText = context.lines[lastLine - 1] as string;
+					report(
+						context.diagnostic({
+							at: { offset: context.mapping.lineStart(lastLine), length: 0 },
+							context: errorContext(lastText.trim()),
+							fix: {
+								offset: context.mapping.lineStart(lastLine + 1),
+								length: 0,
+								content: `${blockQuotePrefixText(context, lastLine)}${lineEnding}`,
+							},
+						}),
+					);
+				}
 			}
 		}
 	},

@@ -52,6 +52,7 @@ import type {
 import { tableCellChildren, tableRowChildren } from "../blockTypes.js";
 import { ESCAPABLE } from "../grammar.js";
 import { sliceWithSegments } from "../segments.js";
+import { extractDefinitions } from "./linkReferenceDefinition.js";
 
 /**
  * Upstream's `MAX_AUTOCOMPLETED_CELLS`: the ceiling on cells the parser
@@ -484,6 +485,9 @@ export const tableHeaderStart: BlockStart = {
 			paragraph.segments.push(...reclaimed.segments);
 			paragraph.endOffset = headerStart;
 			paragraph.endLine = Math.max(scanner.lineNumber - 2, paragraph.startLine);
+			// Upstream finalizes the reclaimed paragraph like any other, so the link reference definitions it opens
+			// with are definitions (an emptied paragraph materializes as nothing).
+			extractDefinitions(paragraph);
 		}
 
 		const table = scanner.replaceBlock(container, "table");

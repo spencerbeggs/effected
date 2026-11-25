@@ -6,10 +6,20 @@
 
 import type { Heading } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
+import { blockQuotePrefixText, flowNodes } from "../internal/containers.js";
 import { headingNodes } from "../internal/headings.js";
 import { preferredLineEnding } from "../internal/line-endings.js";
 import { contentLine, firstContentLine, isBlankLine } from "../internal/lines.js";
-import { REPEAT_CAP, coercedNumber, coercedText, flagSetting, numberSetting } from "../internal/settings.js";
+import { perReading } from "../internal/memo.js";
+import {
+	REPEAT_CAP,
+	coercedNumber,
+	coercedText,
+	flagSetting,
+	numberSetting,
+	rawSetting,
+} from "../internal/settings.js";
+import type { LintContext } from "../LintContext.js";
 import { LintRule } from "../LintRule.js";
 
 // markdownlint's `getLinesFunction` for `lines_above` / `lines_below`: an array gives each heading level its item
@@ -17,7 +27,7 @@ import { LintRule } from "../LintRule.js";
 // item as written: by coercion to count and to test the side is on (`<`, `>=`), strictly to decide the finding
 // (`!==`, so `["2"]` reports two blank lines as wrong), and as text in the detail.
 const linesFunction = (config: Readonly<Record<string, unknown>>, name: string): ((heading: Heading) => unknown) => {
-	const value = config[name];
+	const value = rawSetting(config, name);
 	if (Array.isArray(value)) {
 		const levels: Array<unknown> = [1, 1, 1, 1, 1, 1];
 		for (const [index, item] of value.slice(0, 6).entries()) levels[index] = item;
@@ -27,12 +37,23 @@ const linesFunction = (config: Readonly<Record<string, unknown>>, name: string):
 	return () => lines;
 };
 
-// markdownlint's `getBlockQuotePrefixText` for the line a blank goes next to: its blockquote markers and the
-// indentation around them read straight from its raw text, trailing space trimmed, then a line break, `count`
-// times. Deliberately not the container-aware `blockQuotePrefixText` MD032 uses: the two read different
-// patterns on purpose, so do not merge them.
-const rawQuotePrefixLines = (line: string | undefined, count: number, lineEnding: string): string =>
-	`${(/^(?:[ \t]*>[ \t]?)*/.exec(line ?? "")?.[0] ?? "").trimEnd()}${lineEnding}`.repeat(Math.max(0, count));
+// markdownlint's `getBlockQuotePrefixText` for the line a blank goes next to, `count` times: the line's
+// `blockQuotePrefix` and `linePrefix` tokens (a list item's own indentation is neither), trailing space trimmed, then a
+// line break. markdownlint's token filter skips an HTML block's children, and micromark nests the container prefixes of
+// the block's later lines inside it, so those lines read as no prefix.
+const quotePrefixLines = (context: LintContext, lineNumber: number, count: number, lineEnding: string): string => {
+	const inside = contentLine(context, lineNumber) !== undefined && !htmlInteriorLines(context).has(lineNumber);
+	return `${inside ? blockQuotePrefixText(context, lineNumber) : ""}${lineEnding}`.repeat(Math.max(0, count));
+};
+
+// The lines of each HTML block after its first.
+const htmlInteriorLines: (context: LintContext) => ReadonlySet<number> = perReading((context) => {
+	const lines = new Set<number>();
+	for (const node of flowNodes(context, new Set(["html"]))) {
+		for (let line = node.position.start.line + 1; line <= node.position.end.line; line++) lines.add(line);
+	}
+	return lines;
+});
 
 // markdownlint's count of blank lines beside a heading: up to `count` steps from it while each line is blank. Every
 // line past the document's edge reads as "" (blank), so once the walk leaves the document each remaining step counts
@@ -110,8 +131,9 @@ export const MD022: Lint.LintRule = LintRule.make({
 							fix: {
 								offset,
 								length: 0,
-								content: rawQuotePrefixLines(
-									contentLine(context, startLine - 1),
+								content: quotePrefixLines(
+									context,
+									startLine - 1,
 									Math.min(REPEAT_CAP, countAbove - actual),
 									lineEnding,
 								),
@@ -139,11 +161,7 @@ export const MD022: Lint.LintRule = LintRule.make({
 							fix: {
 								offset,
 								length: 0,
-								content: rawQuotePrefixLines(
-									contentLine(context, endLine + 1),
-									Math.min(REPEAT_CAP, countBelow - actual),
-									lineEnding,
-								),
+								content: quotePrefixLines(context, endLine + 1, Math.min(REPEAT_CAP, countBelow - actual), lineEnding),
 							},
 						}),
 					);

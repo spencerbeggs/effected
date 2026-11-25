@@ -6,8 +6,8 @@
  * installed markdownlint by a differential test over its fixture corpus.
  *
  * @remarks
- * `@effected/markdown-lint/rules/all` lists which of markdownlint's rules are
- * still `uncovered`.
+ * `@effected/markdown-lint/rules/all` lists in `uncovered` the built-in rules
+ * not ported: currently none.
  *
  * @packageDocumentation
  */
@@ -15,22 +15,53 @@
 export { MD001 } from "./MD001.js";
 export { MD003 } from "./MD003.js";
 export { MD004 } from "./MD004.js";
+export { MD005 } from "./MD005.js";
+export { MD007 } from "./MD007.js";
 export { MD009 } from "./MD009.js";
 export { MD010 } from "./MD010.js";
+export { MD011 } from "./MD011.js";
 export { MD012 } from "./MD012.js";
 export { MD013 } from "./MD013.js";
+export { MD014 } from "./MD014.js";
 export { MD018 } from "./MD018.js";
 export { MD019 } from "./MD019.js";
+export { MD020 } from "./MD020.js";
+export { MD021 } from "./MD021.js";
 export { MD022 } from "./MD022.js";
 export { MD023 } from "./MD023.js";
 export { MD024 } from "./MD024.js";
 export { MD025 } from "./MD025.js";
 export { MD026 } from "./MD026.js";
+export { MD027 } from "./MD027.js";
+export { MD028 } from "./MD028.js";
+export { MD029 } from "./MD029.js";
+export { MD030 } from "./MD030.js";
 export { MD031 } from "./MD031.js";
 export { MD032 } from "./MD032.js";
 export { MD033 } from "./MD033.js";
+export { MD034 } from "./MD034.js";
+export { MD035 } from "./MD035.js";
+export { MD036 } from "./MD036.js";
+export { MD037 } from "./MD037.js";
+export { MD038 } from "./MD038.js";
+export { MD039 } from "./MD039.js";
 export { MD040 } from "./MD040.js";
 export { MD041 } from "./MD041.js";
+export { MD042 } from "./MD042.js";
+export { MD043 } from "./MD043.js";
+export { MD044 } from "./MD044.js";
 export { MD045 } from "./MD045.js";
+export { MD046 } from "./MD046.js";
 export { MD047 } from "./MD047.js";
+export { MD048 } from "./MD048.js";
+export { MD049 } from "./MD049.js";
+export { MD050 } from "./MD050.js";
+export { MD051 } from "./MD051.js";
+export { MD052 } from "./MD052.js";
+export { MD053 } from "./MD053.js";
+export { MD054 } from "./MD054.js";
+export { MD055 } from "./MD055.js";
+export { MD056 } from "./MD056.js";
+export { MD058 } from "./MD058.js";
+export { MD059 } from "./MD059.js";
 export { MD060 } from "./MD060.js";

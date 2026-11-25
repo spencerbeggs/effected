@@ -8,24 +8,13 @@
 // whitespace. Widths are string-width's, as markdownlint measures them.
 
 import type * as Lint from "@effected/markdown-lint";
-import { contentInContainers } from "../internal/containers.js";
-import { mathFlowLines } from "../internal/math-flow.js";
+import { flagSetting, stringSetting } from "../internal/settings.js";
 import { prefixWidths } from "../internal/string-width.js";
+import type { TableRow } from "../internal/tables.js";
+import { tables } from "../internal/tables.js";
 import { LintRule } from "../LintRule.js";
 
-/** One token of a row: its type and its 1-based start and end columns on the line. */
-interface Token {
-	readonly type: "tableCellDivider" | "tableContent" | "whitespace";
-	readonly startColumn: number;
-	readonly endColumn: number;
-}
-
-/** One row: its line, its tokens and its end column. */
-interface Row {
-	readonly lineNumber: number;
-	readonly tokens: ReadonlyArray<Token>;
-	readonly endColumn: number;
-}
+type Row = TableRow;
 
 /** A finding as markdownlint's MD060 collects it. */
 interface ErrorInfo {
@@ -34,39 +23,6 @@ interface ErrorInfo {
 	readonly detail: string;
 	readonly fix?: { readonly editColumn: number; readonly deleteCount?: number; readonly insertText?: string };
 }
-
-// A row's tokens, read from `text` (the row, after its containers and indentation) starting at 0-based `at`.
-const rowTokens = (text: string, at: number): Array<Token> => {
-	const tokens: Array<Token> = [];
-	const cell = (start: number, end: number): void => {
-		if (start === end) return;
-		const value = text.slice(start, end);
-		const lead = (/^[ \t]*/.exec(value)?.[0] ?? "").length;
-		const column = (offset: number) => at + offset + 1;
-		if (lead === value.length) {
-			tokens.push({ type: "whitespace", startColumn: column(start), endColumn: column(end) });
-			return;
-		}
-		const trail = (/[ \t]*$/.exec(value)?.[0] ?? "").length;
-		if (lead > 0) tokens.push({ type: "whitespace", startColumn: column(start), endColumn: column(start + lead) });
-		tokens.push({ type: "tableContent", startColumn: column(start + lead), endColumn: column(end - trail) });
-		if (trail > 0) tokens.push({ type: "whitespace", startColumn: column(end - trail), endColumn: column(end) });
-	};
-	let cellStart = 0;
-	let index = 0;
-	while (index < text.length) {
-		const char = text.charAt(index);
-		if (char === "\\") index += 2;
-		else if (char === "|") {
-			cell(cellStart, index);
-			tokens.push({ type: "tableCellDivider", startColumn: at + index + 1, endColumn: at + index + 2 });
-			index++;
-			cellStart = index;
-		} else index++;
-	}
-	cell(cellStart, Math.min(index, text.length));
-	return tokens;
-};
 
 // Text that could represent an unordered list item prefix: an edit making a cell one is not offered.
 const unorderedListPrefix = /^[>\s]*[-+*]$/;
@@ -89,12 +45,11 @@ export const MD060: Lint.LintRule = LintRule.make({
 	tags: ["table"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md060.md",
 	check: (context, report) => {
-		const style = String(context.config.style || "any");
+		const style = stringSetting(context.config, "style", "any");
 		const alignedAllowed = style === "any" || style === "aligned";
 		const compactAllowed = style === "any" || style === "compact";
 		const tightAllowed = style === "any" || style === "tight";
-		const alignedDelimiter = !!context.config.aligned_delimiter;
-		const math = mathFlowLines(context);
+		const alignedDelimiter = flagSetting(context.config, "aligned_delimiter");
 		const lineText = (lineNumber: number): string => context.lines[lineNumber - 1] ?? "";
 
 		const addError = (errors: Array<ErrorInfo>, error: ErrorInfo): void => {
@@ -131,20 +86,8 @@ export const MD060: Lint.LintRule = LintRule.make({
 			return errors;
 		};
 
-		for (const table of context.document.findAll("table")) {
-			// Inclusive: on a math opener line, this is the fence's meta (see `mathFlowLines`).
-			if (math.has(table.position.start.line)) continue;
-			const rows: Array<Row> = [];
-			for (let lineNumber = table.position.start.line; lineNumber <= table.position.end.line; lineNumber++) {
-				const line = lineText(lineNumber);
-				const inner = contentInContainers(context, lineNumber) ?? line;
-				const text = inner.replace(/^[ \t]*/, "");
-				rows.push({
-					lineNumber,
-					tokens: rowTokens(text, line.length - text.length),
-					endColumn: line.length + 1,
-				});
-			}
+		for (const table of tables(context)) {
+			const { rows } = table;
 
 			const errorsIfAligned = alignedAllowed
 				? checkAligned(rows, 'Table pipe does not align with header for style "aligned"')
