@@ -1,16 +1,21 @@
 name: Slow Tests
 
-# The slow tier of the vitest suite: the packed-install e2es, the reload and bundle tests and the
-# sweeps listed in vitest.config.ts's SLOW_TESTS, then the hostile tier, every *.hostile.test.ts
-# file. The Silk workflow's `ci:test` runs everything else (EFFECTED_TEST_TIER=fast, with coverage
-# and its thresholds); this job runs the slow files alone (EFFECTED_TEST_TIER=slow) with coverage
-# off, beside it rather than after it, so a PR waits for the slower of the two instead of their
-# sum. The hostile files, which bound how work grows with input size, run afterwards one file at a
-# time (EFFECTED_TEST_TIER=hostile), so no other file shares the runner while they measure (#1387).
-# It runs on every pull request, not on a schedule, because the hostile tier holds security
-# regression suites (shell, glob and lockfile hostility) that must not merge red. Coverage is off
-# because these files exercise code the fast tier already covers, and v8 instrumentation made them
-# two to three times slower.
+# The two tiers of the vitest suite that run with coverage off, beside the Silk workflow's `ci:test`
+# (EFFECTED_TEST_TIER=fast, with coverage and its thresholds) rather than after it, so a pull
+# request waits for the slowest of the three and not their sum.
+#
+# - Slow Tests: the packed-install e2es, the reload and bundle tests and the sweeps listed in
+#   vitest.config.ts's SLOW_TESTS (EFFECTED_TEST_TIER=slow). The packed-install e2e packs the plugin
+#   with everything it depends on, so this job alone builds that whole closure.
+# - Hostile Tests: every *.hostile.test.ts file (EFFECTED_TEST_TIER=hostile), which bound how work
+#   grows with input size. They run one file at a time, so no other file shares the runner while
+#   they measure (#1387), and in a job of their own, so they neither wait for the slow tier's build
+#   nor go unreported when a slow test fails.
+#
+# Both run on every pull request, not on a schedule: the hostile tier holds security regression
+# suites (shell, glob and lockfile hostility) that must not merge red. Coverage is off because
+# these files exercise code the fast tier already covers, and v8 instrumentation made them two to
+# three times slower.
 #
 # Cache trust comes from the job's GitHub token, not from a shared secret. The job signs in to the
 # hosted turbo cache at cache.savvyweb.systems, which reads the token's claims and gives a pull
@@ -49,5 +54,23 @@ jobs:
         with:
           turbo-api: https://cache.savvyweb.systems
 
-      - name: Run the slow and hostile tiers
+      - name: Run the slow tier
         run: pnpm run ci:test:slow
+
+  hostile:
+    name: Hostile Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Runtime
+        uses: savvy-web/silk-runtime-action@v2
+        with:
+          turbo-api: https://cache.savvyweb.systems
+
+      - name: Run the hostile tier
+        run: pnpm run ci:test:hostile
