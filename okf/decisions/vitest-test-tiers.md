@@ -36,8 +36,8 @@ integrity:
     body: e409d1590983ba5e
   verified:
     by: human:spencer
-    at: 2026-11-24T06:19:30Z
-    content: f782efad8af65c06
+    at: 2026-11-25T13:46:34Z
+    content: 5cd54b7a00dcf2a1
 verified:
   - by: human:spencer
     at: 2026-11-21T19:47:49Z
@@ -45,6 +45,8 @@ verified:
     at: 2026-11-21T22:25:48Z
   - by: human:spencer
     at: 2026-11-24T06:19:30Z
+  - by: human:spencer
+    at: 2026-11-25T13:46:34Z
 ---
 
 # The vitest suite splits into a fast tier with coverage and slow, hostile and full tiers run beside it
