@@ -344,21 +344,25 @@ describe("engine compliance: behavioral table", () => {
 		// an unsafe integer end is expanded, so past the budget it fails typed
 		assert.throws(() => new Minimatch("{0..9007199254740993}", opts), GuardExceeded);
 		// so is a range inside a repeating or negating extglob, past the budget,
-		// where 11 truncates it at 100,000 values (it matches 5, not 150000)
-		for (const pattern of ["*({0..200000})"]) {
+		// where 11 truncates it at the budget (it matches 5, not 1500). Under a
+		// budget of 1,000, not the default 100,000 (GlobPattern.test.ts pins that
+		// limit): the default made both engines expand 100,000 values here, about
+		// 1.9 s, which timed out on loaded CI runners.
+		const capped: EngineOptions = { ...opts, braceExpandMax: 1000 };
+		for (const pattern of ["*({0..2000})"]) {
 			try {
-				new Minimatch(pattern, opts);
+				new Minimatch(pattern, capped);
 				assert.fail(`${pattern} compiled`);
 			} catch (e) {
 				assert.instanceOf(e, GuardExceeded, pattern);
 				assert.strictEqual((e as GuardExceeded).reason, "ExpansionBudgetExceeded", pattern);
 			}
 		}
-		assert.isTrue(oracle("5", "*({0..200000})", oracleOpts(opts)));
-		assert.isFalse(oracle("150000", "*({0..200000})", oracleOpts(opts)));
-		// 100,000 values is within the budget, so that one still compiles
-		assert.isTrue(new Minimatch("+({0..99999})", opts).match("55"));
-		assert.isTrue(oracle("55", "+({0..99999})", oracleOpts(opts)));
+		assert.isTrue(oracle("5", "*({0..2000})", oracleOpts(capped)));
+		assert.isFalse(oracle("1500", "*({0..2000})", oracleOpts(capped)));
+		// 1,000 values is within the budget, so that one still compiles
+		assert.isTrue(new Minimatch("+({0..999})", capped).match("55"));
+		assert.isTrue(oracle("55", "+({0..999})", oracleOpts(capped)));
 	});
 });
 
