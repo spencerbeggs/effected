@@ -4,16 +4,6 @@ import { Effect, Exit, Schema } from "effect";
 import { HttpBody, HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse, UrlParams } from "effect/http";
 import { HttpRedaction } from "../src/index.js";
 
-/**
- * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
- * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
- * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
- */
-const cpuNow = (): number => {
-	const used = process.cpuUsage();
-	return (used.user + used.system) / 1000;
-};
-
 const TOKEN = "SECRET_bearer_token_9d1c";
 const COOKIE = "SECRET_session_cookie_51ab";
 const API_KEY = "SECRET_api_key_c0de";
@@ -306,21 +296,15 @@ describe("HttpRedaction.text — URLs", () => {
 		}
 	});
 
-	it("scans a 1 MB adversarial input in linear time", () => {
-		const inputs = [
+	// `HttpRedaction.hostile.test.ts` holds that each of these scans in time linear in its length.
+	it("returns a 1 MB adversarial input with nothing to redact as it came", () => {
+		for (const input of [
 			"a".repeat(1 << 20),
 			"a1+.-".repeat(1 << 18),
 			`${"a".repeat(1 << 20)}:/`,
 			"a:".repeat(1 << 19),
-			"a://".repeat(1 << 18),
-			"1://".repeat(1 << 18),
-			"a:// ".repeat(1 << 18),
-		];
-		for (const input of inputs) {
-			const start = cpuNow();
-			HttpRedaction.text(input);
-			const elapsed = cpuNow() - start;
-			assert.isBelow(elapsed, 500, `${JSON.stringify(input.slice(0, 8))}… took ${elapsed.toFixed(0)} ms`);
+		]) {
+			assert.strictEqual(HttpRedaction.text(input), input, JSON.stringify(input.slice(0, 8)));
 		}
 	});
 });
@@ -356,11 +340,10 @@ describe("HttpRedaction.text — credentials", () => {
 		}
 	});
 
-	it("scans a 1 MB adversarial input in linear time", () => {
-		for (const input of [`token${" ".repeat(1 << 20)}`, "token ".repeat(1 << 18), `Bearer ${"a".repeat(1 << 20)}`]) {
-			const start = cpuNow();
-			HttpRedaction.text(input);
-			assert.isBelow(cpuNow() - start, 500);
+	// `HttpRedaction.hostile.test.ts` holds that these scan in time linear in their length.
+	it("returns a 1 MB run after a scheme word that names no credential as it came", () => {
+		for (const input of [`token${" ".repeat(1 << 20)}`]) {
+			assert.strictEqual(HttpRedaction.text(input), input);
 		}
 	});
 });

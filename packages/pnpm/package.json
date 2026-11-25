@@ -40,6 +40,7 @@
 		"@effected/memfs": "workspace:*",
 		"@effected/npm": "workspace:*",
 		"@effected/semver": "workspace:*",
+		"@effected/testing": "workspace:*",
 		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
 		"typescript": "catalog:effected:build"

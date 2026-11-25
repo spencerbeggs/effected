@@ -3,16 +3,6 @@ import { Effect, Schema } from "effect";
 import { ConfigMerge } from "../src/ConfigMerge.js";
 import { MergeStrategy } from "../src/MergeStrategy.js";
 
-/**
- * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
- * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
- * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
- */
-const cpuNow = (): number => {
-	const used = process.cpuUsage();
-	return (used.user + used.system) / 1000;
-};
-
 type Rec = Record<string, unknown>;
 
 describe("ConfigMerge.deep", () => {
@@ -119,15 +109,14 @@ describe("ConfigMerge.deep", () => {
 		assert.strictEqual(merged.w, 2);
 	});
 
-	it("returns quickly on a cycle reached through two keys at every level", () => {
+	// `ConfigMerge.hostile.test.ts` holds how the merge grows when two keys share one child at every level.
+	it("returns on a cycle reached through two keys at every level", () => {
 		// Without per-pair memoization this recurses into both keys at every
 		// level: about 2^depth calls, which never finishes.
 		const node: Rec = {};
 		node.x = node;
 		node.y = node;
-		const start = cpuNow();
 		const merged = ConfigMerge.deep<Rec>(node, node);
-		assert.isBelow(cpuNow() - start, 1000);
 		// The revisited pair reuses the result in progress, so the cycle survives.
 		assert.strictEqual(merged.x, merged);
 		assert.strictEqual(merged.y, merged);

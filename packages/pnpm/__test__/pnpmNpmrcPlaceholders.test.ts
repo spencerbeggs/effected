@@ -73,18 +73,6 @@ const table: ReadonlyArray<readonly [string, string, boolean]> = [
 	["a\\\\\\${${A}}", "a\\${${A}}", true],
 ];
 
-/** Milliseconds of CPU time this process has spent, so a loaded machine cannot stretch a sample. */
-const cpuNow = (): number => {
-	const used = process.cpuUsage();
-	return (used.user + used.system) / 1000;
-};
-
-const timed = <A>(run: () => A): { readonly value: A; readonly elapsed: number } => {
-	const start = cpuNow();
-	const value = run();
-	return { value, elapsed: cpuNow() - start };
-};
-
 describe("pnpmNpmrc placeholders", () => {
 	it("expandPlaceholders matches the recorded outputs", () => {
 		assert.isAbove(table.length, 50, "the table is not empty");
@@ -107,52 +95,36 @@ describe("pnpmNpmrc placeholders", () => {
 	});
 });
 
+// `pnpmNpmrcPlaceholders.hostile.test.ts` holds that each of these is linear in its length.
 describe("pnpmNpmrc placeholders on hostile input", () => {
 	const size = 200_000;
-	const budget = 500;
 
-	it("a run of ${{ is linear and unexpanded", () => {
+	it("a run of ${{ is unexpanded", () => {
 		const input = "${{".repeat(Math.floor(size / 3));
-		const expanded = timed(() => expandPlaceholders(input, env));
-		const present = timed(() => hasPlaceholder(input));
-		assert.strictEqual(expanded.value, input);
-		assert.isFalse(present.value);
-		assert.isBelow(expanded.elapsed, budget);
-		assert.isBelow(present.elapsed, budget);
+		assert.strictEqual(expandPlaceholders(input, env), input);
+		assert.isFalse(hasPlaceholder(input));
 	});
 
-	it("a long backslash run before an unclosed ${ is linear", () => {
+	it("a long backslash run before an unclosed ${ is unexpanded", () => {
 		const input = "\\".repeat(size) + "${";
-		const expanded = timed(() => expandPlaceholders(input, env));
-		const present = timed(() => hasPlaceholder(input));
-		assert.strictEqual(expanded.value, input);
-		assert.isFalse(present.value);
-		assert.isBelow(expanded.elapsed, budget);
-		assert.isBelow(present.elapsed, budget);
+		assert.strictEqual(expandPlaceholders(input, env), input);
+		assert.isFalse(hasPlaceholder(input));
 	});
 
 	it("a long backslash run before a closed placeholder halves the run", () => {
 		const input = "\\".repeat(size) + "${A}";
-		const expanded = timed(() => expandPlaceholders(input, env));
-		assert.strictEqual(expanded.value, `${"\\".repeat(size / 2)}x`);
+		assert.strictEqual(expandPlaceholders(input, env), `${"\\".repeat(size / 2)}x`);
 		assert.isTrue(hasPlaceholder(input));
-		assert.isBelow(expanded.elapsed, budget);
 	});
 
-	it("an opener followed by a long body with no closer is linear", () => {
+	it("an opener followed by a long body with no closer is unexpanded", () => {
 		const input = `\${${"a".repeat(size)}`;
-		const expanded = timed(() => expandPlaceholders(input, env));
-		const present = timed(() => hasPlaceholder(input));
-		assert.strictEqual(expanded.value, input);
-		assert.isFalse(present.value);
-		assert.isBelow(expanded.elapsed, budget);
-		assert.isBelow(present.elapsed, budget);
+		assert.strictEqual(expandPlaceholders(input, env), input);
+		assert.isFalse(hasPlaceholder(input));
 	});
 
-	it("many empty placeholders then a closed one is linear", () => {
+	it("many empty placeholders then a closed one expand only the closed one", () => {
 		const empties = "${}".repeat(Math.floor(size / 3));
-		const expanded = timed(() => expandPlaceholders(`${empties}\${A}`, env));
-		assert.strictEqual(expanded.value, `${empties}x`);
-		assert.isBelow(expanded.elapsed, budget);
+		assert.strictEqual(expandPlaceholders(`${empties}\${A}`, env), `${empties}x`);
 	});
 });
