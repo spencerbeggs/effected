@@ -101,7 +101,7 @@ The idiomatic recoveries:
   `catchTag` also accepts a non-empty tag ARRAY sharing one handler —
   `Effect.catchTag(["UnknownRefError", "GitCommandError"], () => fallback)` —
   which obviates `catchTags` boilerplate when several tags route to the same
-  recovery (`Effect.ts:2910` `Arr.NonEmptyReadonlyArray<Tags<E>>`).
+  recovery (`Effect.ts:2911` `Arr.NonEmptyReadonlyArray<Tags<E>>`).
 - **`Effect.catch(handler)`** — recover from any typed failure; there is no
   `catchAll`. **`Effect.catchCause(handler)`** for full-cause infra handling,
   **`Effect.catchDefect(handler)`** for defects.
@@ -239,8 +239,8 @@ rejects anything carrying no `evaluate` (`internal/effect.ts:727`).
 The bridge is a module function on `Effect`, one per type:
 
 ```ts
-const u = yield* Effect.fromOption(maybeUser)              // Effect.ts:1996 — fails NoSuchElementError
-const v = yield* Effect.fromResult(Fmt.parseResult(text))  // Effect.ts:1954 — fails typed with the Result's E
+const u = yield* Effect.fromOption(maybeUser)              // Effect.ts:1997 — fails NoSuchElementError
+const v = yield* Effect.fromResult(Fmt.parseResult(text))  // Effect.ts:1955 — fails typed with the Result's E
 ```
 
 `Effect.fromOption` takes an optional second argument for the failure
@@ -509,7 +509,7 @@ is aborted when the fiber is interrupted, the same way.
 
 A poll loop written as `const go = Effect.gen(function*() { ...; yield* Effect.sleep(d); return yield* go })`
 re-derives a schedule by hand and hides the stop condition in control flow.
-`Effect.repeat` (`Effect.ts:8253`) takes either a `Schedule` or an **options
+`Effect.repeat` (`Effect.ts:8313`) takes either a `Schedule` or an **options
 object** — `{ schedule?, times?, while?, until? }` — that
 `internal/schedule.ts:210` (`buildFromOptions`) folds into one schedule; `while`
 and `until` may return a `boolean` or an `Effect<boolean>`, and they see the
@@ -532,7 +532,7 @@ Three facts, each a trap for a hand-rolled loop:
   produces **three** runs (the doc's own gotcha, confirmed: a counter read 3);
   `times` counts repetitions, not executions.
 - **The value is the last result**, and an `until` written as a type guard
-  narrows it — `Repeat.Return` (`Effect.ts:8098`) picks the refined type, so the
+  narrows it — `Repeat.Return` (`Effect.ts:8158`) picks the refined type, so the
   example above types as `"done"`, not `"pending" | "done"`. `while` with a
   refinement narrows to the *excluded* branch.
 - **`until` alone with no `schedule` spins with no delay** (`passthroughForever`
@@ -611,7 +611,7 @@ The fork verbs take an options object:
 - `Effect.forkChild` — child of the current fiber; there is no bare `Effect.fork`.
   "Current fiber" means the **caller's**: a helper is not a fiber, so a child
   it forks (a timeout timer, a heartbeat) keeps running after the helper
-  returns, until the calling fiber itself ends (`Effect.ts:9223`, the `forkChild`
+  returns, until the calling fiber itself ends (`Effect.ts:9289`, the `forkChild`
   doc: "attached to the parent fiber's scope"). A helper that forks must
   `Fiber.interrupt` its children before it returns, or use `Effect.forkScoped`
   under a scope it closes.
@@ -738,13 +738,13 @@ construction throw or a service that was never provided:
 
 | Write | Not | Source |
 | --- | --- | --- |
-| `Schema.Defect()` | `Schema.Defect` | `Schema.ts:9447` — `function Defect(options?: ErrorOptions)`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
-| `Schema.ErrorInstance()` | `Schema.ErrorInstance` | `Schema.ts:9369` — same shape, same optional-`options` trap, one page away in the same module. |
+| `Schema.Defect()` | `Schema.Defect` | `Schema.ts:9367` — `function Defect(options?: ErrorOptions)`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
+| `Schema.ErrorInstance()` | `Schema.ErrorInstance` | `Schema.ts:9295` — same shape, same optional-`options` trap, one page away in the same module. |
 | `TestClock.layer()` | `TestClock.layer` | `testing/TestClock.ts:571` — a *function* returning a Layer, unlike almost every other `layer` in core. |
 | `Schema.Literals(["a","b"])` | `Schema.Literals` | `Schema.ts:5092` — takes ONE array argument. |
 
 **The discriminator is the optional argument.** `Schema.Cause(e, d)`
-(`Schema.ts:11490`) and `Schema.Exit(...)` (`:15666`) are factories too, but their
+(`Schema.ts:11354`) and `Schema.Exit(...)` (`:15467`) are factories too, but their
 arguments are required, so forgetting to call them is an immediate type error.
 Only the zero-or-optional-arg factories type-check uncalled.
 

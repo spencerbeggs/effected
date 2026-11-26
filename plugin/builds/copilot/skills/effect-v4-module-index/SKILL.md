@@ -225,7 +225,7 @@ follows from it.
 
 | Namespace | What it is | When to reach for it |
 | --- | --- | --- |
-| `ai` | provider-neutral AI: `LanguageModel`, `Chat`, `Tool`/`Toolkit`, MCP schema/server, an `experimental` scoped MCP **client** (`McpClient.layerStdio`/`layerHttp`, `McpClient.toolkit`), `experimental` AG-UI protocol support (`AgUiSchema` events, `AgUi`, `AgUiServer`), and `WorkloadIdentity`, which authenticates an `HttpClient` by exchanging a workload identity token for a cached access token (the providers' `AnthropicWorkloadIdentity`, `OpenAiWorkloadIdentity` and `OpenRouterWorkloadIdentity` wrap it) | building AI features against a provider-agnostic surface (`@effect/ai-*` provides). `Tool.make`/`Tool.dynamic` take `toModelOutput` to send text, images and files to the model in place of the serialized result; `Tool.ParametersDecodingServices<T>` names the services a tool's parameter schema needs to decode. `McpTest.makeClient(registrations, options?)` builds an in-process MCP client and server in the surrounding `Scope` for tests; MCP wiring → `effect-v4-mcp` |
+| `ai` | provider-neutral AI: `LanguageModel`, `Chat`, `Tool`/`Toolkit`, MCP schema/server, `Skill` (an Agent Skill as data: validated `Frontmatter`, `instructions`, `files`; `SKILL.md` via `toFiles`/`fromFiles`, served by `McpServer.registerSkill`/`McpServer.skill`), an `experimental` scoped MCP **client** (`McpClient.layerStdio`/`layerHttp`, `McpClient.toolkit`), `experimental` AG-UI protocol support (`AgUiSchema` events, `AgUi`, `AgUiServer`), and `WorkloadIdentity`, which authenticates an `HttpClient` by exchanging a workload identity token for a cached access token (the providers' `AnthropicWorkloadIdentity`, `OpenAiWorkloadIdentity` and `OpenRouterWorkloadIdentity` wrap it) | building AI features against a provider-agnostic surface (`@effect/ai-*` provides). `Tool.make`/`Tool.dynamic` take `toModelOutput` to send text, images and files to the model in place of the serialized result; `Tool.ParametersDecodingServices<T>` names the services a tool's parameter schema needs to decode. `McpTest.makeClient(registrations, options?)` builds an in-process MCP client and server in the surrounding `Scope` for tests; MCP wiring → `effect-v4-mcp` |
 | `arbitrary` | the native property-testing engine, one module `Arbitrary`: `schema`, `Constant`, `map`/`filter`/`filterMap`/`flatMap`/`all`, `sampleEffect`, `checkEffect`, `formatCheckFailure`, `CheckOptions` | deriving generators from a Schema for `it.prop`/`it.effect.prop`, or running a property outside vitest — replaced `effect/testing/FastCheck` and `Schema.toArbitrary`. It has **no** `oneof`/`constantFrom`; choice and collections are Schemas — see `effect-v4-schema/references/11-generation-and-tooling.md` for the one collection combinator (`Arbitrary.array`) that does exist independent of Schema. Traps and translations → `effect-v4-testing`, surface → `effect-v4-schema/references/11-generation-and-tooling.md` |
 | `chat` | chat-bot framework: `Chat`, `ChatAdapter`, `ChatHandler`, `ChatMessage`/`ChatThread`, `ChatInteraction` (buttons, selects, modals, slash commands, private and deferred replies), `ChatMarkdown` (grapheme-safe Markdown streaming), `ChatUi` and `ChatTest` (adapter conformance testing). Platform adapters ship as `@effect/chat-slack`, `@effect/chat-discord`, `@effect/chat-whatsapp`, `@effect/chat-telegram` and `@effect/chat-teams` | building a bot for one or several chat platforms against one surface |
 | `cli` | the v4 CLI framework: `Command`, `Flag`, `Argument`, `Prompt`, completions, `TerminalCapabilities` (the colour/TTY reference built-in help follows), and `CommandSpec` (`resolve(cli, path)` gives a lossless projection of one command path, its flags' scope, requiredness, fallbacks and `Flag.annotate`/`Argument.annotate` metadata) | building a command-line tool — see `effect-v4-cli`. `CommandSpec` when generating documentation or a reference page from the command tree instead of walking `Command` internals |
@@ -311,7 +311,7 @@ follows from it.
   ```
 
 - `HttpClientRequest.bearerToken` accepts a **`Redacted` directly**
-  (`token: string | Redacted.Redacted`, `http/HttpClientRequest.ts:445`;
+  (`token: string | Redacted.Redacted`, `http/HttpClientRequest.ts:468`;
   `basicAuth` likewise). A runtime token flows into request construction with **no
   declassification step at all** — which is what lets a package keep its
   secret-handling seam to one module instead of granting every request builder an
@@ -331,7 +331,7 @@ A client failure is one `HttpClientError` whose top-level `_tag` is always
 `"HttpClientError"`, so branch on `error.reason._tag`. The values are the trap.
 The reason type is declared in two layers, and **both layer names are
 themselves unions, so neither ever appears as a `_tag`** (verified against
-`http/HttpClientError.ts:402,411,420`):
+`http/HttpClientError.ts:435,444,453`):
 
 ```ts
 export type RequestError = TransportError | EncodeError | InvalidUrlError
