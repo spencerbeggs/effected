@@ -79,7 +79,14 @@ export {
 	type CliPromptFallbackOptions,
 	type CliPromptTarget,
 } from "./CliPrompt.js";
-export { CliRuntime, type FailureDetails, type MainOptions, type ReportFailuresOptions } from "./CliRuntime.js";
+export {
+	CliRuntime,
+	type FailureDetails,
+	type MainOptions,
+	type RenderUsageErrorOptions,
+	type ReportFailuresOptions,
+	type UsageErrorDetails,
+} from "./CliRuntime.js";
 export {
 	CliTheme,
 	type CliThemeOptions,

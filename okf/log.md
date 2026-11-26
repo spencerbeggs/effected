@@ -6,6 +6,7 @@
 * Updated store
 * Updated @effected/memfs
 * Updated walker
+* Updated @effected/cli-kit
 
 ## 2026-11-25
 
