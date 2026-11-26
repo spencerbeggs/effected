@@ -205,18 +205,33 @@ describe("LspStdio in a real process", () => {
 		}).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 	);
 
-	it.live("control: without the host exit, the same server sits after exit until stdin closes", () =>
+	it.live("without the host exit, a server holding only NodeStdio's stdin drains after exit", () =>
 		Effect.gen(function* () {
+			// NodeStdio pauses stdin once its last reader stops, so stdin alone holds nothing.
 			const server = yield* launchFixture(HOME, "--no-host-exit");
 			yield* server.send(INITIALIZE);
 			yield* server.readUntilResponse(1);
 			yield* server.send({ jsonrpc: "2.0", id: 2, method: "shutdown" });
 			yield* server.readUntilResponse(2);
 			yield* server.send({ jsonrpc: "2.0", method: "exit" });
+			const code = yield* server.exitCode.pipe(Effect.timeoutOption("5 seconds"));
+			assert.deepStrictEqual(code, Option.some(0), "drained with stdin open");
+		}).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+	);
+
+	it.live("control: without the host exit, a server holding another handle sits after exit until stdin closes", () =>
+		Effect.gen(function* () {
+			const server = yield* launchFixture(HOME, "--no-host-exit", "--hold-handle");
+			yield* server.send(INITIALIZE);
+			yield* server.readUntilResponse(1);
+			yield* server.send({ jsonrpc: "2.0", id: 2, method: "shutdown" });
+			yield* server.readUntilResponse(2);
+			yield* server.send({ jsonrpc: "2.0", method: "exit" });
 			const early = yield* server.exitCode.pipe(Effect.timeoutOption("1500 millis"));
-			assert.isTrue(Option.isNone(early), "the event loop did not drain with stdin open");
+			assert.isTrue(Option.isNone(early), "the held handle kept the event loop alive");
 			yield* server.closeStdin;
-			assert.strictEqual(yield* server.exitCode, 0);
+			const late = yield* server.exitCode.pipe(Effect.timeoutOption("1500 millis"));
+			assert.isTrue(Option.isNone(late), "closing stdin does not release a handle the server does not own");
 		}).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 	);
 });

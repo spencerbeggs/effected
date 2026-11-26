@@ -716,9 +716,10 @@ export class Store extends Context.Service<Store, StoreShape>()("@effected/store
 	 * effect/sql migrations have none.
 	 *
 	 * Nothing is validated here. Where effect/sql and `Store` disagree — an id
-	 * of `0`, which `Migrator` silently never runs, or two keys with one id
-	 * (`"1_a"`, `"01_b"`), which it refuses — `Store.layer` dies on the list as
-	 * the wiring defect it is, rather than this function hiding a migration.
+	 * of `0`, which `Migrator` runs but `Store` does not accept, or two keys with
+	 * one id (`"1_a"`, `"01_b"`), which `Migrator` refuses — `Store.layer` dies
+	 * on the list as the wiring defect it is, rather than this function hiding a
+	 * migration.
 	 *
 	 * Values are typed `SqlError` on the error channel, as `StoreMigration.up`
 	 * requires; effect/sql's own record type admits `unknown`, so such a record

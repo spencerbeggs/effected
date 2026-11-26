@@ -57,6 +57,7 @@
 | --- | --- |
 | no `LSP_FIXTURE_HOME` | a layer that fails to build: the report must reach stderr, never stdout |
 | `--die` | a defect once serving |
-| `--no-host-exit` | the control: the same teardown with a host whose `exit` does nothing, so the process sits after `exit` until stdin closes |
+| `--no-host-exit` | the same teardown with a host whose `exit` does nothing: the process ends only when its event loop drains |
+| `--hold-handle` | a handle the server does not own (an interval, as `vscode-languageserver`'s `--clientProcessId` liveness check installs): with `--no-host-exit`, the control that sits after `exit` until stdin closes |
 
 - **Regenerating:** there is nothing to regenerate. Edit by hand.

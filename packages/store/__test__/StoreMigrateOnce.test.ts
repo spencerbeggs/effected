@@ -114,7 +114,7 @@ describe("Store.fromMigratorRecord", () => {
 		}),
 	);
 
-	it.effect("leaves an id effect/sql would never run to Store's wiring check", () =>
+	it.effect("leaves an id effect/sql accepts but Store does not to Store's wiring check", () =>
 		Effect.gen(function* () {
 			const migrations = Store.fromMigratorRecord({ "0_zero": Effect.void });
 			const exit = yield* Effect.exit(Effect.provide(Effect.void, Store.layerTest({ migrations })));
