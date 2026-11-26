@@ -1,5 +1,14 @@
 # @effected/pnpm
 
+## 0.1.2
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/npm | dependency | updated | 0.35.1 | 0.35.1 |
+| @effected/walker | dependency | updated | 0.30.0 | 0.31.0 |
+
 ## 0.1.1
 
 ### Dependencies

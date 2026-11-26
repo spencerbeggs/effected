@@ -1,5 +1,20 @@
 # @effected/xdg
 
+## 0.23.0
+
+### Breaking Changes
+
+- Requires `@effected/walker` 0.31.0 (`peerDependencies`: `^0.31.0`), a breaking release from 0.30.0. A consumer still on 0.30.0 cannot install this version beside it, so this release leaves its own version line too.
+
+- To upgrade, move `@effected/walker` to 0.31.0 in the same install as this release.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.29.0 | 0.30.0 |
+| @effected/walker | dependency | updated | 0.30.0 | 0.31.0 |
+
 ## 0.22.0
 
 ### Breaking Changes

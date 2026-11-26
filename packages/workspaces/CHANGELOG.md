@@ -1,5 +1,14 @@
 # @effected/workspaces
 
+## 0.49.2
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/pnpm | dependency | updated | 0.1.1 | 0.1.2 |
+| @effected/walker | dependency | updated | 0.30.0 | 0.31.0 |
+
 ## 0.49.1
 
 ### Bug Fixes
