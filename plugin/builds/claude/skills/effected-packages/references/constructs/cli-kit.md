@@ -133,6 +133,7 @@
 | `RenderContext` | Interface | Everything a renderer needs to know about where its output is going. | |
 | `RenderContextOfOptions` | Interface | Options for `Render.contextOf`. | |
 | `RenderContextOptions` | Interface | Options for `Render.context`. | |
+| `RenderUsageErrorOptions` | Interface | The `renderUsageError` option of `CliRuntime.main`: the command tree, and the render for a usage error. | |
 | `ReportFailuresOptions` | Interface | How a failure is turned into output and an exit code. | |
 | `RequiresAudienceFlags` | TypeAlias | Resolves to nothing for a command that carries the four audience flags, and to an unsatisfiable marker otherwise, so `CliAudience.run` on a root that forgot `Command.withSharedFlags(CliAudience.flags())` does not compile. (A plain `Input extends AudienceFlagInput` constraint does not do this: `Command` is contravariant in its input, so a command with no flags still type-checks against it.) | |
 | `RouteStreamOptions` | Interface | Options for `CliUi.routeStream`. | from `@effected/cli-kit/ui` |
@@ -185,6 +186,7 @@
 | `UiProviderProps` | Interface | Props of `UiProvider`. | from `@effected/cli-kit/ui` |
 | `UiStreams` | Class | The streams a screen mounts on, the process's own standard streams by default. | from `@effected/cli-kit/ui` — which stdin, stdout and stderr an ink screen binds to |
 | `UiStreamsShape` | Interface | The streams a screen mounts on: Node streams, because Ink's stream contract is Node's. | from `@effected/cli-kit/ui` |
+| `UsageErrorDetails` | Interface | What `renderUsageError`'s `render` is told about a usage error. | |
 | `UseKeysOptions` | Interface | Options for `useKeys`. | from `@effected/cli-kit/ui` |
 | `Viewport` | Class | A scrolling list: a pure reducer over a window of items, its key table, and a view that draws the window. | from `@effected/cli-kit/ui` — scroll a window of rows that never overflows the terminal, sticky section headers |
 | `ViewportMove` | TypeAlias | A move through a viewport. | from `@effected/cli-kit/ui` |
