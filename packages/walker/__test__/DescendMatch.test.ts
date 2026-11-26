@@ -194,7 +194,9 @@ describe("descend cwd contract", () => {
 				for (const source of ["**", "*.ts", "src/index.ts", "{a,b}/c"]) {
 					yield* both(source, { cwd }, { ok: [] });
 					yield* both(source, { cwd, match: "any" }, { ok: [] });
-					yield* both(source, { cwd, onUnreadable: "record" } as never, { ok: { matches: [], unreadable: [] } });
+					yield* both(source, { cwd, onUnreadable: "record" } as never, {
+						ok: { matches: [], unreadable: [], links: [] },
+					});
 				}
 			}
 		}),

@@ -149,7 +149,7 @@ export interface DescendOptions {
  * @public
  */
 export interface DescendRecordOptions extends Omit<DescendOptions, "onUnreadable"> {
-	/** Collect every unreadable directory rather than failing or discarding it. */
+	/** Collect every unreadable directory rather than failing or discarding it, and every {@link SkippedLink}. */
 	readonly onUnreadable: "record";
 }
 
@@ -178,6 +178,55 @@ export interface UnreadableDirectory<C = PlatformError.PlatformError> {
 }
 
 /**
+ * One symbolic link `descend` passed over under `onUnreadable: "record"`: a
+ * link to a directory the walk did not enter, or a link that does not resolve.
+ *
+ * @remarks
+ * Only entries of directories the walk actually reads are seen, so a link
+ * inside a pruned directory, a boundary, a hidden directory the pattern
+ * cannot match inside, or a directory the pattern's depth never reaches is
+ * never reported; nor is anything a literal pattern names, since a literal
+ * pattern reads no directory. A link whose target text cannot be read (it
+ * vanished between the listing and the read, or a sync port carries no
+ * `readLink`) is not reported either.
+ *
+ * @public
+ */
+export interface SkippedLink {
+	/**
+	 * The link's path relative to `cwd`, POSIX separators, spelled as `matches`
+	 * spells a path under the same root (`./src/**` reports `./src/link`).
+	 */
+	readonly path: string;
+	/**
+	 * The link's own target text, verbatim as `readLink` answers it: possibly
+	 * relative, possibly outside `cwd`, never resolved. Check where it leads
+	 * with `confineReal` before acting on it.
+	 */
+	readonly target: string;
+	/**
+	 * Why the walk passed over the link.
+	 *
+	 * @remarks
+	 * `"directory"`: the link resolves to a directory the walk would have
+	 * entered had it been a plain one, and did not — under the default
+	 * `followSymlinks: false` because it is a link, and under
+	 * `followSymlinks: true` because its real path is already an ancestor on
+	 * its branch (a cycle). A link the walk does enter is not reported, nor
+	 * one it would not have entered anyway (pruned by name, hidden under
+	 * `dot: false`, past the pattern's depth, or under a pattern that never
+	 * descends). A link under `followSymlinks` whose real path fails to resolve
+	 * is an `unreadable` entry instead, never a link.
+	 *
+	 * `"dangling"`: the link does not resolve to anything — its target is
+	 * missing, whether it once named a file or a directory. Reported for every
+	 * dangling link in a directory the walk reads, whatever the pattern, since
+	 * it can be classed as neither file nor directory.
+	 */
+	readonly kind: "directory" | "dangling";
+}
+
+/**
  * `descend`'s success value under `onUnreadable: "record"`: the matched
  * FILE paths plus an {@link UnreadableDirectory} for every mid-walk
  * directory whose `readDirectory` (or, under `followSymlinks`, a symlinked
@@ -192,6 +241,16 @@ export interface DescendResult<C = PlatformError.PlatformError> {
 	readonly matches: ReadonlyArray<string>;
 	/** Directories that could not be read, each with its cause, in walk order. */
 	readonly unreadable: ReadonlyArray<UnreadableDirectory<C>>;
+	/**
+	 * Symbolic links the walk passed over — unentered directory links and dangling links — in walk order.
+	 *
+	 * @remarks
+	 * **From the sync forms, a port without `readLink` reports NO links**: this
+	 * array is then always empty, however many links the tree holds, so an
+	 * empty array does not mean the tree has none. `nodeWalkerFileSystem` and
+	 * `@effected/memfs`'s sync port both carry `readLink`.
+	 */
+	readonly links: ReadonlyArray<SkippedLink>;
 }
 
 /**
@@ -249,6 +308,16 @@ export interface DescendEntriesResult<I = FileSystem.File.Info, C = PlatformErro
 	readonly matches: ReadonlyArray<DescendEntry<I>>;
 	/** Directories that could not be read, each with its cause, in walk order. */
 	readonly unreadable: ReadonlyArray<UnreadableDirectory<C>>;
+	/**
+	 * Symbolic links the walk passed over — unentered directory links and dangling links — in walk order.
+	 *
+	 * @remarks
+	 * **From the sync forms, a port without `readLink` reports NO links**: this
+	 * array is then always empty, however many links the tree holds, so an
+	 * empty array does not mean the tree has none. `nodeWalkerFileSystem` and
+	 * `@effected/memfs`'s sync port both carry `readLink`.
+	 */
+	readonly links: ReadonlyArray<SkippedLink>;
 }
 
 /**
@@ -277,6 +346,7 @@ const walk = (
 	{
 		readonly entries: ReadonlyArray<DescendEntry>;
 		readonly unreadable: ReadonlyArray<UnreadableDirectory>;
+		readonly links: ReadonlyArray<SkippedLink>;
 	},
 	DescendError,
 	FileSystem.FileSystem | Path.Path
@@ -318,6 +388,9 @@ const walk = (
 					return read(fs.realPath(request.path));
 				case "ReadDirectory":
 					return read(fs.readDirectory(request.path));
+				case "ReadLink":
+					// The link's own target text; a link that cannot be read answers nothing.
+					return fs.readLink(request.path).pipe(Effect.orElseSucceed((): string | undefined => undefined));
 			}
 		};
 
@@ -333,14 +406,14 @@ const walk = (
 		if (result._tag === "Fail") {
 			return yield* new DescendError(failureOf(pattern, result));
 		}
-		return { entries: result.entries, unreadable: result.unreadable };
+		return { entries: result.entries, unreadable: result.unreadable, links: result.links };
 	});
 
 /** Not exported — `descend`'s overloads below carry the public documentation. */
 const descendImpl = Effect.fn("Walker.descend")(function* (pattern: GlobPattern, options: DescendAnyOptions) {
-	const { entries, unreadable } = yield* walk(pattern, options);
+	const { entries, unreadable, links } = yield* walk(pattern, options);
 	const matches = entries.map((entry) => entry.path);
-	return options.onUnreadable === "record" ? ({ matches, unreadable } satisfies DescendResult) : matches;
+	return options.onUnreadable === "record" ? ({ matches, unreadable, links } satisfies DescendResult) : matches;
 });
 
 /** Not exported — `descendEntries`' overloads below carry the public documentation. */
@@ -348,9 +421,9 @@ const descendEntriesImpl = Effect.fn("Walker.descendEntries")(function* (
 	pattern: GlobPattern,
 	options: DescendAnyOptions,
 ) {
-	const { entries, unreadable } = yield* walk(pattern, options);
+	const { entries, unreadable, links } = yield* walk(pattern, options);
 	return options.onUnreadable === "record"
-		? ({ matches: entries, unreadable } satisfies DescendEntriesResult)
+		? ({ matches: entries, unreadable, links } satisfies DescendEntriesResult)
 		: entries;
 });
 
@@ -362,7 +435,10 @@ const descendEntriesImpl = Effect.fn("Walker.descendEntries")(function* (
  * directory whose `readDirectory` (or, under `followSymlinks`, a symlinked
  * directory whose `realPath`) failed for a reason other than `NotFound`.
  * The walk continues past each such directory exactly as `"skip"` does; it
- * never aborts and it never discards the offending path or its cause.
+ * never aborts and it never discards the offending path or its cause. The
+ * result also lists every {@link SkippedLink}: each symbolic link to a
+ * directory the walk did not enter, and each dangling link, in the
+ * directories it read.
  *
  * @public
  */

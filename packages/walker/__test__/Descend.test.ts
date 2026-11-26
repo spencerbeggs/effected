@@ -585,13 +585,13 @@ describe("descend — overload resolution", () => {
 
 		// An inline literal carrying "record" selects the DescendResult overload.
 		const inline = descend(pattern, { cwd: "/x", onUnreadable: "record" });
-		const _inline: SuccessOf<typeof inline> = { matches: [], unreadable: [] } satisfies DescendResult;
+		const _inline: SuccessOf<typeof inline> = { matches: [], unreadable: [], links: [] } satisfies DescendResult;
 
 		// So does a value annotated as DescendRecordOptions — the case a bare
 		// intersection got wrong, because widening erased the literal.
 		const recordOpts: DescendRecordOptions = { cwd: "/x", onUnreadable: "record" };
 		const viaRecord = descend(pattern, recordOpts);
-		const _viaRecord: SuccessOf<typeof viaRecord> = { matches: [], unreadable: [] } satisfies DescendResult;
+		const _viaRecord: SuccessOf<typeof viaRecord> = { matches: [], unreadable: [], links: [] } satisfies DescendResult;
 
 		// DescendOptions is the array contract and stays that way.
 		const plainOpts: DescendOptions = { cwd: "/x", onUnreadable: "skip" };

@@ -199,7 +199,7 @@ export type MemoryFileSystemErrnoError = Error & {
  * Errors carry the `code` the Node binding would raise: `ENOENT` for an absent
  * path, `EISDIR` for reading a directory as a file, `ENOTDIR` for listing a
  * non-directory, `ELOOP` for a link cycle. The `syscall` matches node's for the
- * same call (`open`, `read`, `scandir`, `stat`, `lstat`).
+ * same call (`open`, `read`, `scandir`, `stat`, `lstat`, `readlink`).
  *
  * Members are standalone functions, not methods: pass them as callbacks
  * without binding.
@@ -243,6 +243,18 @@ export interface MemoryFileSystemSyncFileSystem {
 	 * examined — links before it already resolved, so not always the caller's.
 	 */
 	readonly realPath: (path: string) => string;
+	/**
+	 * `readlinkSync`: the target text of the symbolic link at `path`, verbatim —
+	 * possibly relative, possibly dangling, never resolved. Links in the parent
+	 * are followed; the final one is not. Throws with `syscall: "readlink"`:
+	 * `EINVAL` when `path` is not a link, `ENOENT`/`ENOTDIR`/`ELOOP` when it
+	 * cannot be reached.
+	 *
+	 * @remarks
+	 * The answer is stored text, not a volume path, so a `pathStyle: "win32"`
+	 * port returns it as stored rather than respelling it.
+	 */
+	readonly readLink: (path: string) => string;
 }
 
 /**

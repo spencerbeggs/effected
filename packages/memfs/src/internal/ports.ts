@@ -171,7 +171,7 @@ const readBytes = (volume: MemoryFileSystemVolume, path: string): Uint8Array => 
 // The `syscall` on each thrown error is the one node reports for the same call:
 // `open` for readFile (`read` when the target is a directory), `scandir` for
 // readDirectory, `stat`/`lstat` for the stat pair, and for realPath the
-// `lstat` or `stat` the JS `realpathSync` failed in.
+// `lstat` or `stat` the JS `realpathSync` failed in, and `readlink` for readLink.
 export const makeSyncFileSystem = (volume: MemoryFileSystemVolume): MemoryFileSystemSyncFileSystem => {
 	// `readdirSync`: the directory is reached through links; with
 	// `withFileTypes` its entries are reported literally — a link is a link,
@@ -215,6 +215,15 @@ export const makeSyncFileSystem = (volume: MemoryFileSystemVolume): MemoryFileSy
 			const r = realPathOf(volume, path);
 			if ("code" in r) throw nodeErrno(r.code, r.syscall, r.path);
 			return r.path;
+		},
+		// `readlinkSync`: the parent is reached through links, the final link is
+		// not followed; anything that is not a link is EINVAL.
+		readLink: (path) => {
+			const r = resolvePath(volume, path, false);
+			if ("code" in r) throw nodeErrno(r.code, "readlink", path);
+			const target = volume.readLink(r.path);
+			if (target === undefined) throw nodeErrno("EINVAL", "readlink", path);
+			return target;
 		},
 	};
 };

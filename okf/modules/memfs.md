@@ -20,10 +20,10 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-12T03:18:35Z
+  at: 2026-11-26T05:06:32Z
 x-okfit-integrity:
   generated:
-    body: 972bd8ec62be7587
+    body: 516a5dde243e8dd0
 ---
 
 # @effected/memfs
@@ -310,12 +310,18 @@ or `Effect`; both take `(volume, { faults?, pathStyle? })`.
 
 - `syncFileSystem(volume)` — `exists`, `readFile`, `readDirectory` (with
   `withFileTypes`, the same literal dirents as the promises `readdir`),
-  `isDirectory`, `stat`, `lstat`, `realPath`. `realPath` is
+  `isDirectory`, `stat`, `lstat`, `realPath`, `readLink`. `realPath` is
   the JS `realpathSync`: the canonical path, link targets joined
   lexically, throwing `ENOENT`, `ENOTDIR` or `ELOOP` from the `lstat` or
-  `stat` it failed in, naming that prefix ([ledger entry 18](#adaptation-ledger)). With it the
+  `stat` it failed in, naming that prefix ([ledger entry 18](#adaptation-ledger)).
+  `readLink` is `readlinkSync`: the stored target text verbatim, the parent
+  reached through links and the final link not followed, throwing `EINVAL`
+  for a non-link and `ENOENT`, `ENOTDIR` or `ELOOP` for an unreachable path,
+  all with `syscall: "readlink"` and the caller's path; it is stored text,
+  not a volume path, so a win32 port does not respell it. With both the
   sync port satisfies [walker](walker.md)'s `WalkerSyncFileSystem`
-  structurally, so `descendSync` runs on a memfs handle directly.
+  structurally, so `descendSync` runs on a memfs handle directly and its
+  record mode reports `links`.
 - `promisesFileSystem(volume)` — `readdir` (with `withFileTypes`), `stat`,
   `lstat` and `readFile` with node's overloads: a `Uint8Array` without an
   encoding, a `string` with `"utf8"`, `"utf-8"` or `{ encoding }`.

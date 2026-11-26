@@ -4,6 +4,8 @@
 
 * Updated @effected/lsp
 * Updated store
+* Updated @effected/memfs
+* Updated walker
 
 ## 2026-11-25
 

@@ -79,6 +79,55 @@ const tree = MemoryFileSystem.makeHandle({
 	"/r/loop-b": MemoryFileSystem.symlink("/r/loop-a"),
 });
 
+describe("sync port readLink", () => {
+	it.effect("answers a link's own target text, dangling or not, through links in its parent", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeHandle({
+				"/r/dir/rel": MemoryFileSystem.symlink("../file.txt"),
+				"/r/file.txt": "hello",
+				"/r/to-dir": MemoryFileSystem.symlink("/r/dir"),
+				"/r/dangling": MemoryFileSystem.symlink("/r/missing"),
+			});
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			assert.strictEqual(sync.readLink("/r/to-dir"), "/r/dir");
+			assert.strictEqual(sync.readLink("/r/dangling"), "/r/missing");
+			// The final link is never followed; a link in the parent is.
+			assert.strictEqual(sync.readLink("/r/to-dir/rel"), "../file.txt");
+		}),
+	);
+
+	it.effect("a non-link throws EINVAL and a missing path ENOENT, from readlink, naming the caller's path", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			assert.deepInclude(
+				thrown(() => sync.readLink("/r/file.txt")),
+				{
+					code: "EINVAL",
+					syscall: "readlink",
+					path: "/r/file.txt",
+				},
+			);
+			assert.deepInclude(
+				thrown(() => sync.readLink("/r/dir")),
+				{ code: "EINVAL", syscall: "readlink" },
+			);
+			assert.deepInclude(
+				thrown(() => sync.readLink("/r/nope")),
+				{
+					code: "ENOENT",
+					syscall: "readlink",
+					path: "/r/nope",
+				},
+			);
+			assert.deepInclude(
+				thrown(() => sync.readLink("/r/file.txt/x")),
+				{ code: "ENOTDIR", syscall: "readlink" },
+			);
+		}),
+	);
+});
+
 describe("sync port stat/lstat", () => {
 	it.effect("stat follows links; lstat does not", () =>
 		Effect.gen(function* () {

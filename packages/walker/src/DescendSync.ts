@@ -16,6 +16,7 @@ import type {
 	DescendOptions,
 	DescendRecordOptions,
 	DescendResult,
+	SkippedLink,
 	UnreadableDirectory,
 } from "./Descend.js";
 import { DescendError } from "./Descend.js";
@@ -79,6 +80,19 @@ export interface WalkerSyncFileSystem {
 	 * absent path, `EISDIR` for a directory.
 	 */
 	readonly readFile: (path: string) => string;
+	/**
+	 * The target text of the symbolic link at `path`, verbatim (`readlinkSync`).
+	 *
+	 * @remarks
+	 * Optional: only a record-mode walk calls it, to fill each
+	 * `SkippedLink`'s `target`. **A port without it reports NO links**: the
+	 * record result's `links` is always empty, dangling links included, while
+	 * matches and unreadable directories are unchanged — so supply it whenever
+	 * `links` matters. A throw reads as a link that vanished, and that link is
+	 * not reported. `nodeWalkerFileSystem` and `@effected/memfs`'s sync port
+	 * both carry it.
+	 */
+	readonly readLink?: (path: string) => string;
 }
 
 /**
@@ -153,6 +167,7 @@ const walkSync = (
 	{
 		readonly entries: ReadonlyArray<DescendEntry<WalkerSyncStats>>;
 		readonly unreadable: ReadonlyArray<UnreadableDirectory<unknown>>;
+		readonly links: ReadonlyArray<SkippedLink>;
 	},
 	DescendError
 > => {
@@ -186,6 +201,12 @@ const walkSync = (
 				return read(() => fileSystem.realPath(request.path));
 			case "ReadDirectory":
 				return read(() => fileSystem.readDirectory(request.path));
+			case "ReadLink":
+				try {
+					return fileSystem.readLink?.(request.path);
+				} catch {
+					return undefined;
+				}
 		}
 	};
 
@@ -204,6 +225,7 @@ const walkSync = (
 	return Result.succeed({
 		entries: result.entries,
 		unreadable: result.unreadable,
+		links: result.links,
 	});
 };
 
@@ -250,9 +272,11 @@ export function descendSync(
 	pattern: GlobPattern,
 	options: DescendSyncOptions | DescendSyncRecordOptions,
 ): Result.Result<ReadonlyArray<string> | DescendResult<unknown>, DescendError> {
-	return Result.map(walkSync(pattern, options), ({ entries, unreadable }) => {
+	return Result.map(walkSync(pattern, options), ({ entries, unreadable, links }) => {
 		const matches = entries.map((entry) => entry.path);
-		return options.onUnreadable === "record" ? ({ matches, unreadable } satisfies DescendResult<unknown>) : matches;
+		return options.onUnreadable === "record"
+			? ({ matches, unreadable, links } satisfies DescendResult<unknown>)
+			: matches;
 	});
 }
 
@@ -282,9 +306,9 @@ export function descendEntriesSync(
 	ReadonlyArray<DescendEntry<WalkerSyncStats>> | DescendEntriesResult<WalkerSyncStats, unknown>,
 	DescendError
 > {
-	return Result.map(walkSync(pattern, options), ({ entries, unreadable }) =>
+	return Result.map(walkSync(pattern, options), ({ entries, unreadable, links }) =>
 		options.onUnreadable === "record"
-			? ({ matches: entries, unreadable } satisfies DescendEntriesResult<WalkerSyncStats, unknown>)
+			? ({ matches: entries, unreadable, links } satisfies DescendEntriesResult<WalkerSyncStats, unknown>)
 			: entries,
 	);
 }
