@@ -9,10 +9,10 @@ x-okfit-layer: boundary
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:49:39Z
+  at: 2026-11-26T04:27:59Z
 x-okfit-integrity:
   generated:
-    body: 75d7b8507c37498e
+    body: a6d4c11b94a56d36
 ---
 
 # @effected/lsp
@@ -115,13 +115,16 @@ buffering without bound. The body must be valid UTF-8 and valid JSON.
   this shape (`ListenOutcome`).
 - **`LspStdio.teardown` always ends the process through its host.**
   `runMain` exits the process itself only for a non-zero code or a
-  signal, and leaves code 0 to the event loop draining. A server reading
-  stdin through `NodeStdio` never drains while stdin is open, and after
-  `exit` stdin is still open: probed, a clean `shutdown` then `exit` sat
-  until the client closed the pipe. okfit met the same hang through
-  `vscode-languageserver`'s `--clientProcessId` liveness interval. There is
-  deliberately no drain-only teardown; `LspStdio.test.ts` pins the hang
-  with a no-op host as the control. The process arrives as a structural
+  signal, and leaves code 0 to the event loop draining. Any handle the
+  server does not own stops it draining, and after `exit` stdin is still
+  open: okfit met the hang through `vscode-languageserver`'s
+  `--clientProcessId` liveness interval, and a raw `process.stdin` listener
+  sits the same way until the client closes the pipe. `NodeStdio`'s stdin
+  is not such a handle: it pauses `process.stdin` once its last reader
+  stops, so a server that holds nothing else drains on its own (probed on
+  both sides of that change). There is deliberately no drain-only
+  teardown; `LspStdio.test.ts` pins the hang with a no-op host and a held
+  interval as the control. The process arrives as a structural
   parameter, so `src/` still never reads it.
 - **One stdout reader.** `LspProbe` runs on the same internal machinery as
   `LspProcess`, with an option that folds the exit code and the whole

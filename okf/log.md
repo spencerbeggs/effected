@@ -1,5 +1,10 @@
 # Log
 
+## 2026-11-26
+
+* Updated @effected/lsp
+* Updated store
+
 ## 2026-11-25
 
 * Updated @effected/markdown-lint
