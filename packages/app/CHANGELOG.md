@@ -1,5 +1,25 @@
 # @effected/app
 
+## 0.35.0
+
+### Breaking Changes
+
+- Requires `@effected/memfs` 0.27.0 (`peerDependencies`: `^0.27.0`), a breaking release from 0.26.2. A consumer still on 0.26.2 cannot install this version beside it, so this release leaves its own version line too.
+
+- Requires `@effected/walker` 0.31.0 (`peerDependencies`: `^0.31.0`), a breaking release from 0.30.0. A consumer still on 0.30.0 cannot install this version beside it, so this release leaves its own version line too.
+
+- To upgrade, move `@effected/memfs` to 0.27.0, `@effected/walker` to 0.31.0 in the same install as this release.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.29.0 | 0.30.0 |
+| @effected/memfs | dependency | updated | 0.26.2 | 0.27.0 |
+| @effected/store | dependency | updated | 0.25.0 | 0.25.1 |
+| @effected/walker | dependency | updated | 0.30.0 | 0.31.0 |
+| @effected/xdg | dependency | updated | 0.22.0 | 0.23.0 |
+
 ## 0.34.0
 
 ### Breaking Changes

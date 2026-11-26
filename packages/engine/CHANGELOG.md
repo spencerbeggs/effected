@@ -1,5 +1,18 @@
 # @effected/engine
 
+## 0.20.4
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/bundler | dependency | updated | 0.7.3 | 0.7.4 |
+| @effected/files | dependency | updated | 0.3.0 | 0.3.0 |
+| @effected/jsonl | dependency | updated | 0.20.0 | 0.20.0 |
+| @effected/kit | dependency | updated | 0.14.0 | 0.14.0 |
+| @effected/schemastore | dependency | updated | 0.33.1 | 0.33.1 |
+| @effected/workspaces | dependency | updated | 0.49.1 | 0.49.2 |
+
 ## 0.20.3
 
 ### Dependencies

@@ -1,5 +1,23 @@
 # @effected/bundler
 
+## 0.7.4
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/changesets | dependency | updated | 0.7.0 | 0.7.0 |
+| @effected/config-file | dependency | updated | 0.29.0 | 0.30.0 |
+| @effected/env | dependency | updated | 0.12.0 | 0.12.0 |
+| @effected/files | dependency | updated | 0.3.0 | 0.3.0 |
+| @effected/images | dependency | updated | 0.10.0 | 0.10.0 |
+| @effected/jsonl | dependency | updated | 0.20.0 | 0.20.0 |
+| @effected/npm | dependency | updated | 0.35.1 | 0.35.1 |
+| @effected/package-json | dependency | updated | 0.32.2 | 0.32.2 |
+| @effected/tsconfig-json | dependency | updated | 0.23.0 | 0.24.0 |
+| @effected/walker | dependency | updated | 0.30.0 | 0.31.0 |
+| @effected/workspaces | dependency | updated | 0.49.1 | 0.49.2 |
+
 ## 0.7.3
 
 ### Dependencies
