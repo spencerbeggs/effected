@@ -86,7 +86,7 @@ const program = Effect.scoped(
 
 ## Subscribe first, then end without losing the tail
 
-- **Pass the `PubSub.Subscription` itself, made before the first publish.** The view takes from it directly, so nothing published after the subscribe is missed. A stream is subscribed only on its first pull: `live` makes that pull before returning, so `Stream.fromPubSub` is subscribed in time, but a stream that forks its upstream (`Stream.merge`, `buffer`, a concurrent `flatMap`) subscribes later and loses what was published before.
+- **Pass the `PubSub.Subscription` itself, made before the first publish.** The view takes from it directly, so nothing published after the subscribe is missed. A stream is subscribed only on its first pull: `live` makes that pull before returning, so `Stream.fromPubSub` is subscribed in time, and so is a `Stream.merge` of it (merge starts both sides at once), but a stream that forks its upstream (`buffer`, a concurrent `flatMap`) subscribes later and loses what was published before.
 - **End with `handle.close`** — it folds every message still queued in a subscription, ends the run as the events ending would, then waits for `done`. It is idempotent, and it dies as `done` dies (a `reduce` that threw, a stream that died), so a host that only calls `close` still sees the defect.
 - **`PubSub.end(pubsub, last)` is lossless too**: the view folds the buffer, then `last` once. Make `last` an `isTerminal` event to commit the run with it.
 - **`PubSub.shutdown` drops what the view has not taken**, and closing the caller's scope stops the fold at once: both lose a tail. Close first, then release the scope; a host outside Effect gets that order from `CliUi.liveDetached`'s `close` rather than writing it.

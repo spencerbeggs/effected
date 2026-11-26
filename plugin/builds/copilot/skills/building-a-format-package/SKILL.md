@@ -1,21 +1,18 @@
 ---
 name: building-a-format-package
-description: Use when building, scaffolding, or extending an @effected format package — a parse/edit/format library for a text format (jsonc, yaml, toml, markdown, or the next one). Covers the canonical module-per-concept surface (facade/Document/Node/Edit/Format/Visitor/Diagnostic), the engine-origin policy (own the engine — vendor+harden or from-scratch, never a runtime parser dependency), the Effect-wrapping and Result-parity policy, the cross-package parity contract (Edit/Range field-identity, the diagnostic five-field core, MAX_NESTING_DEPTH=256), the conformance-corpus harness pattern (vendored fixtures + pin file, empty skip map, differential oracle), and the scaffold gotchas. Trigger phrases — new format package, corpus harness, VENDORED pin, differential oracle, parity contract, parse/edit/format surface.
+description: "Use when building, scaffolding or extending an @effected format package, a parse/edit/format library for a text format (jsonc, yaml, toml, markdown, or the next one): the module-per-concept surface, the own-the-engine policy, Effect wrapping and Result parity, the cross-package parity contract, and the conformance-corpus harness. Also use when: new format package, parse/edit/format surface, Document Node Edit Format Visitor Diagnostic modules, vendor and harden a parser, runtime parser dependency, corpus harness, VENDORED pin, differential oracle, parity contract, nesting depth cap, Edit and Range field identity"
 ---
 
 # Building a format package
 
-The `@effected` kit's format packages — jsonc, yaml, toml, markdown (in
-flight) — share one architecture, deliberately. This skill is that
-architecture, so the next format starts from the pattern instead of
-re-deriving it from three Module concepts. Authority order when this skill and
-a Module concept disagree: the package's Module concept at
-`okf/modules/<name>.md` wins; this skill routes.
+The `@effected` kit's format packages — jsonc, yaml, toml, markdown — share one
+architecture, deliberately. This skill is that architecture, so the next format
+starts from the pattern instead of re-deriving it from its siblings.
 
-For the hostile-input guard inventory (depth caps, numeric bounds,
-proto-pollution, C0, the typed-error invariant), see
-`hardening-a-parser-port` — this skill covers the package *shape*, that one
-covers the engine's defenses. Both apply to every format package.
+**Before you write the engine, load `hardening-a-parser-port`.** This skill covers
+the package *shape*; that one covers the engine's defenses (depth caps, numeric
+bounds, prototype pollution, C0, the typed-error invariant). Both apply to every
+format package, and a guard added after the engine is written misses surfaces.
 
 ## The canonical surface (module-per-concept)
 
@@ -47,39 +44,18 @@ member's module graph, silently. This is the config-file codec rule
 and it recurs in every format package that offers per-format variants
 (markdown's frontmatter codecs).
 
-### A format module INSIDE an existing package may collapse the surface
+**A format that serves only one host package may live inside it** as a pure
+module set with `Document`, `Edit` and `Diagnostic` folded into one concept
+module. Before you add a format module to an existing package, or promote one to
+its own package, load
+[in-package-format-module.md](references/in-package-format-module.md): it says
+what must be kept (the lossless facade, the error split, Result-parity, the
+cycle firewall), what may fold, and the one trigger for promotion.
 
-Not every format earns a package. When a format exists only to serve one host
-package — `@effected/git`'s `GitConfig`/`Gitmodules` is the precedent — build it
-as a pure module set inside that package and collapse the canonical modules
-that no longer pay for themselves. What held and what folded there:
+## Engine origin: own it
 
-- **Kept, always**: the pure document facade (parse / lossless `stringify`
-  that is byte-for-byte identity on an unmodified document / surgical edits),
-  the typed parse-vs-edit error split, `parse` derived from `parseResult` per
-  Result-parity, and the `internal/` cycle firewall — the engine emits raw
-  records plus diagnostics and never imports the public classes.
-- **Folded**: `Document`, `Edit` and `Diagnostic` collapsed into the one
-  concept module (`GitConfig.ts` owns the document, the splice-based edit
-  statics and `GitConfigDiagnostic` together), with the scanner and splice
-  primitives split out into `internal/`. Nothing is lost because there is no
-  second consumer to parity against, and the parity contract's whole point —
-  a consumer moving between two format packages meets the same field names —
-  does not apply to a module only one package imports.
-- **The typed view rides on top as its own module** (`Gitmodules.ts`), whose
-  mutation statics compile into the document model's surgical edits, so the
-  file's own formatting survives an edit.
-
-Promote it to a package the moment a second package needs it — that is the
-trigger, not size. Until then, the collapse is the correct shape, not a
-shortcut, and this paragraph exists so the next such build does not re-derive
-it from `@effected/git`'s source.
-
-## Engine origin: own it (R1)
-
-Pure and boundary packages take **no external runtime dependency**
-(effect-standards R1) — so a format package owns its parser. Two sanctioned
-routes:
+Pure and boundary packages take **no external runtime dependency** — so a format
+package owns its parser. Two sanctioned routes:
 
 - **Vendor + harden with attribution** (jsonc ← Microsoft jsonc-parser, yaml
   ← the `yaml` npm engine, glob ← minimatch): port the engine into
@@ -91,53 +67,21 @@ routes:
 
 Never the third route: wrapping an external parser as a runtime dependency.
 The rejected upstream often survives anyway — as the **differential-test
-oracle** (see Testing below).
+oracle** (see the harness below).
 
-**Differential verification starts the port, it doesn't just gate the ship.**
-When a reference implementation is executable and vendored (a reference
-parser, a `normalize.py`), run the port against it **over the real corpus as
-the first verification step** — before trusting any hand-written unit suite.
-During the markdown P1 port this took ~10 minutes and caught 3 real bugs that
-59 green hand-written tests had missed entirely (all in edge-case handling
-the tests never sampled). The exact-pinned oracle devDependency in the
-Testing section is the *shipping-gate* complement to this porting-time tool:
-same idea, different moment — use both.
+**Run the port against an executable reference over the real corpus as the
+first verification step**, before trusting any hand-written unit suite.
 
-**Where a ported extension hooks into an existing pipeline is determined by
-two constraints, not by taste.** A pass that must read source text verbatim
-(offset fidelity) cannot run after decoding — entities and escapes have
-already shortened node values, so offsets computed there are guesses. A pass
-that must scan backwards over consumed text cannot run before the
-delimiter/bracket stacks are spent — unlinking a node a live delimiter still
-points at corrupts the list. The two constraints can split one upstream
-extension across both moments: cmark-gfm's autolink literals port as an
-inline construct for www/scheme literals (raw source, offsets intact) and a
-postprocess after `processEmphasis` for email literals (backwards scan, no
-stack left to corrupt). Check the upstream source for this split before
-assuming a single mechanism — and grepping for the construct's name is not
-enough on its own: dispatch branches can live in switch cases that never
-mention it (cmark-gfm's `![^`-never-opens-an-image branch contains no
-"footnote"). Grep for the construct name AND read the dispatch switch for
-every character the construct touches.
-
-**When the upstream extension is a branch inside a construct the base
-dialect already owns, no trigger-table entry can express it — swap a
-parameterized construct instead.** A construct that claims every occurrence
-of its trigger character (cmark-gfm's close-bracket handler emits a literal
-`]` even when nothing matches) makes anything registered after it
-unreachable, and anything registered before it beats the constructs the
-extension must lose to (`[^a](/url)` is a link, not a footnote). The proven
-pattern: export a `makeXConstruct(seam?)` factory from the base construct
-module, keep the base dialect's spelling as the no-seam default, and swap
-the parameterized construct into the extending dialect's table rather than
-appending a new entry — the base dialect stays byte-for-byte unchanged, and
-the seam sits at exactly the upstream branch point (cmark-gfm's footnotes
-needed two: the close-bracket no-match branch and the image opener's `![^`
-peek).
+Before you port an engine or an extension from upstream, load
+[porting-an-engine.md](references/porting-an-engine.md): where an extension hooks
+in is fixed by offset fidelity and the delimiter stacks, a grep for the
+construct's name misses dispatch branches that never mention it, and an
+extension that branches inside a base construct needs a parameterized
+construct swap that no trigger-table entry can express.
 
 ## Effect-wrapping policy (and the Result-parity pattern)
 
-Verbatim from the yaml design doc, binding on every format package:
+Binding on every format package:
 
 - **Pure synchronous** where nothing can fail: navigation, `toValue`,
   `applyAll`, the `format` edit computation, equality. An
@@ -149,10 +93,9 @@ Verbatim from the yaml design doc, binding on every format package:
 - **`Result`** sync escape hatches for config-time callers that cannot enter
   the runtime.
 
-The Result-parity pattern (established by `Jsonc.parseResult`, issue #115
-tracks kit-wide adoption): each parse entry point gets a pure `*Result`
-variant, and the Effect variant is **defined in terms of it** behind the
-named span —
+The Result-parity pattern (established by `Jsonc.parseResult`): each parse entry
+point gets a pure `*Result` variant, and the Effect variant is **defined in terms
+of it** behind the named span —
 
 ```ts
 static parseResult(text: string, options?: Opts): Result.Result<unknown, ParseError> { ... }
@@ -173,9 +116,8 @@ format's spec and record it in the design doc.
 
 - `<Fmt>Edit` and `<Fmt>Range` are **field-identical** across all format
   packages: `{ offset, length, content }` / `{ offset, length }`. This is
-  what lets codec-generic consumer code work against any of them, and it is
-  the pre-work for a future `@effected/text-edit` kernel — do not innovate
-  here without a kit-wide decision.
+  what lets codec-generic consumer code work against any of them — do not
+  innovate here without a kit-wide decision.
 - The diagnostic core carries the same five fields everywhere: `code`,
   `offset`, `length`, `line`, `character`.
 - `MAX_NESTING_DEPTH = 256` is the cross-package parity constant, held in a
@@ -188,67 +130,29 @@ format's spec and record it in the design doc.
 Every format package gates on its format's official corpus, integrated the
 same way:
 
-- **Vendor fixtures as committed plain files** — no submodule, no
-  fetch-on-test — under `__test__/fixtures/<corpus>/`, with a pin file
-  alongside (yaml's `VENDORED.md`, toml's `README.md`) recording upstream
-  repo, tag/commit, fetch date, subset taken, and the update recipe. Check
-  the corpus license and record it; test-only vendoring with attribution is
-  the ecosystem norm even for CC-BY-SA spec corpora.
+- **Vendor fixtures as committed plain files** under
+  `__test__/fixtures/<corpus>/`, with a pin file recording upstream, commit,
+  subset and update recipe, and the corpus license.
 - **One `it.effect` per case** in `__test__/e2e/`; valid cases assert the
   expected value/output, invalid cases assert the typed error via
   `Effect.flip`.
-- **Empty skip map is the standing goal** — toml runs 205 valid + 474
-  invalid cases with zero skips; yaml runs 353 case dirs with empty
-  `SKIP`/`SKIP_ASSERTIONS` maps. A skip is a documented exception, not a
-  pressure valve. One qualification: real corpora contain entries with no
-  assertable output (cmark-gfm's `extensions.txt` example 20 expects
-  literally `<IGNORE>` — an upstream crash regression asserting only
-  termination). Run those through an explicit `TERMINATION_ONLY` set with
-  the reason inline — neither a skip nor a fabricated assertion.
+- **Empty skip map is the standing goal.** A skip is a documented exception,
+  not a pressure valve; an entry with no assertable output goes in an explicit
+  `TERMINATION_ONLY` set.
 - **Guard the corpus count** (`assert(validCases.length >= N)`) so a
   silently-empty fixture walk cannot green the suite.
-- **Fixtures are raw bytes.** When cases deliberately embed CR/CRLF, a
-  scoped `.gitattributes` (`* -text`) in the fixture root keeps Git from
-  normalizing them (toml's harness protects ~7 such cases this way).
-- **Control characters in hand-written tests and TS fixtures are ALWAYS
-  escapes (`\x00`, `\x7f`), never literal bytes.** File-editing tooling
-  silently mangles literal control characters — an edit round-trip once
-  replaced a NUL with a space, which would have made a preprocessing
-  hardening test pass vacuously. Literal bytes belong only in committed raw
-  fixture files under the scoped `.gitattributes`, which are never
-  hand-edited.
+- **Fixtures are raw bytes** under a scoped `.gitattributes` (`* -text`); in
+  hand-written tests, control characters are ALWAYS escapes (`\x00`), never
+  literal bytes.
 - **Differential oracle**: the rejected upstream parser, exact-pinned as a
-  devDependency, imported by exactly one property test (toml's `smol-toml`
-  at 250 runs; markdown's plan pins `commonmark`). Corpus wins on
-  disagreement; the oracle catches what the corpus never sampled.
-- **The oracle can be WRONG — and "corpus wins" only settles disagreements
-  the corpus actually exercises.** A generated input the corpus never
-  sampled needs root-cause investigation in the *oracle's* source before
-  either side is trusted: a 20k-input hunt during the markdown port found a
-  real commonmark.js defect (a reference-only paragraph before a thematic
-  break renders a phantom empty `<p></p>` — a flag that does not carry
-  between its two definition-stripping sites in `blocks.js`). When the port
-  is right and the oracle is not: correct the oracle's OUTPUT narrowly on
-  the oracle side of the comparison, AND pin a tripwire test asserting the
-  divergence still exists — a future upstream fix fails the tripwire and
-  forces the correction's deletion. Never a skip entry.
-- **Serializer verification is a corpus-wide re-parse equivalence
-  property.** For every corpus example: parse → stringify → parse, then
-  compare the two parses' rendered output through the harness's own writer
-  and normalizer — render-to-render, never stringified-text-to-original-text
-  and never render-to-spec-HTML. Both sides share the parser, so the
-  comparison isolates serializer bugs from parser bugs, reuses the existing
-  harness machinery at no extra cost, and needs no skip list — any failure
-  is a real serializer defect. Genuinely unrepresentable cases get
-  documented KNOWN LIMITATION tests that fail if the limitation is ever
-  silently fixed (the tripwire pattern again), never skips.
-- **Unit fixtures must land in the layer they claim to test.** In a
-  multi-pass engine, an innocuous-looking input can be claimed by an
-  earlier pass and silently test the wrong thing — a markdown inline
-  fixture starting with `<` opens an HTML *block*, so the "inline" test was
-  exercising the block pass. Lead inline fixtures with plain text (or
-  assert the parsed node type first) so a fixture cannot drift between
-  layers unnoticed.
+  devDependency, imported by exactly one property test. Corpus wins on
+  disagreement, but **the oracle can be wrong** where the corpus is silent.
+- **Serializer verification** is parse → stringify → parse over the whole
+  corpus, compared render-to-render.
+- **Unit fixtures must land in the layer they claim to test** in a multi-pass
+  engine.
+- **Keep a standing fixture drawn from a real document**: a green corpus
+  proves conformance, not that the productions real files combine still parse.
 - Where the format has a **performance corpus** (markdown's pathological
   suite), it is a separate mandatory family — see the
   algorithmic-complexity section of `hardening-a-parser-port`.
@@ -257,39 +161,14 @@ Plus the hand-written families no corpus covers: CST/AST fidelity,
 edit/format/visitor behavior, and a hostile-input suite exercising every
 hardening guard.
 
-## A green corpus proves conformance, not reachability — keep a standing real-world fixture
-
-A conformance corpus can be entirely green while a whole production is broken.
-`@effected/yaml` ran 1226 assertions green while explicit-key entries with a
-compact mapping value parsed to phantom null-keyed entries: the corpus has
-explicit-key cases, but none in the *shape* real documents use (#324).
-
-**So every format package carries at least one standing fixture drawn from a
-real document** — a `pnpm-workspace.yaml`, a `tsconfig.json`, an actual
-`Cargo.toml` — parsed and round-tripped on every run, in addition to the corpus.
-The corpus proves you match the spec's examples; the standing fixture proves the
-production the spec's examples happen not to combine.
-
-**The law generalises past formats, and the kit now has it from two directions.**
-The `@spencerbeggs/reposets` loop (2026-08-14) produced a duplicate module, a
-silent name collision, an unreachable export, a truncation in every list read and
-a normaliser that silently dropped its own typed input — **every one of them green
-in the suite of whoever wrote that code**, and every one found by a second party
-running it for real. Its closing observation is the rule worth carrying into any
-package, not just a format one:
-
-> Every defect worth finding was green somewhere — specifically, green in the
-> suite of whoever was most confident about that code.
-
-The practical form: a suite you wrote cannot tell you what you did not think to
-model. Budget for one consumer path exercised end to end — a real document, a
-real API call, a real binary run — and treat its absence as a known gap rather
-than as coverage.
+Before you set up a corpus harness, add a skip, disagree with the oracle, or
+claim a serializer works, load [corpus-harness.md](references/corpus-harness.md):
+it has the termination-only pattern, how to correct a wrong oracle with a
+tripwire instead of a skip, the render-to-render serializer property, the
+fixture-layer trap and the standing-fixture rule. A skip entry or a wrong
+comparison greens the suite over a real defect.
 
 ## Scaffold gotchas (the ones that bite)
-
-Full manifest: `okf/conventions/package-manifest-and-scaffold.md`,
-`okf/runbooks/add-a-workspace-package.md`. The load-bearing subset:
 
 - **Stub `src/index.ts` BEFORE the first install.** A manifest with no
   entrypoint breaks the package's `build` and `types:check`. Unconditional.
@@ -309,10 +188,14 @@ Full manifest: `okf/conventions/package-manifest-and-scaffold.md`,
   stripped optional platform binaries before.
 - Tests in `__test__/`, `@effect/vitest`, `assert.*` never `expect`.
 
-## Concept first
+## Design first
 
-No scaffolding before the package's Module concept exists at
-`okf/modules/<name>.md`. The
-concept states tier, engine origin, module layout, hardening surfaces, corpus
-plan and parity notes against these standards — the sibling concepts (toml is
-the tightest) are the template.
+No scaffolding before the package has a written design that states its tier,
+engine origin, module layout, hardening surfaces, corpus plan and parity notes
+against these standards. A sibling format package's design is the template.
+
+## Additional resources
+
+- [references/porting-an-engine.md](references/porting-an-engine.md) — differential verification as the first step of a port, the two constraints that fix where a ported extension hooks in, and the parameterized-construct swap for an extension that branches inside a base construct. Load when: vendoring or porting a parser, porting a dialect extension (GFM and the like), or an extension's construct is unreachable or wins where it should lose.
+- [references/corpus-harness.md](references/corpus-harness.md) — vendoring and pinning, the termination-only set, raw bytes and control characters, a wrong oracle and its tripwire, the re-parse serializer property, fixture layers and the standing real-world fixture. Load when: setting up or extending a conformance harness, tempted to add a skip, the port and the oracle disagree, or verifying a serializer.
+- [references/in-package-format-module.md](references/in-package-format-module.md) — what a format module inside a host package keeps, what it folds, and when to promote it. Load when: a format serves only one package, or a second package starts to need one that lives inside another.

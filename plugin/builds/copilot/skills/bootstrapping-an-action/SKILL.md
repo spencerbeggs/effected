@@ -65,10 +65,10 @@ When subagent dispatch is unavailable, tell the user to load `designing-an-actio
 
 ## Footguns
 
-- Asking the outputs question as "do you want outputs?" — every action has outputs; the decision is whether one of them is a structured document a downstream consumer parses, because that is what triggers schema publication. See [references/questions.md](references/questions.md).
-- Answering the App-auth question by adding `@effected/github` to the plan's dependency list before a step imports it. The dependency lands with the edit that creates `pre.ts`, not before. See [references/questions.md](references/questions.md).
-- Writing the plan into `docs/` or the repository root instead of the configured plans directory, where the template's tooling and the executing skills expect it. See [references/plan-template.md](references/plan-template.md).
-- Continuing into implementation after presenting the plan. The approval gate is the point; the engineer agent is the executor. See [references/plan-template.md](references/plan-template.md).
+- Asking the outputs question as "do you want outputs?" — every action has outputs; the decision is whether one of them is a structured document a downstream consumer parses, because that is what triggers schema publication. Before you ask the outputs question, load [references/questions.md](references/questions.md).
+- Answering the App-auth question by adding `@effected/github` to the plan's dependency list before a step imports it. The dependency lands with the edit that creates `pre.ts`, not before. Before you write the plan's dependency list, load [references/questions.md](references/questions.md).
+- Writing the plan into `docs/` or the repository root instead of the configured plans directory, where the template's tooling and the executing skills expect it. Before you write the plan file, load [references/plan-template.md](references/plan-template.md).
+- Continuing into implementation after presenting the plan. The approval gate is the point; the engineer agent is the executor. Before you present the plan, load [references/plan-template.md](references/plan-template.md) for the approval gate.
 
 ## Additional resources
 

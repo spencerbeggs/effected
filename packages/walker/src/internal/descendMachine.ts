@@ -40,7 +40,8 @@ export type DescendRequest =
 	| { readonly _tag: "Stat"; readonly path: string }
 	| { readonly _tag: "Lstat"; readonly path: string }
 	| { readonly _tag: "RealPath"; readonly path: string }
-	| { readonly _tag: "ReadDirectory"; readonly path: string };
+	| { readonly _tag: "ReadDirectory"; readonly path: string }
+	| { readonly _tag: "ReadLink"; readonly path: string };
 
 /** The driver's answer to each request kind. */
 export interface DescendResponses<S, C> {
@@ -48,6 +49,8 @@ export interface DescendResponses<S, C> {
 	readonly Lstat: LstatAnswer<S>;
 	readonly RealPath: ReadAnswer<string, C>;
 	readonly ReadDirectory: ReadAnswer<ReadonlyArray<string>, C>;
+	/** The link's own target text, or `undefined` when it cannot be read (or the driver cannot read links). */
+	readonly ReadLink: string | undefined;
 }
 
 /** The walk's settings, already defaulted. */
@@ -74,12 +77,20 @@ export interface MachineEntry<S> {
 	readonly info: S;
 }
 
+/** A symbolic link the walk passed over: one to a directory it did not enter, or one that does not resolve. */
+export interface MachineLink {
+	readonly path: string;
+	readonly target: string;
+	readonly kind: "directory" | "dangling";
+}
+
 /** How the walk ended. The driver builds the typed error / defect from the description. */
 export type DescendMachineResult<S, C> =
 	| {
 			readonly _tag: "Done";
 			readonly entries: ReadonlyArray<MachineEntry<S>>;
 			readonly unreadable: ReadonlyArray<{ readonly path: string; readonly cause: C }>;
+			readonly links: ReadonlyArray<MachineLink>;
 	  }
 	| {
 			readonly _tag: "Fail";
@@ -166,10 +177,21 @@ export function* descendMachine<S, C>(
 	const onUnreadable = options.onUnreadable ?? "fail";
 	const followSymlinks = options.followSymlinks ?? false;
 	const unreadable: Array<{ readonly path: string; readonly cause: C }> = [];
+	// Links are collected only under "record": no other mode returns them, so no other mode pays the readLink.
+	const recordLinks = onUnreadable === "record";
+	const links: Array<MachineLink> = [];
 	const done = (entries: Array<MachineEntry<S>>): DescendMachineResult<S, C> => {
 		entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-		return { _tag: "Done", entries, unreadable };
+		return { _tag: "Done", entries, unreadable, links };
 	};
+	/**
+	 * Records the link at `absolute` (answered as `path`) when its target text reads; a link whose target cannot
+	 * be read — it vanished, or the driver has no way to read links — is not reported.
+	 */
+	function* recordLink(absolute: string, path: string, kind: MachineLink["kind"]): Walk<void> {
+		const target = yield* ask({ _tag: "ReadLink", path: absolute });
+		if (target !== undefined) links.push({ path, target, kind });
+	}
 	const unreadableFail = (path: string): DescendMachineResult<S, C> => ({
 		_tag: "Fail",
 		reason: "unreadableDirectory",
@@ -396,7 +418,11 @@ export function* descendMachine<S, C>(
 				const own = yield* ask({ _tag: "Lstat", path: absolute });
 				const link = own?.kind === "SymbolicLink";
 				const stat = link ? yield* ask({ _tag: "Stat", path: absolute }) : own;
-				if (stat === undefined) continue;
+				if (stat === undefined) {
+					// A link that lstat sees and stat cannot resolve dangles: it is neither file nor directory.
+					if (link && recordLinks) yield* recordLink(absolute, shown(relative), "dangling");
+					continue;
+				}
 				if (stat.kind === "File") {
 					const answer = matchFiles ? matchedAs(relative) : undefined;
 					if (answer !== undefined) results.push({ path: answer, info: stat.info });
@@ -423,9 +449,16 @@ export function* descendMachine<S, C>(
 					const parentReal = frame.ancestors[frame.ancestors.length - 1] ?? frame.absolute;
 					const real = link ? yield* realPathOf(absolute, shown(relative)) : join(parentReal, entry);
 					if (typeof real === "object") return unreadableFail(shown(relative));
-					if (real === undefined || frame.ancestors.includes(real)) continue;
+					if (real === undefined) continue;
+					if (frame.ancestors.includes(real)) {
+						// A link closing a cycle is a directory link the walk refuses to enter.
+						if (link && recordLinks) yield* recordLink(absolute, shown(relative), "directory");
+						continue;
+					}
 					ancestors = [...frame.ancestors, real];
 				} else if (link) {
+					// Reached only when the walk would have entered the directory had it not been a link.
+					if (recordLinks) yield* recordLink(absolute, shown(relative), "directory");
 					continue;
 				}
 				// Depth exhaustion is a typed failure, not a truncation.

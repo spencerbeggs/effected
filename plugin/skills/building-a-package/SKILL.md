@@ -27,7 +27,7 @@ The authority for every key is `PackageBuildConfig` (the `[package.build]` table
 | `[package.bundle]` | `effected.toml` | the emitted `bundle.json`: `name`, `tagline`, `description`, `openGraph`, `registries` |
 | `publishConfig.targets` | `package.json` | publishing more than one name or registry: it decides the publish groups |
 | `dist/prod/issues.json` | the build's output | deciding whether the build passed, and what it reported |
-| `effected action build` and `[action]` | `effected.toml` | a GitHub Action, not a library: see `building-a-github-action` |
+| `effected action build` and `[action]` | `effected.toml` | a GitHub Action, not a library: load `building-a-github-action` instead |
 
 ## Standards
 
@@ -45,15 +45,15 @@ The authority for every key is `PackageBuildConfig` (the `[package.build]` table
 
 ## Footguns
 
-- A turbo cache hit replays a clean log verbatim and restores `issues.json` with it; `generatedAt`, not the log or the file's mtime, says whether a build ran → [reading-issues.md](references/reading-issues.md).
-- A crashed build can leave every bucket empty, identical to a clean gate; only `buildOk` tells them apart → [reading-issues.md](references/reading-issues.md).
-- A `suppressWarnings` list replaces the default `_base` rule rather than adding to it → [effected-toml.md](references/effected-toml.md).
-- `copy = [{ from = "../../schemas", to = "schemas" }]` nests as `pkg/schemas/schemas/...`; a directory keeps its own basename → [outputs.md](references/outputs.md).
-- `bundledPackages` naming a workspace sibling inlines its **built** declarations, so the sibling builds first (`dependsOn: ["^build"]`) → [outputs.md](references/outputs.md).
-- An `exe` package accepts exactly one binary with one target → [outputs.md](references/outputs.md).
-- A bin-only package (`exports` is only `"./package.json"`) fails `Cannot merge zero API models` until it sets `emitDts = false` → [effected-toml.md](references/effected-toml.md).
-- `nodeOptions: --import=tsx` reaches every process a pnpm script starts, and a tool that loads its own bundles (`rspress build`) can break under it → [workspace-wiring.md](references/workspace-wiring.md).
-- A built bin spawned inside a linked workspace still imports siblings from source, so its test passes `--import <tsx file URL>` → [workspace-wiring.md](references/workspace-wiring.md).
+- A turbo cache hit replays a clean log verbatim and restores `issues.json` with it; `generatedAt`, not the log or the file's mtime, says whether a build ran. Before you say a build ran, load [reading-issues.md](references/reading-issues.md).
+- A crashed build can leave every bucket empty, identical to a clean gate; only `buildOk` tells them apart. Before you say a build passed, load [reading-issues.md](references/reading-issues.md).
+- A `suppressWarnings` list replaces the default `_base` rule rather than adding to it. Before you set `suppressWarnings` in `effected.toml`, load [effected-toml.md](references/effected-toml.md).
+- `copy = [{ from = "../../schemas", to = "schemas" }]` nests as `pkg/schemas/schemas/...`; a directory keeps its own basename. Before you write a `copy` entry, load [outputs.md](references/outputs.md).
+- `bundledPackages` naming a workspace sibling inlines its **built** declarations, so the sibling builds first (`dependsOn: ["^build"]`). Before you bundle a sibling's declarations, load [outputs.md](references/outputs.md).
+- An `exe` package accepts exactly one binary with one target. Before you configure a single-executable package, load [outputs.md](references/outputs.md).
+- A bin-only package (`exports` is only `"./package.json"`) fails `Cannot merge zero API models` until it sets `emitDts = false`. Before you build a package whose only surface is a `bin`, load [effected-toml.md](references/effected-toml.md).
+- `nodeOptions: --import=tsx` reaches every process a pnpm script starts, and a tool that loads its own bundles (`rspress build`) can break under it. Before you run a tool that loads its own bundles from a pnpm script, load [workspace-wiring.md](references/workspace-wiring.md).
+- A built bin spawned inside a linked workspace still imports siblings from source, so its test passes `--import <tsx file URL>`. Before you test a built bin inside the workspace, load [workspace-wiring.md](references/workspace-wiring.md).
 
 ## Additional resources
 

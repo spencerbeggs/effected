@@ -1,7 +1,7 @@
 ---
 type: Convention
 title: Consumer-facing text states current Effect behaviour, never versions
-description: Plugin skills, agents and hooks, and TSDoc comments name no Effect prerelease version and carry no since-version history; they state what is true on the pinned Effect today. The okf bundle may keep version history, and so may the effected-renovate upgrade ledger, which is version-keyed by design.
+description: Plugin skills, agents and hooks, and TSDoc comments name no Effect prerelease version and carry no since-version history; they state what is true on the pinned Effect today. The okf bundle may keep version history, and so may the `upgrade` skill's ledger, which is version-keyed by design.
 status: draft
 stale_after: "2027-03-23T00:00:00Z"
 tags:
@@ -12,10 +12,10 @@ sources:
     resource: ../../plugin/skills
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T14:55:07Z
+  at: 2026-11-26T06:05:38Z
 x-okfit-integrity:
   generated:
-    body: bbe6edc8a1b1feb5
+    body: 19960719f99a0408
 ---
 
 # Consumer-facing text states current Effect behaviour, never versions
@@ -49,7 +49,7 @@ follow the same rule whenever they are edited: a "probed against beta.101" note
 becomes a pointer to the test that pins the behaviour.
 
 **One directory is exempt by design.** Each file under
-`plugin/skills/effected-renovate/references/ledger/` names versions and
+`plugin/skills/upgrade/references/ledger/` names versions and
 tracking issues, because a version-keyed delta is the whole job of that
 file. An entry's `applies` thresholds select it, and its `closes` list
 links its issues. See [the ledger entry model](../models/renovate-ledger-entry.md)

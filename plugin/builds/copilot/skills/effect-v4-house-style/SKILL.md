@@ -1,6 +1,6 @@
 ---
 name: effect-v4-house-style
-description: The house style for Effect v4 library code — module layout, naming, typed-error taxonomy, API-surface and TSDoc habits, layer conventions, test organization, and observability posture. Use when writing or reviewing any Effect v4 module and deciding how to lay out files, name things, shape errors, document exports, wire layers, or organize tests — or when asked why this codebase "looks the way it does". Distilled from the @effected kit with the DX-north-star package (semver), a parser engine (toml), a boundary package (config-file) and the app plane (app) as the evidence base. Cross-cutting rules only; Schema depth lives in effect-v4-schema, hardening in hardening-a-parser-port.
+description: "Use when writing or reviewing any Effect v4 module and deciding how to lay out files, name things, shape errors, document exports, wire layers or organize tests, or when asked why this codebase looks the way it does. Cross-cutting rules only: Schema depth lives in effect-v4-schema, hardening in hardening-a-parser-port. Also use when: module layout, file naming, barrel file, index.ts re-export, cycle between modules, error taxonomy, error naming, TSDoc habits, layer naming, test file organization, __test__ directory, why is it written like this"
 ---
 
 # Effect v4 house style
@@ -21,38 +21,21 @@ these before inventing a local convention.
   imports explicitly from the defining module. A barrel anywhere else — or a
   namespace object collecting cross-module implementations — is forbidden:
   a namespace object that gathers implementations pulling different engines
-  kills tree-shaking silently (measured in this kit: 506 bytes vs 129.4 kB).
+  kills tree-shaking silently, retaining every engine for a consumer that
+  uses one.
 - **Grouped statics are the sanctioned exception, and their form is a static
   class**: same-module variants of one concept ship as
   `export class X { private constructor() {} static readonly a = a; … }`,
   never as an `as const` object — an `as const` object's member types are
   inferred in the built `.d.ts`, which silently drops every member's TSDoc.
-  The line is *same module, one concept* — never cross-module, never
-  one-per-engine. A same-named **interface** never blocks the class form,
-  generic or not: the class merges with it when it declares the same type
-  parameters (same count and names, no conflicting defaults; variance
-  annotations are optional — a mismatch is TS2428), under a `biome-ignore`
-  for `noUnsafeDeclarationMerging`. `ResolvedTsconfig` and `GitHubFixtures`
-  (a statics-only class merged with the fixture-map interface) are the
-  precedents; `ActionsOidc` is the plain case with no same-named type at all.
-  **The holdout rule, stated once:**
-  - **A same-named `type` alias forces a holdout.** A class cannot share its
-    name with a `type` (TS2300, duplicate identifier) and a `type` cannot
-    merge, so the value stays a `const` — `as const`, or explicitly typed when
-    its members need declared signatures — with the rationale and every
-    member's TSDoc on the const. Forced: `SpdxExpression` (`@effected/spdx`),
-    `EncryptedCodecKey` (`@effected/config-file`) and `UiKey`
-    (`@effected/cli-kit`, whose same-named union is the key model itself).
-  - **A by-choice holdout is a same-named interface that describes the
-    *values* the container builds** — a strategy's `name`/`resolve`, a
-    version accessor's `get`/`set`, an event descriptor, an envelope. Merging
-    it onto a statics-only class would hang those members on the class's
-    instance type, which nothing ever constructs, so the `as const` object is
-    allowed for exactly that reason and no other. By choice: `MergeStrategy`
-    and `VersionAccess` (`@effected/config-file`), `Envelope` and `JsonlEvent`
-    (`@effected/jsonl`).
-  - Everything else is the static class; a module-private `as const` lookup
-    table that is never exported is not a container and needs no exemption.
+  The line is *same module, one concept*. A same-named interface never blocks
+  the class form; a same-named `type` alias forces an `as const` holdout, and an
+  interface describing the values the container builds allows one by choice.
+  Before you export a container of statics, or keep an `as const` object, load
+  [static-containers.md](references/static-containers.md): it has the merge
+  conditions (TS2428), the holdout rule with every precedent, and why there is
+  no third shape. A container that drops its TSDoc compiles cleanly and ships
+  undocumented.
 - **`src/internal/` holds the engine; `index.ts` never exports from it.**
   Composition-only packages own no `internal/` at all — "no engine, only
   composition" is a legitimate shape.
@@ -88,8 +71,7 @@ these before inventing a local convention.
   `matchesExclude` appears in both shapes deliberately — the static takes the
   patterns as an argument, the instance method reads `this.exclude`; when both
   are useful, the instance method delegates to the static rather than
-  duplicating it. Two implementation agents each had to infer this rule by
-  reading `Manifest`, which is why it is written down here.
+  duplicating it.
 - **Service shape interfaces are `<Concept>Shape`** (`VersionCacheShape`,
   `ConfigFileShape<A>`). **Options records are `<Concept>Options`**, all
   fields `readonly`, non-obvious defaults documented per field.
@@ -105,8 +87,8 @@ these before inventing a local convention.
 - Static-namespace facades: `class X { private constructor() {} }` with
   `static readonly` members, for schema/parse AND layer-factory facades
   alike — never the `as const` object form, whose member TSDoc does not
-  survive into the built `.d.ts`. The grouped-statics rule above is the one
-  statement of which holdouts exist and why. Do not invent a third shape.
+  survive into the built `.d.ts`. The grouped-statics rule above says which
+  holdouts exist. Do not invent a third shape.
 
 ## Typed error taxonomy
 
@@ -145,25 +127,23 @@ these before inventing a local convention.
 
 ## Sum types: a domain-named discriminant on `Schema.Class` variants
 
-The kit's model for a sum type — production-proven by
-`@effected/github-actions`' `InstalledPackageManager` and named "the model"
-by its first consumer — is two (or more) `Schema.Class` variants carrying
+The kit's model for a sum type — `@effected/github-actions`'
+`InstalledPackageManager` is the precedent — is two (or more) `Schema.Class` variants carrying
 `Schema.tag` on a **domain-named** discriminant (`source`, not `_tag`),
 unioned via `Schema.Union`. Narrowing needs no ceremony
 (`x.source === "tool-cache"` narrows), `Schema.tag` auto-fills the
 discriminant in `make` so a double cannot mint a mismatched variant, and an
-impossible state becomes unrepresentable rather than guarded (the consumer
-deleted an `Effect.die` guard and its test on adoption). Prefer this over
+impossible state becomes unrepresentable rather than guarded, so an
+`Effect.die` guard and its test can go. Prefer this over
 one class with `optionalKey` fields plus a prose invariant.
 
-Two adoption traps, both hit live and both documented on the worked
-precedent's union TSDoc (`PackageManagerInstaller.ts`): the union's
+Two adoption traps: the union's
 inherited `make` typechecks against **both** variants and yields a
 confusing two-branch error — construct the variant classes; and
 `Partial<Variant>` includes the auto-filled tag field, so overrides-style
 doubles want `Partial<Omit<typeof Variant.Type, "source">>`. The
-`Schema.tag` mechanics live in `effect-v4-schema`'s foreign-contracts
-section.
+`Schema.tag` mechanics live in `effect-v4-schema`; load it before you
+put a discriminator on a class.
 
 ## API surface and TSDoc
 
@@ -187,32 +167,16 @@ section.
 ### When misuse is SILENT, document the wrong spelling and what it cost
 
 For any API whose wrong call sequence **typechecks, runs, and reports
-success**, ordinary "here is the right way" documentation does not work. The
-reader is not looking anything up — they already believe they know the shape,
-and nothing will contradict them. `GitBranch.upsert`
-(`packages/github/src/GitBranch.ts`) is the worked example, mirrored as a
-"Never" in `packages/github/CLAUDE.md`. Three ingredients, all cheap:
+success**, "here is the right way" documentation does not work: the reader
+already believes they know the shape. **Spell out the wrong sequence literally,
+state what it cost concretely, and name the consumer that hit it.** The test for
+whether an API qualifies: **would the wrong call go green?**
 
-1. **Spell out the wrong sequence literally** — "never `upsert(branch,
-   targetHead)` followed by `commitFiles`". It must match what the reader is
-   *about to write*, not only what they should write instead. Prose describing
-   the correct shape never collides with a plan; the wrong spelling does.
-2. **State what it cost, concretely.** The ~3-second window where the branch
-   equals its base, an open PR with an empty diff, GitHub auto-closing it, a
-   consumer losing its release PR while the run reported success. Severity is
-   what converts "noted" into "stop".
-3. **Name the consumer that hit it.** That is how a reader recognizes their
-   own code in the description.
-
-It works. A port onto the kit read that docstring, recognized the sequence in
-the action it was porting, and flagged it as a decision needing a human ruling
-— finding a live bug instead of faithfully reproducing it. Literal parity
-would have carried the defect forward.
-
-Apply it deliberately to the other ordering-sensitive and upsert-shaped
-surfaces, not just where someone has already been burned. The test for whether
-an API qualifies: **would the wrong call go green?** If yes, the anti-pattern
-belongs in the docstring.
+Before you document an upsert-shaped, ordering-sensitive or otherwise
+silently-misusable API, load
+[silent-misuse-docs.md](references/silent-misuse-docs.md): it walks the three
+ingredients through a worked example. A docstring that only describes the right
+shape never collides with the reader's plan, so the bug ships again.
 
 ## Services and layers
 
@@ -288,9 +252,14 @@ Details in `effect-v4-observability`; the house numbers:
 
 ## Related skills
 
-`effect-v4-schema` (Schema depth: Class-vs-Struct, optionality, make-vs-new,
-brands — plus its `references/house-style.md` for Schema-specific house
-patterns), `effect-v4-services-layers` (memoization discipline),
-`effect-v4-testing` (false greens), `effect-api-extractor-bases` (the `_base`
-idiom), `hardening-a-parser-port` (input hardening), `effected-packages`
-(what the kit ships).
+- `effect-v4-schema` — Schema depth: Class-vs-Struct, optionality, make-vs-new, brands, and its house-style reference for Schema-specific patterns. Load it before you write or change a schema.
+- `effect-v4-services-layers` — the memoization discipline and layer mechanics. Load it before you compose layers.
+- `effect-v4-testing` — the false-green catalogue. Load it before you trust a green suite.
+- `effect-api-extractor-bases` — the `_base` idiom and `{@link}` rules. Load it when the build reports an `ae-*` code.
+- `hardening-a-parser-port` — input hardening. Load it before a parser takes untrusted text.
+- `effected-packages` — what the kit ships. Load it before you write a capability the kit may own.
+
+## Additional resources
+
+- [references/static-containers.md](references/static-containers.md) — the statics-only class form, when a same-named interface merges with it, the forced and by-choice `as const` holdouts with every precedent, and the private lookup-table exemption. Load when: exporting several same-concept values or layer factories from one module, a container must share its name with a type or interface, or reviewing an exported `as const` object.
+- [references/silent-misuse-docs.md](references/silent-misuse-docs.md) — the three ingredients of a docstring for an API whose wrong use goes green, with the `GitBranch.upsert` worked example. Load when: documenting an upsert, a multi-step sequence, or any API where the wrong call order typechecks and reports success.

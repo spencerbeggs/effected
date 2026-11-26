@@ -102,9 +102,8 @@ row's members and generalising is how that gets mis-diagnosed: `readDirectory`
 is absorbable, `makeDirectory` is not.
 
 **None of this is a reason to stub `layerNoop` better — it is the argument for
-`@effected/memfs`.** This repo's standing rule (root `CLAUDE.md`): a test
-needing `FileSystem` provides `@effected/memfs`, never a hand-rolled
-`layerNoop` double, because `layerNoop` is deny-by-default and a stub encodes
+`@effected/memfs`.** The house rule: a test needing `FileSystem` provides
+`@effected/memfs`, never a hand-rolled `layerNoop` double, because `layerNoop` is deny-by-default and a stub encodes
 only what its author remembered. `MemoryFileSystem` implements all three rows
 honestly — a directory really is created, a removal really removes — so
 misbehaviour is injected as a **fault handler**, not as a stub body. The rule
@@ -135,13 +134,68 @@ link-following ports, `..` after links, mtime units) →
 **[memfs.md](./memfs.md)**.
 
 A suite-boundary layer cannot vary per test, so several filesystem fixtures need
-**one `layer(...)` block per fixture** — the house shape in
-`packages/walker/__test__/`.
+**one `layer(...)` block per fixture**.
 
 **Every stub effect goes through `Effect.suspend`.** A recorder that pushes
 eagerly logs calls that never executed — `layerNoop({ readFileString: (p) => {
 calls.push(p); … } })` records a read that was only *described*. Worked probe →
 [false-greens.md](./false-greens.md).
+
+## A boundary-tier package tests real IO with no platform package
+
+`Path.layer` comes from `effect` core and is the POSIX `Path` only (`/`
+separator, POSIX semantics): provide it in tests, never in code under `src/`,
+where it would give Windows users POSIX paths. The filesystem double is
+`@effected/memfs`, a pure package with no `node:*` import. So a package such as
+`@effected/walker` tests filesystem behavior with zero `@effect/platform-node`
+devDependency:
+
+```ts
+import { MemoryFileSystem } from "@effected/memfs";
+import { assert, layer } from "@effect/vitest";
+import { Effect, FileSystem, Layer, Path } from "effect";
+
+layer(Path.layer)("path ops", (it) => {
+  it.effect("Path is in R, no Effect.provide in the body", () =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      assert.strictEqual(path.dirname("/a/b"), "/a");
+    }));
+});
+
+const Volume = Layer.merge(Path.layer, MemoryFileSystem.layerWith({ "/a/.rc": "" }));
+
+layer(Volume)("seeded filesystem", (it) => {
+  it.effect("fs.exists consults the volume", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      assert.isTrue(yield* fs.exists("/a/.rc"));
+      assert.isFalse(yield* fs.exists("/a/other"));
+    }));
+});
+```
+
+**The one exception to memfs is an oracle test that runs a third-party
+engine** (the tool your code mirrors, such as `@changesets/apply-release-plan`
+or a package manager) on the same input as your code: the engine reads
+`node:fs` and real git itself, where no volume can reach it. Copy the fixture
+into a temporary directory, run both sides there over `@effect/platform-node`,
+and keep every other test on memfs.
+
+## A service built on `@effected/store`, and an app on `@effected/app`
+
+A service built on `@effected/store` is tested over its REAL implementation,
+never a hand-written double: share one implementation effect written against
+`Store` between `layer(filename)` (production, `Store.layerSqlite`) and a
+`layerMemory()` FACTORY over `Store.layerTest({ migrations })`, which opens a
+fresh migrated `:memory:` database per build. A factory, not a const, so two
+consumers in one composed graph never share a database by reference
+memoization. Pair it with `@effected/memfs` for a fully hermetic pipeline.
+
+An application wired through `@effected/app` tests over `AppTest.layer(options)`
+from `@effected/app/testing` — fixed XDG paths, `:memory:` `Store`/`Cache` and a
+memfs volume, `R = never`; `@effected/memfs` is that subpath's optional peer, so
+add it as a devDependency.
 
 ## Faulting ONE method of a real layer
 

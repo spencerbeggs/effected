@@ -61,12 +61,12 @@ describe("CliUi.live: when a stream is subscribed", () => {
 	);
 
 	it.live(
-		"a stream that forks its upstream (merge) subscribes after live returns: an event published at once is lost",
+		"a stream that forks its upstream (buffer) subscribes after live returns: an event published at once is lost",
 		() =>
 			Effect.gen(function* () {
 				const fake = makeFakeStreams();
 				const pubsub = yield* PubSub.unbounded<Ev>();
-				const events = Stream.merge(Stream.fromPubSub(pubsub), Stream.never).pipe(
+				const events = Stream.buffer(Stream.fromPubSub(pubsub), { capacity: 16 }).pipe(
 					Stream.takeUntil((event) => event._tag === "End"),
 				);
 				const handle = yield* liveOn(fake, optionsOf(events), { interactive: false });
@@ -82,6 +82,21 @@ describe("CliUi.live: when a stream is subscribed", () => {
 					"tick 7 was published before the subscribe",
 				);
 			}).pipe(Effect.scoped),
+	);
+
+	it.live("a merged PubSub-backed stream is subscribed when live returns: merge starts both sides at once", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams();
+			const pubsub = yield* PubSub.unbounded<Ev>();
+			const events = Stream.merge(Stream.fromPubSub(pubsub), Stream.never).pipe(
+				Stream.takeUntil((event) => event._tag === "End"),
+			);
+			const handle = yield* liveOn(fake, optionsOf(events), { interactive: false });
+			yield* PubSub.publish(pubsub, tick(7));
+			yield* PubSub.publish(pubsub, End);
+			yield* handle.done.pipe(Effect.timeout("1 second"));
+			assert.deepStrictEqual((yield* handle.state).seen, ["tick 7", "End"]);
+		}).pipe(Effect.scoped),
 	);
 });
 

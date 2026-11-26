@@ -8,10 +8,11 @@ description: "Use when a GitHub credential needs to come into existence, live so
 Two packages, one lifecycle: how a GitHub credential comes into existence,
 where it lives, and when it dies. `@effected/github` mints and revokes;
 `@effected/github-actions` persists a mint across a process boundary and
-guarantees it dies exactly once. For the request surface itself
-(`client.request`, `GitHubError`, pagination) see `github-api`. For wiring
-`Action.run` and `ActionRunOptions.layer`, see `actions-runtime`. For the
-`Secret` seam and `ActionState`, see `actions-state-and-secrets`.
+guarantees it dies exactly once. Load `github-api` before you make
+requests with the token (`client.request`, `GitHubError`, pagination),
+`actions-runtime` before you wire `Action.run` and `ActionRunOptions.layer`,
+and `actions-state-and-secrets` before you touch the `Secret` seam or
+`ActionState`.
 
 ## What you have
 
@@ -42,7 +43,8 @@ guarantees it dies exactly once. For the request surface itself
 - **Build a `layerTest` from the member-usage table, not from a stack
   trace.** Each `GitHubToken` member touches an exact, documented set of
   `ActionState`/`ActionOutputs`/`GitHubApp` members — stub exactly those.
-  See [`references/token-lifecycle.md`](references/token-lifecycle.md).
+  Before you write a `GitHubToken` test double, load
+  [`references/token-lifecycle.md`](references/token-lifecycle.md).
 - **Verify required scope at `pre`, not by waiting for a 403 in `main`.**
   Set `GitHubToken.provision`'s `required` option every time — leaving it
   unset skips verification silently.

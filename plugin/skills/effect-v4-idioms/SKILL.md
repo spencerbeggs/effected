@@ -1,522 +1,190 @@
 ---
 name: effect-v4-idioms
-description: Use when writing core Effect v4 code — generators (Effect.gen/Effect.fn), typed error handling and recovery (catch/catchTag/catchFilter/catchReason), yieldable errors, PlatformError on FileSystem/Path IO, Cause inspection, Scope and resource cleanup, forking and fibers, runtime/entrypoints, FiberRef-as-Context.Reference, structural equality, Config.schema inputs (a JSON-string input is Config.schema(Schema.fromJsonString(S)), and what withDefault does and does not swallow), and polling with Effect.repeat options instead of a recursive Effect.sleep. Teaches the idiomatic v4 spelling.
+description: >-
+  Use when writing core Effect v4 code — generators (Effect.gen/Effect.fn), typed error handling and recovery
+  (catch/catchTag/catchFilter/catchReason), yieldable errors, PlatformError on FileSystem/Path IO, Cause
+  inspection, Scope and resource cleanup, forking and fibers, runtime/entrypoints, FiberRef-as-Context.Reference,
+  structural equality, Config.schema inputs (a JSON-string input is Config.schema(Schema.fromJsonString(S)), and
+  what withDefault does and does not swallow), and retrying or polling with Effect.retry/Effect.repeat options
+  instead of a recursive Effect.sleep. Teaches the idiomatic v4 spelling.
+when_to_use: >-
+  retry with backoff, poll until done, Effect.sleep loop, acquireRelease, finalizer, fork, Fiber, environment
+  variable, Config, Result, Cause, Effect.runPromise
 ---
 
 # Effect v4 core idioms
 
 The idiomatic way to write core v4 code — generators, errors, resources, fibers,
-runtime, equality. For *which module* to reach for in the first place (what is
-`Sink`, `RcMap`, `Latch`…), consult `effect-v4-module-index` — this skill owns
-patterns, not the map. For confirming that a name exists before you rely on it,
-see `effect-v4-source-lookup`. Every identifier below was verified to exist, and
+runtime, equality. This skill owns patterns, not the map.
+
+**Look it up first.** Before you write a retry loop, a poll, a cache, a
+resource wrapper, a parser or a path walk, find what core ships in
+[effect-v4-module-index](../effect-v4-module-index/SKILL.md)'s *Routing by
+task* table, then grep the kit:
+`grep -ri "<intent words>" "{{skill_dir effected-packages}}/references/constructs/"`.
+Confirm a name exists with
+[effect-v4-source-lookup](../effect-v4-source-lookup/SKILL.md) before you rely
+on it. Every identifier below was verified to exist, and
 every `file:line` citation checked against the vendored tree; when you reach
 past this list, run one runtime probe
 (`node --input-type=module -e "import * as Effect from 'effect/Effect'; console.log(typeof Effect.X)"`)
-before writing — v4 is a ground-up redesign and muscle memory lies.
+before writing — v4 is a ground-up redesign and muscle memory lies. An
+`undefined` means the name moved: read the `.d.ts` in `node_modules/effect/dist/`.
 
-## Generators — `Effect.gen` for workflows
+## Generators — `Effect.gen` for workflows, `Effect.fn` for operations
 
-`Effect.gen(function*() { ... })` is unchanged for the common case. Reach for it
-when a block *orchestrates*: multiple `yield*`, branching, reading several
-services, implementing a layer or handler.
-
-The one change bites service methods: a generator that needs `this` no longer
-takes the bare `this` argument. Pass it in an options object:
-
-```ts
-class Counter {
-  readonly step = 1
-  // v4: self lives in an options object, NOT Effect.gen(this, fn)
-  next = Effect.gen({ self: this }, function* () {
-    return yield* Effect.succeed(this.step + 1)
-  })
-}
-```
-
-## `Effect.fn` for reusable operations
+Reach for `Effect.gen(function*() { ... })` when a block *orchestrates*:
+several `yield*`, branching, reading services, implementing a layer or handler.
+A generator that needs `this` passes it in an options object —
+`Effect.gen({ self: this }, function* () { … })`, never `Effect.gen(this, fn)`.
 
 A parameterized operation you call from several places is `Effect.fn`, not an
 inline `Effect.gen`:
 
-```ts
-const loadUser = Effect.fn("loadUser")(function* (id: string) {
-  const row = yield* db.query(id)
-  return decode(row)
-})
-```
-
-- `Effect.fn("name")(function* …)` — named span **and** clean stack frames; use
-  at public/business operation boundaries so traces and errors carry the name.
-- `Effect.fn(function* …)` — bare, no name: still gets the stack-frame
-  ergonomics without minting a named span. Use inside a module where the span
-  would be noise.
-- `Effect.fnUntraced(function* …)` — escape hatch only (low-level internals, or
-  a deliberate tracing trade-off). Not a default.
-
-Split rule: reusable parameterized operation → `Effect.fn`; one-off inline
-workflow → `Effect.gen`.
-
-**`Effect.fn` is not generator-only.** A plain function that *returns* an Effect
-both runs and typechecks:
-
-```ts
-const double = Effect.fn("double")((n: number) => Effect.succeed(n * 2))
-```
-
-Reach for it when the body has nothing to `yield*` — you still get the named span
-and the stack frames, without a generator wrapping a single expression. The
-generator is the common case, not a requirement.
-
-Two semantics of the plain-function form worth stating: the body is **lazy** —
-it runs when the returned effect is *executed*,
-not when `double(21)` is called (calling the wrapped function only constructs
-the effect); and a **`throw` from the body becomes a `Die` defect**, not a
-typed failure — the plain form gives you no typed error channel for free, so a
-body that can throw belongs in `Effect.try`, or the throw escapes as a defect.
+- `Effect.fn("name")(function* (id: string) { … })` — named span **and** clean
+  stack frames; use at public/business operation boundaries.
+- `Effect.fn(…)` — bare: the stack frames without a named span, for inside a
+  module where the span would be noise.
+- `Effect.fnUntraced(…)` — escape hatch only, never a default.
+- **`Effect.fn` is not generator-only.** `Effect.fn("double")((n: number) => Effect.succeed(n * 2))`
+  works when there is nothing to `yield*`. The body is **lazy** (it runs when
+  the effect executes, not when `double(21)` is called), and **a `throw` from it
+  is a `Die` defect**, so a body that can throw belongs in `Effect.try`.
 
 ## Wrapping a callback API — `Effect.callback`
 
-Wrapping a callback API is **`Effect.callback`**. There is no `Effect.async` —
-the name resolves to `undefined`, so reaching for it fails at the call site with
-a "not a function" that points nowhere near the cause.
-
-**Resuming runs the fiber synchronously, on the caller's stack.** Once the
-effect has suspended, `resume(effect)` evaluates the fiber right there (the
-`Async` primitive's `fiber.evaluate`, `callbackOptions` in
-`internal/effect.ts`), so everything after the `yield*` runs *inside* whatever
-called `resume` — React's commit phase, an event emitter's dispatch loop, a
-stream's `data` handler — before that call returns. When the caller is
-mid-operation and must finish first (React has not yet reported a frame that
-threw; an emitter is still iterating its listeners), defer the resume:
+There is no `Effect.async`; it is `undefined`, and the "not a function" points
+nowhere near the cause. Use **`Effect.callback`**. **Resuming runs the fiber
+synchronously, on the caller's stack** (`callbackOptions` in
+`internal/effect.ts`): everything after the `yield*` runs inside whatever called
+`resume` — React's commit phase, an emitter's dispatch loop — before that call
+returns. When the caller must finish first, defer it:
 `queueMicrotask(() => resume(Effect.void))`.
 
 ## Error handling — `catch*` recovery
 
-The recovery family is spelled `catch*`, with `Filter` and `Reason` variants.
-The idiomatic recoveries:
-
 - **`Effect.catchTag(tag, handler)` / `Effect.catchTags({ Tag: handler })`** —
-  targeted typed recovery, both unchanged. Default choice for domain errors.
-  `catchTag` also accepts a non-empty tag ARRAY sharing one handler —
-  `Effect.catchTag(["UnknownRefError", "GitCommandError"], () => fallback)` —
-  which obviates `catchTags` boilerplate when several tags route to the same
-  recovery (`Effect.ts:2910` `Arr.NonEmptyReadonlyArray<Tags<E>>`).
-- **`Effect.catch(handler)`** — recover from any typed failure; there is no
-  `catchAll`. **`Effect.catchCause(handler)`** for full-cause infra handling,
-  **`Effect.catchDefect(handler)`** for defects.
-- **`Effect.match({ onFailure, onSuccess })`** — totalize an effect to a plain
-  value when you want no failure channel left.
-
-Selective recovery now takes a `Filter`, not an `Option`-returning predicate:
-
-```ts
-import { Effect, Filter } from "effect"
-
-Effect.fail(42).pipe(
-  Effect.catchFilter(
-    Filter.fromPredicate((e: number) => e === 42),
-    () => Effect.succeed("caught")
-  )
-)
-```
-
-Use `Effect.catchCauseFilter` for the cause-level equivalent.
+  the default for domain errors. `catchTag` also takes a non-empty tag array
+  sharing one handler (`Effect.ts:2911` `Arr.NonEmptyReadonlyArray<Tags<E>>`).
+- **`Effect.catch`** for any typed failure (no `catchAll`), **`catchCause`** for
+  the full cause, **`catchDefect`** for defects, **`Effect.match`** to totalize.
+- Selective recovery takes a `Filter`, not an `Option`-returning predicate:
+  `Effect.catchFilter(Filter.fromPredicate((e: number) => e === 42), () => Effect.succeed("caught"))`;
+  `Effect.catchCauseFilter` is the cause-level form.
+- **`Effect.catchReason(tag, reasonTag, handler)`** recovers a nested `reason`
+  (an `AiError`'s `RateLimitError`) and keeps the parent error.
 
 **`Effect.catch` recovers typed failures ONLY — defects and interrupts pass
-straight through.** `Effect.fail("x").pipe(Effect.catch(h))`
-succeeds with the handler's value, while the same pipe on `Effect.die` and
-`Effect.interrupt` exits `Failure` with the `Die`/`Interrupt` reason intact.
-The corollary bites in code whose error channel is later declared `never`: a
-bare `JSON.parse` (or any throwing host call) inside such a function is a
-**defect**, so no downstream `Effect.catch` will absorb it — it escapes through
-the `never` channel. Wrap the throwing call locally (`try/catch` or
-`Effect.try`) at the point it can throw; do not assume a catch further out has
-you covered.
+straight through.** A bare `JSON.parse` in a function whose channel is `never`
+is a defect no catch further out absorbs; wrap it in `Effect.try` where it
+throws. Before you write recovery around a finalizer, an interrupt or a throwing
+call, load [errors-and-causes.md](./references/errors-and-causes.md): a typed
+failure that meets a defect is **demoted to a `Die`**, so your `catchTag`
+silently stops running.
 
 ## `PlatformError` — the error type of core IO
 
-Core `FileSystem` / `Path` operations fail with `PlatformError`, and its shape
-is not guessable: `effect` re-exports the module **as a namespace**
-(`export * as PlatformError from "./PlatformError.ts"`, index.ts:507) and the
-error **class** is declared inside it (PlatformError.ts:163, a
-`Data.TaggedError("PlatformError")`). So the type you write is the doubled
-`PlatformError.PlatformError`:
+Core `FileSystem` / `Path` operations fail with `PlatformError`. The module is
+re-exported **as a namespace** and the class
+(PlatformError.ts:163, a `Data.TaggedError("PlatformError")`) lives inside it,
+so the type is the doubled `PlatformError.PlatformError`, from
+`import type { PlatformError } from "effect"`. Never type the channel `unknown`
+because the name looks like a typo.
 
-```ts
-import type { PlatformError } from "effect";
-import { Effect, FileSystem, Path } from "effect";
-
-const isGitRoot = (
-  dir: string,
-): Effect.Effect<boolean, PlatformError.PlatformError, FileSystem.FileSystem | Path.Path> =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem;
-    const path = yield* Path.Path;
-    return yield* fs.exists(path.join(dir, ".git"));
-  });
-```
-
-Written once it looks like a typo — which is exactly why it gets replaced with
-`unknown`. Do not: typing a `FileSystem`-backed channel `unknown` violates the
-house standard (never collapse errors to `string`/`unknown` early) when the
-precise type is one `import type` away. `fs.exists: (path: string) =>
-Effect.Effect<boolean, PlatformError>` (FileSystem.ts:169). The `reason` field is where the detail lives: a `PlatformError` wraps
-a `BadArgument` (rejected caller input) or a `SystemError` (a host failure,
-carrying a normalized `SystemErrorTag`), `PlatformError.ts:39,114,163`.
-
-**`fs.exists` already absorbs `NotFound` — anything else is a real failure.**
-Core derives `exists` from `access` in `FileSystem.make` (`FileSystem.ts:574`):
-`access(path)` mapped to `true`, with a `PlatformError` whose `reason._tag` is
-`"NotFound"` mapped to `false` and **every other reason re-failed**
-(`EACCES`, `ENOTDIR`, `EIO`). So `fs.exists(p)` answers the question "is it
-there?" and refuses to answer "may I see it?". Appending
-`Effect.orElseSucceed(() => false)` therefore does not fix a missing case — it
-is a **policy choice** to report an unreadable path as absent, and it should be
-written and reviewed as one (a config *discovery* walk may want it; a
-"write here" check does not). The trap this replaces: adding the fallback
-because an in-memory test filesystem seemed to need it — `@effected/memfs`
-answers an unseeded path with `NotFound`, which `exists` already maps to
-`false` without help.
-
-**Construct one through the module's factories, never `new`.**
-`new FileSystem.SystemError(...)` fails with "is not a constructor" — the
-constructors are `PlatformError.systemError({...})` and
-`PlatformError.badArgument({...})`.
-
-Recover a nested `reason` without stripping the parent error
-from the channel (e.g. an `AiError` whose `reason` is a `RateLimitError`):
-
-```ts
-someAiCall.pipe(
-  Effect.catchReason("AiError", "RateLimitError", (reason) =>
-    Effect.sleep(reason.retryAfter)
-  )
-)
-```
-
-`Effect.catchReasons("AiError", { RateLimitError: h1, AuthError: h2 })` handles
-several reason tags at once; `Effect.catchEager(handler)` is the optimization
-variant of `catch` that runs synchronous recovery immediately.
+- **`fs.exists` maps `NotFound` to `false` and re-fails every other reason.**
+  `Effect.orElseSucceed(() => false)` on it is a policy (an unreadable path
+  reported absent), not a fix.
+- **Construct one with `PlatformError.systemError` / `badArgument`** —
+  `new FileSystem.SystemError(...)` is "not a constructor".
+- Before you branch on an IO failure or write an existence check, load
+  [platform-error.md](./references/platform-error.md) for the `reason` shape.
 
 ## Yieldable — not everything is an Effect
 
-Not every type is yieldable in v4, and `Option`/`Result` are narrower than the
-vendored notes claim. **The notes are the trap here.**
-`migration/yieldable.md` documents a `Yieldable` trait whose contract is
-`asEffect(): Effect<A, E, R>`, lists `Option` and `Result` as implementors, and
-states "the runtime calls `.asEffect()` internally when yielding". **The
-`Option`/`Result` claim does not hold**: neither implements `asEffect`, and
-`typeof Option.some(1).asEffect` is `undefined`. `asEffect` itself does exist
-in core (`Effectable.ts` — an opt-in base class and mixin a domain type can
-extend to become yieldable), but `Option` and `Result` are not built on it.
-Rung 1 is prescriptive and it has gone stale on this specific claim; the
-source settles it.
-
-Directly yieldable — **all five rows probed**, against two controls:
-a positive `Effect.succeed` that yielded, and a discriminating `Option.some(7)`
-that died, proving the harness could observe a failure to yield at all:
-
 | Value | `yield*` inside `Effect.gen` |
 | --- | --- |
-| `Effect` | works |
-| `Config` | works — it **is** an `Effect` (`Config<T> extends Effect<T, ConfigError>`, `Config.ts:113`) |
-| any `Context.Service` | works |
-| `Option` | **dies as a defect** |
-| `Result` | **dies as a defect** |
+| `Effect`, `Config`, any `Context.Service` | works |
+| `Option`, `Result` | **dies as a defect** — `Not a valid effect`, success cases included |
+| `Ref`, `Deferred`, `Fiber` | not yieldable — `Ref.get(ref)`, `Deferred.await(d)`, `Fiber.join(f)` |
 
-**`Option` and `Result` are both off the list, and both die the same way.**
-`yield* Option.some(7)` exits `Failure` with
-`Die("Fiber.runLoop: Not a valid effect: some(7)")`; `Option.none()`,
-`Result.succeed(42)` and `Result.fail("boom")` die identically: `yield*
-Result.succeed(42)` dies
-`"Fiber.runLoop: Not a valid effect: success(42)"`, against an
-`Effect.succeed` control that returned normally. Note the **success**
-cases die too: this is not "errors need a bridge", it is "these are not Effects
-at all". Their `[Symbol.iterator]` yields the value itself, and the fiber loop
-rejects anything carrying no `evaluate` (`internal/effect.ts:727`).
+- **Bridge with `Effect.fromOption(opt, () => new Missing())` and
+  `Effect.fromResult(result)`.** Effect's own migration note still calls
+  `Option` and `Result` yieldable; it is wrong.
+- **Read a `Result` off `.success` / `.failure`, never `.value`** — `.value` is
+  silently `undefined`, and there is no `.left` / `.right`.
+- **`Config` already IS an `Effect`** — pipe it into `Effect.catchTag`; there is
+  no `Effect.fromConfig`.
 
-The bridge is a module function on `Effect`, one per type:
+Before you yield anything that is not an Effect or a service, load
+[yieldable-and-bridges.md](./references/yieldable-and-bridges.md): a wrong guess
+dies at run time.
 
-```ts
-const u = yield* Effect.fromOption(maybeUser)              // Effect.ts:1996 — fails NoSuchElementError
-const v = yield* Effect.fromResult(Fmt.parseResult(text))  // Effect.ts:1954 — fails typed with the Result's E
-```
+## Config inputs
 
-`Effect.fromOption` takes an optional second argument for the failure
-(`Effect.fromOption(maybeUser, () => new UserMissing())`), so the
-`NoSuchElementError` default is not something you have to live with.
+- **`ConfigError` is `Config.ConfigError`**, not on the `effect` root; a
+  `catchTag` against the root import never matches.
+- **`Config.option` still carries a `ConfigError`** — only a missing key becomes
+  `Option.none()`.
+- **A JSON-string input is `Config.schema(Schema.fromJsonString(S), "NAME")`**,
+  never `Config.String` + `JSON.parse` + a decode.
+- **`withDefault` covers absent data only**; a malformed value is a typed
+  `ConfigError` it does not swallow, and `fromEnv` reads `""` as absent unless
+  `{ preserveEmptyStrings: true }`.
+- **Swap the provider with `Effect.provideService(effect, ConfigProvider.ConfigProvider, provider)`**;
+  there is no `Effect.withConfigProvider`.
 
-To read a `Result` **outside** an Effect, narrow with `Result.isSuccess` /
-`Result.isFailure`, then read the value off **`.success` / `.failure`** — not
-`.value`:
-
-```ts
-const r = Fmt.parseResult(text)
-if (Result.isSuccess(r)) use(r.success)   // NOT r.value — undefined, silently
-else report(r.failure)                    // NOT r.left / r.right — there is no Either
-```
-
-The `Success` variant carries `.success` and the `Failure` variant `.failure`
-(`Result.ts:166,102`); there is no `.value`, and no `.right` / `.left`. A read through `.value` compiles against `unknown` in
-a loose context and returns `undefined` at runtime with no error — the exact
-silent miss that cost a round-4 consumer a debugging cycle.
-
-No longer yieldable — call the module function:
-
-```ts
-const n = yield* Ref.get(ref)          // NOT yield* ref
-const v = yield* Deferred.await(deferred) // NOT yield* deferred
-const r = yield* Fiber.join(fiber)     // NOT yield* fiber  (Fiber is not an Effect)
-```
-
-To hand an `Option` or a `Result` to a data-first combinator, go through the
-same bridge — or just stay in a generator:
-
-```ts
-Effect.map(Effect.fromOption(Option.some(42)), (n) => n + 1)
-```
-
-**`Config` needs no bridge — it already IS an `Effect`.** `Config<T>` extends
-`Effect<T, ConfigError>` (`Config.ts:113`), so it pipes straight into the
-combinators, and there is no `Effect.fromConfig` to reach for:
-
-```ts
-Config.String("PORT").pipe(Effect.catchTag("ConfigError", () => Effect.succeed("8080")))
-```
-
-That `Config` sits beside `Option` in every "yieldable" list ever written — and
-yet needs the opposite treatment — is exactly what makes the pair a trap: the
-one that looks like it needs converting does not, and the one that looks
-interchangeable with it dies. Two more `Config` facts worth carrying:
-
-- **`ConfigError` is not on the `effect` root.** It is `Config.ConfigError`;
-  importing it from `"effect"` yields `undefined`, and a `catchTag` against that
-  silently never matches.
-- **`Config.option` still carries a `ConfigError`.** It turns a *missing key*
-  into `Option.none()`, but a **provider-source failure survives** — a present,
-  unparseable value still fails. It is not `Effect<Option<A>, never>`, and a test
-  that only exercises the absent-key path will "prove" that it is.
-- **A structured input is `Config.schema(codec, "NAME")` (`Config.ts:867`), and a
-  JSON-string input is `Config.schema(Schema.fromJsonString(S), "NAME")`** — not
-  `Config.String` + `JSON.parse` + `decodeUnknown*`, which re-derives the codec by
-  hand and puts a throwing host call in the seam. `withDefault` covers **absent
-  data only**: it replaces an `Absent` resolution and leaves every other error in
-  the channel (`Config.ts:506`). Probed under `ConfigProvider.fromEnv`
-  with `Config.schema(Schema.fromJsonString(Struct({ a: Number })), "INPUT_PAYLOAD")
-  .pipe(Config.withDefault({ a: -1 }))`: an unset variable **and `""`** both
-  resolve to the default; `"{nope"` and `'{"a":"str"}'` both fail with a
-  typed `ConfigError` the default does **not** swallow. The `""` case is the
-  provider's doing, not the schema's — `fromEnv` / `fromEnvRecord` /
-  `fromUnknown` map an empty string to *missing* unless
-  `{ preserveEmptyStrings: true }` (`ConfigProvider.ts:798`), and with that flag
-  set the same `""` is present-but-malformed and fails. That is exactly the
-  contract a GitHub Actions input needs — the runner exports an unset input as
-  `INPUT_NAME=""` — and a hand-rolled parse has to re-invent it.
+Before you read a structured, JSON or GitHub Actions input, or decide what an
+empty variable means, load [config-inputs.md](./references/config-inputs.md):
+it holds the probed `withDefault` table.
 
 ## Yieldable errors — schema-backed error classes
 
-Define errors as `Schema.TaggedError`. Naming trap: `Schema.TaggedErrorClass`
-is `undefined` — the current name is `Schema.TaggedError`, same curried call
-shape; code using the old name fails with "TaggedErrorClass is
-not a function". The payoff at the call site: an instance is yieldable —
-`yield* new MyError({...})` fails the effect — and it is `instanceof Error`.
-Capture unknown throwables with a `Schema.Defect()` field — `Schema.Defect` is a
-**callable**, not a bare schema value. The bare `cause: Schema.Defect`
-typechecks but throws at construction (`Cannot read properties of undefined
-(reading 'encoding')`); you must call it:
+Define errors as `Schema.TaggedError` (`Schema.TaggedErrorClass` is `undefined`).
+`yield* new MyError({...})` fails the effect, and the instance is
+`instanceof Error`. Capture an unknown throwable with a **called**
+`Schema.Defect()`; the bare `cause: Schema.Defect` typechecks and throws at
+construction:
 
 ```ts
 class ParseError extends Schema.TaggedError<ParseError>()("ParseError", {
   cause: Schema.Defect() // NOT Schema.Defect — the bare form throws when constructed
 }) {}
 
-Effect.try({
-  try: () => JSON.parse(input),
-  catch: (cause) => ParseError.make({ cause })
-})
+Effect.try({ try: () => JSON.parse(input), catch: (cause) => ParseError.make({ cause }) })
 ```
 
-`cause: Schema.Defect()` is **only** for wrapping an *unknown throwable* you
-caught. It is the wrong tool for a **synthetic domain error** you raise yourself
-from structured data (e.g. a navigation mismatch carrying `expected`/`depth`, or a
-validation failure with a known shape). There, the fix for a `reason: string`
-that flattens discriminating data is to **promote that data to typed fields** and
-keep `reason` as the human `message` — not to add a `Defect`. Rule of thumb:
-`Defect` captures a *foreign* failure; typed fields describe a *known* one.
+`Defect` captures a *foreign* failure; give a *known* one typed fields instead
+of a flattened `reason: string`.
 
-Failing through this typed channel — never letting a `throw` escape as an
-unhandled defect — is the invariant `hardening-a-parser-port` enforces.
-
-### Core's `EncodingError` carries the whole decoder input
-
-`Base64.decode`, `Base64Url.decode` and `Hex.decode` (`effect/encoding`) return
-`Result<Uint8Array, EncodingError>`, and `EncodingError` is a `Data.TaggedError`
-whose fields are `kind`, `module`, `message` and `input: unknown` — `input` is
-the **entire string being decoded**. The constructor assigns it as an ordinary
-own property and `toJSON` spreads it, so it rides along into `JSON.stringify`,
-`util.inspect`, `Cause.pretty`, and any typed error or event payload that keeps
-the core error by identity. When the input may be a secret — an encrypted
-envelope, a token, a key, a config file that turns out to be plaintext — never
-keep the core `EncodingError` as a `cause`. Map it to a message-only error at
-the decode site, or copy the fields you need and drop `input`. The messages
-name a length or one offending character, never the input, so `message` alone
-is safe to keep:
-
-```ts
-import * as Base64 from "effect/encoding/Base64"
-
-const decodeSecret = (raw: string) =>
-  Effect.mapError(Effect.fromResult(Base64.decode(raw)), (error) => {
-    const cause = new Error(error.message) // keeps `message`, drops `input`
-    cause.name = error._tag
-    return new SecretDecodeError({ cause })
-  })
-```
+**Core's `EncodingError` keeps the whole decoder input on the error**, and it
+rides into `JSON.stringify`, `Cause.pretty` and every payload. Before you
+decode a token, a key or an encrypted envelope with `Base64`, `Base64Url` or
+`Hex`, load [errors-and-causes.md](./references/errors-and-causes.md) and map
+the error to a message-only one, or the secret lands in your logs.
 
 ## Cause — a flat array of reasons
 
-v4 replaces the recursive `Cause` tree with a flat wrapper over an array. There
-are only three reason variants:
+A `Cause` is a flat `reasons` array of `Fail<E> | Die | Interrupt`. **Iterate
+`cause.reasons` and switch on `reason._tag`**, or use the guards
+(`cause.reasons.filter(Cause.isFailReason)`, `Cause.hasInterrupts(cause)`).
+`Cause.findError` returns a `Result`, `Cause.findErrorOption` an `Option`, and
+`Cause.combine` concatenates reasons.
 
-```ts
-interface Cause<E> { readonly reasons: ReadonlyArray<Reason<E>> }
-// Reason = Fail<E> | Die | Interrupt ; empty reasons array = the empty cause
-```
+## Memoizing, timeouts and polling
 
-Inspect it by iterating `cause.reasons` and switching on `reason._tag`, or with
-the reason-level guards and cause-level predicates:
+- **`Effect.cached` memoizes the first `Exit`, failures included**, so a retry
+  around the memo replays the failure. Before you cache anything a caller may
+  retry, load [memoizing-with-cached.md](./references/memoizing-with-cached.md)
+  for the success-only recipe.
+- **The timeout forms are `Effect.timeout`, `timeoutOption` and
+  `timeoutOrElse`** (`timeoutFail` and `timeoutTo` are `undefined`). A timeout
+  **interrupts** the source; the caller composes the ceiling, never a timeout
+  parameter on a service.
+- **Never wire an `AbortSignal` into core `HttpClient`** — it already aborts on
+  interruption. Before you add a timeout or cancellation, load
+  [timeouts-and-interruption.md](./references/timeouts-and-interruption.md).
 
-```ts
-const failures = cause.reasons.filter(Cause.isFailReason)
-if (Cause.hasInterrupts(cause)) { /* was interrupted */ }
-```
-
-- Reason guards: `Cause.isFailReason` / `isDieReason` / `isInterruptReason`.
-- Cause predicates: `Cause.hasFails` / `hasDies` / `hasInterrupts`.
-- Extraction returns `Result` or `Option`: `Cause.findError` (Result),
-  `Cause.findErrorOption` (Option), `Cause.findDefect`.
-- Merge causes with `Cause.combine` — the sequential/parallel distinction is
-  gone (it concatenates reasons).
-
-The idiom to internalize is *iterate `reasons`, switch on `_tag`*.
-
-### A defect beside a typed failure turns the failure into a defect
-
-When the runtime combines a typed failure with a defect — a finalizer that dies
-while a `Fail` is unwinding through its scope, or a sibling that dies — defects
-take precedence and the typed failure is **demoted to a `Die`** carrying the
-same value:
-
-```ts
-const program = Effect.scoped(Effect.gen(function* () {
-  yield* Effect.addFinalizer(() => Effect.die(new Error("finalizer failed")))
-  return yield* Effect.fail(new Cancelled())
-}))
-// reasons: Die(Cancelled), Die(Error: finalizer failed) — no Fail left
-```
-
-So `Effect.catchTag("Cancelled", ...)` does not run, which is the point: typed
-recovery cannot swallow a crash. Code that sorts a cause by reason kind must
-expect its own error class among the `Die` reasons. Filter it out by class when
-"the other defects" is what you mean, and look for it in `Die` reasons too when
-asking "was this cancelled".
-
-### Probing `catchCause` — the obvious experiment lies
-
-`Effect.catchCause`'s handler **does not run** when a fiber suspended in
-`Effect.never` is interrupted externally; it **does** run on an interrupt cause
-flowing through the chain (`Effect.interrupt`). The natural probe for "does
-`catchCause` swallow interrupts?" is the former and returns the wrong answer.
-Probe with `Effect.interrupt.pipe(Effect.catchCause(h))` — the handler runs,
-`Cause.hasInterrupts(c)` is `true`, and the effect **succeeds**. It swallows
-interruption. That is almost never what you want.
-
-## `Effect.cached` memoizes the first `Exit` — failures included, interrupts never
-
-`Effect.cached(self)` returns `Effect<Effect<A, E, R>>` whose inner effect
-replays the **first completed `Exit`**, whether it was a success or a failure. A
-failure is cached for the life of the memo.
-
-Interruption is the exception: it is never cached. Core treats it as
-abandonment (`makeCachedUnsafe` in `internal/effect.ts`). Concurrent callers
-share one in-flight run, and when every caller has left (each one interrupted by
-an `Effect.timeout`, an `Effect.race` or a cancelled request) the run is
-interrupted and detached, and the next caller starts a fresh one. A source that
-interrupts itself is not stored either, so the next call re-runs it. Probed: an
-interrupted sole first caller, then a second call, ran the source twice and the
-second call succeeded. The control was a failing source, which ran once across
-two calls.
-
-Failure caching is the trap. A caller reaching for the natural spelling,
-`Effect.retry(useTheMemo(), policy)`, silently does nothing: each retry replays
-the cached `Exit` without re-running the underlying effect. Library-side failure
-caching takes away the caller's ability to own the retry policy.
-
-**For success-only memoization**, give `Effect.cachedWithTTL` a TTL keyed on
-the exit:
-
-```ts
-const memo = yield* Effect.cachedWithTTL(expensiveEffect, (exit) =>
-  Exit.isSuccess(exit) ? Duration.infinity : Duration.zero,
-)
-```
-
-Success is computed once, across sequential and concurrent observers. A failure
-expires as soon as it is written, so the next call re-runs the source, and
-callers bound their own retries by wrapping the *inner* effect. Use bare
-`Effect.cached` only when you want a terminal failure, and say so in the TSDoc,
-because a consumer will not guess it.
-
-## The `Effect.timeout` family — three forms, and timing out interrupts
-
-Exactly three exist — `timeoutFail` and `timeoutTo`
-are both `undefined`.
-
-| Form | On timeout | Signature shape |
-| --- | --- | --- |
-| `Effect.timeout(duration)` | fails with **`Cause.TimeoutError`** (added to `E`) | `Effect<A, E \| Cause.TimeoutError, R>` |
-| `Effect.timeoutOption(duration)` | succeeds with `Option.none()` — no added error | `Effect<Option<A>, E, R>` |
-| `Effect.timeoutOrElse({ duration, orElse })` | runs the fallback (the old `timeoutTo`/`timeoutFail` shape) | `Effect<A \| A2, E \| E2, R \| R2>` |
-
-**When the timeout wins, the source effect is interrupted** — its finalizers
-run, so scoped resources clean up: a timed-out subprocess spawn closes its
-scope and kills the child, a timed-out acquire releases. A per-operation
-ceiling is therefore `op.pipe(Effect.timeout("30 seconds"))` composed by the
-*caller* — never a bespoke timeout parameter threaded through a service. The
-one sanctioned exception is a **package-owned ceiling that is part of the
-service's error contract**: `@effected/git`'s `runClassified` owns a fixed
-30s ceiling internally and maps expiry to its own `GitCommandError`, so
-`Cause.TimeoutError` never escapes its methods — the ceiling is absorbed
-into the taxonomy, not exposed as a parameter.
-
-## Interruption reaches the network — never wire an `AbortSignal` into core `HttpClient`
-
-Core's `HttpClient` already cancels the request: `HttpClient.make` gives every
-request its own `AbortController` and aborts it when the calling fiber is
-interrupted, and keeps it armed while the body is read (text, JSON, bytes or a
-stream). So a timeout, a `Fiber.interrupt` or a lost race releases the
-connection with no code of yours. Never build an `AbortController`, merge a
-signal into request options, or pass one through a service for an
-`HttpClient` call — that duplicates core's wiring and drifts from it.
-
-For a promise **outside** `HttpClient` — an SDK such as octokit, or a raw
-`fetch` you cannot replace — use the signal `Effect.tryPromise` hands you:
-`Effect.tryPromise({ try: (signal) => sdk.call({ signal }), catch: … })`. It
-is aborted when the fiber is interrupted, the same way.
-
-## Polling and repetition — `Effect.repeat` with options, not a recursive `Effect.sleep`
-
-A poll loop written as `const go = Effect.gen(function*() { ...; yield* Effect.sleep(d); return yield* go })`
-re-derives a schedule by hand and hides the stop condition in control flow.
-`Effect.repeat` (`Effect.ts:8253`) takes either a `Schedule` or an **options
-object** — `{ schedule?, times?, while?, until? }` — that
-`internal/schedule.ts:210` (`buildFromOptions`) folds into one schedule; `while`
-and `until` may return a `boolean` or an `Effect<boolean>`, and they see the
-effect's **result**. `Effect.retry` takes the same option shape keyed on the
-failure instead, and it retries **only a plain typed failure**: a cause that
-also carries a defect or an interruption (a `Cause.combine` of a `fail` and a
-`die`, say) is propagated on the first attempt, never retried.
+Poll with `Effect.repeat` options, never a recursive `Effect.sleep`:
 
 ```ts
 const status = yield* Effect.repeat(pollOnce, {
@@ -526,244 +194,106 @@ const status = yield* Effect.repeat(pollOnce, {
 })
 ```
 
-Three facts, each a trap for a hand-rolled loop:
+**`times: 2` is three runs, `until` with no `schedule` is a busy loop, and
+`Effect.retry` retries only a plain typed failure.** Before you write a poll or
+a retry policy, load [polling-and-retry.md](./references/polling-and-retry.md).
 
-- **The effect runs once before the schedule is consulted**, so `times: 2`
-  produces **three** runs (the doc's own gotcha, confirmed: a counter read 3);
-  `times` counts repetitions, not executions.
-- **The value is the last result**, and an `until` written as a type guard
-  narrows it — `Repeat.Return` (`Effect.ts:8098`) picks the refined type, so the
-  example above types as `"done"`, not `"pending" | "done"`. `while` with a
-  refinement narrows to the *excluded* branch.
-- **`until` alone with no `schedule` spins with no delay** (`passthroughForever`
-  is the default schedule) — a poll against a remote must always pass
-  `schedule: Schedule.spaced(...)` or it is a busy loop.
+## `Predicate` helpers — never hand-write a type guard
 
-## `Predicate` helpers — never hand-write `isString` / record guards
+The `Predicate` module ships them; retire a hand-rolled guard on contact.
+**`Predicate.isRecord` and `Predicate.isPlainObject` do NOT exist.** The guards
+that do: `isString`, `isNumber`, `isBoolean`, `isObject`, `isReadonlyObject`,
+`isObjectOrArray`, `isObjectKeyword`, `hasProperty`, `isTagged`, `isIterable`,
+`isNullish`/`isNotNullish`, `isTupleOf` and friends — pick the object
+refinement whose semantics you verified in the module.
 
-The official LLMS guidance, adopted as a house rule: **never** write your own
-type-guard helpers — the `Predicate` module ships them. A hand-rolled guard is
-both a duplication and a subtle-drift risk; retire any you find on contact.
+## Scope, resources and fibers
 
-Two names that read as real but are not: **`Predicate.isRecord` and `Predicate.isPlainObject` do
-NOT exist** (probed; the vendored `Predicate.ts` has neither). The
-guards that DO ship: `isString`, `isNumber`, `isBoolean`, `isObject`,
-`isReadonlyObject`, `isObjectOrArray`, `isObjectKeyword`, `hasProperty`,
-`isTagged`, `isIterable`, `isNullish`/`isNotNullish`, `isTupleOf`, and
-friends — for a record check, pick the object refinement whose semantics you
-verified in the module, not a remembered name.
+Tie cleanup to a scope with `Effect.acquireRelease(acquire, release)` inside
+`Effect.scoped`, plus `Effect.addFinalizer` for ad-hoc cleanup; satisfy a
+`Scope` requirement without closing it with **`Scope.provide(effect, scope)`**.
 
-## Scope and resource management
+The fork verbs: `Effect.forkChild` (there is no bare `fork`), `Effect.forkDetach`
+(no `forkDaemon`), `Effect.forkScoped`, `Effect.forkIn`; all take
+`{ startImmediately?, uninterruptible? }`, data-first or data-last. A `Fiber` is not an Effect:
+`yield* Fiber.join(fiber)`, or `Fiber.await` for the `Exit`.
 
-Resource idioms are unchanged — tie cleanup to a scope:
+- **Clearing a scope's reference and closing it must be one uninterruptible
+  step**, or an interrupt between them leaks the scope.
+- **`FileSystem.makeTempDirectoryScoped` releases with `Effect.orDie`**, so a
+  directory your work removed makes the close die.
+- **A child forked by a helper outlives the helper** — `forkChild` attaches to
+  the caller's fiber.
 
-```ts
-const resource = Effect.acquireRelease(
-  acquire,                      // Effect<A>
-  (a) => release(a)             // runs when the scope closes
-)
-
-Effect.scoped(
-  Effect.gen(function* () {
-    const a = yield* resource
-    yield* Effect.addFinalizer(() => Effect.log("cleanup"))
-    return yield* use(a)
-  })
-)
-```
-
-`Effect.addFinalizer` registers ad-hoc cleanup on the current scope. To satisfy
-an effect's `Scope` requirement without closing the scope, use **`Scope.provide`**
-— both `Scope.provide(effect, scope)` and
-`effect.pipe(Scope.provide(scope))` work.
-
-**Clearing a reference and closing its scope is two steps, not one.** An
-interrupt that lands between `Ref.set(current, Option.none())` and
-`Scope.close(scope, Exit.void)` leaves the scope open and unreachable: its
-finalizers never run, and whatever it held (a permit, a mounted view, a
-forked tick) leaks. Make the pair one uninterruptible step:
-
-```ts
-Effect.uninterruptible(Effect.andThen(Ref.set(current, Option.none()), Scope.close(scope, Exit.void)))
-```
-
-A low `Scheduler.MaxOpsBeforeYield` in a test is how to prove the window
-exists — see `effect-v4-testing`.
-
-**`FileSystem.makeTempDirectoryScoped`'s release is `Effect.orDie`.** The
-Node implementation releases with `Effect.orDie(remove(directory, { recursive: true }))`
-(the `makeTempDirectoryScoped` member of `@effect/platform-node-shared`'s
-`NodeFileSystem`; `makeTempFileScoped` is the same), so when the work already deleted or renamed the directory, the
-scope's close **dies** with the `NotFound` — a defect no `Effect.catch`
-reaches, surfacing far from the code that removed the directory. When the
-directory may be gone by release time, acquire it yourself:
-
-```ts
-const dir = yield* Effect.acquireRelease(fs.makeTempDirectory(), (path) =>
-  fs.remove(path, { recursive: true }).pipe(Effect.ignore),
-)
-```
-
-## Forking and fibers
-
-The fork verbs take an options object:
-
-- `Effect.forkChild` — child of the current fiber; there is no bare `Effect.fork`.
-  "Current fiber" means the **caller's**: a helper is not a fiber, so a child
-  it forks (a timeout timer, a heartbeat) keeps running after the helper
-  returns, until the calling fiber itself ends (`Effect.ts:9223`, the `forkChild`
-  doc: "attached to the parent fiber's scope"). A helper that forks must
-  `Fiber.interrupt` its children before it returns, or use `Effect.forkScoped`
-  under a scope it closes.
-- `Effect.forkDetach` — detached from the parent lifecycle; there is no `forkDaemon`.
-- `Effect.forkScoped` — tied to the current `Scope`.
-- `Effect.forkIn` — forked into a specific `Scope`.
-
-All four accept `{ startImmediately?: boolean; uninterruptible?: boolean | "inherit" }`
-(data-first and data-last). A `Fiber` is no longer an Effect, so await it
-explicitly:
-
-```ts
-const fiber = yield* Effect.forkChild(work)
-const result = yield* Fiber.join(fiber)   // or Fiber.await for the Exit
-```
-
-**Keep-alive is built in.** A fiber suspended on `Deferred.await` keeps the
-process alive without `runMain` — the core runtime has a reference-counted
-keep-alive timer. `runMain` (from the platform packages) is still the
-recommendation for SIGINT/SIGTERM handling, exit codes, and unhandled-error
-reporting, but it is no longer what keeps the event loop from draining.
+Before you hold a scope in a `Ref`, use a scoped temp directory your code may
+delete, or fork from a helper, load
+[scopes-and-fibers.md](./references/scopes-and-fibers.md): each leaks or dies
+far from the line that caused it.
 
 ## Fiber-local state — `Context.Reference`
 
-`FiberRef` and `FiberRefs` are removed (zero occurrences in core,
-and `effect/FiberRef` does not resolve as a module).
-**`Differ` is not** — it survives as a top-level module (`Differ.ts:29`,
-`interface Differ<in out T, in out Patch>`) for patch-based value updates; it
-simply no longer has a `FiberRef` to serve. Fiber-local state is now a
-`Context.Reference` — a service with a default value. Read it by yielding it,
-and scope a new value with `Effect.provideService` (there is no free-floating
-`FiberRef.set` mutation and no `Effect.locally`):
+`FiberRef` is removed; fiber-local state is a `Context.Reference`, read by
+yielding it and scoped with `Effect.provideService` (no `FiberRef.set`, no
+`Effect.locally`):
 
 ```ts
 const Verbose = Context.Reference<boolean>("Verbose", { defaultValue: () => false })
-
-const program = Effect.gen(function* () {
-  const verbose = yield* Verbose        // reads the current value
-  if (verbose) yield* Effect.log("noisy")
-})
-
-// scope a value to a sub-effect (replaces Effect.locally / FiberRef.set):
+const program = Effect.gen(function* () { if (yield* Verbose) yield* Effect.log("noisy") })
 program.pipe(Effect.provideService(Verbose, true))
 ```
 
-Built-in fiber refs moved to the `References` module — read them the same way:
-`yield* References.CurrentLogLevel`, `References.MinimumLogLevel`,
-`References.TracerEnabled`, `References.CurrentLogAnnotations`, etc.
-
-**There is no `References.CurrentConcurrency`** — the module's own header prose
-says the references "cover concurrency, scheduling, logging, tracing"
-(`References.ts:4`), but no concurrency reference is exported, and
-a `yield*` against the remembered name gets `undefined`. Concurrency is an
-*option* in v4 (`{ concurrency }` on `Effect.all` and friends), not an ambient
-reference. The twelve that do exist: `CurrentLogAnnotations`, `CurrentLogLevel`,
-`CurrentLogSpans`, `CurrentStackFrame`, `MinimumLogLevel`, `TracerEnabled`,
-`TracerSpanAnnotations`, `TracerSpanLinks`, `TracerTimingEnabled`,
-`UnhandledLogLevel`, `CurrentLoggers`, `LogToStderr`.
-
-**Overriding the config provider is ordinary service provision.** There is no
-`Effect.withConfigProvider`; `ConfigProvider.ConfigProvider` is itself a
-`Context.Reference` (`ConfigProvider.ts:351`), so swap it with
-`Effect.provideService(effect, ConfigProvider.ConfigProvider, provider)`. Reach
-for a combinator name instead and you get `undefined is not a function` at the
-call site — which reads like a bad import, not a missing API.
+Built-in refs live in `References`. **There is no
+`References.CurrentConcurrency`** — concurrency is the `{ concurrency }` option.
+Before you read a built-in reference by a remembered name, load
+[fiber-local-state.md](./references/fiber-local-state.md) for the twelve that
+exist.
 
 ## Runtime and entrypoints
 
-There is no `Runtime<R>` type carrying services and flags — the ambient service
-set is just `Context<R>`. The run functions live on `Effect`:
-
-- Capture the ambient services with `Effect.context<R>()`, then run a program
-  against them with `Effect.runForkWith(services)(program)`.
-- With no requirements: `Effect.runFork(effect)`.
-- Boundary choices: `Effect.runPromise` (hand off to a Promise host),
-  `Effect.runFork` (background/long-running), `Effect.runSync` (sparingly).
-- The `Runtime` module now holds only process-lifecycle utils
-  (`Runtime.makeRunMain`, `Runtime.defaultTeardown`).
-- **Import `@effect/platform-node` and `@effect/platform-bun` by subpath, never
-  from the package root:** `import * as NodeRuntime from
-  "@effect/platform-node/NodeRuntime"`, not `import { NodeRuntime } from
-  "@effect/platform-node"`. The root re-exports `NodeRedis`, so loading it
-  needs the package's required `redis` peer installed, even for a program that
-  never touches Redis; a subpath loads only its own module.
-
-For an application with multiple entrypoints sharing one layer graph, build a
-`ManagedRuntime` once and reuse it:
-
-```ts
-const runtime = ManagedRuntime.make(AppLayer)
-await runtime.runPromise(program)
-// runtime.runFork(...) / await runtime.dispose() on shutdown
-```
+There is no `Runtime<R>`; the ambient service set is `Context<R>`. Run at the
+boundary with `Effect.runPromise`, `Effect.runFork` or (sparingly)
+`Effect.runSync`; several entrypoints share one `ManagedRuntime.make(AppLayer)`.
+**Import `@effect/platform-node` and `@effect/platform-bun` by subpath**
+(`@effect/platform-node/NodeRuntime`): the root needs the `redis` peer. Before
+you write a `main`, load
+[runtime-and-entrypoints.md](./references/runtime-and-entrypoints.md).
 
 ## Structural equality — deep by default
 
-`Equal.equals` is **structural by default** in v4 — no `structuralRegion`
-opt-in. Plain objects, arrays, `Map`, `Set`, `Date`, and `RegExp` compare by
-value, and `ArrayBuffer` / `SharedArrayBuffer` compare and hash by their bytes:
-
-```ts
-Equal.equals({ a: 1 }, { a: 1 })   // true
-Equal.equals(NaN, NaN)             // true  (NaN equals itself)
-Equal.equals(new Uint8Array([1, 2]).buffer, new Uint8Array([3, 4]).buffer) // false
-```
-
-Mutable cells are no exception: `Ref` and `MutableRef` compare **by their
-current contents**. Two distinct refs holding equal values are `Equal`, hash
-alike, and collapse to one `HashSet` member or one `HashMap` key; and since the
-comparison reads the value at that moment, a ref mutated after insertion can
-stop matching its own entry. Never use a ref as a set member, map key or
-memo key; key on a stable id you own, or wrap it in `Equal.byReference`.
-
-To force identity comparison, opt out per object: `Equal.byReference(obj)`
-(non-mutating Proxy) or `Equal.byReferenceUnsafe(obj)` (marks the object itself,
-faster, permanent). Derive an `Equivalence` with `Equal.asEquivalence()`.
+`Equal.equals` compares plain objects, arrays, `Map`, `Set`, `Date`, `RegExp`
+and buffers by value; `NaN` equals itself. **`Ref` and `MutableRef` compare
+by their current contents**, so never use a ref as a set member, map key or memo
+key: key on a stable id, or wrap it in `Equal.byReference(obj)`, a
+non-mutating Proxy (`Equal.byReferenceUnsafe` marks the object permanently). Derive an
+`Equivalence` with `Equal.asEquivalence()`.
 
 ## Some names that look like values are calls
 
-A nasty family: the name **does** exist and is spelled exactly like the value you
-want, but it is a **factory with an optional (or no) argument** — so the uncalled
-reference is a perfectly good expression and the mistake surfaces far away, as a
-construction throw or a service that was never provided:
+The name exists, but it is a **factory with an optional (or no) argument**, so
+the uncalled reference type-checks and the mistake surfaces far away:
 
 | Write | Not | Source |
 | --- | --- | --- |
-| `Schema.Defect()` | `Schema.Defect` | `Schema.ts:9447` — `function Defect(options?: ErrorOptions)`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
-| `Schema.ErrorInstance()` | `Schema.ErrorInstance` | `Schema.ts:9369` — same shape, same optional-`options` trap, one page away in the same module. |
+| `Schema.Defect()` | `Schema.Defect` | `Schema.ts:9367` — `function Defect(options?: ErrorOptions)`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
+| `Schema.ErrorInstance()` | `Schema.ErrorInstance` | `Schema.ts:9295` — same shape, same optional-`options` trap, one page away in the same module. |
 | `TestClock.layer()` | `TestClock.layer` | `testing/TestClock.ts:571` — a *function* returning a Layer, unlike almost every other `layer` in core. |
 | `Schema.Literals(["a","b"])` | `Schema.Literals` | `Schema.ts:5092` — takes ONE array argument. |
 
-**The discriminator is the optional argument.** `Schema.Cause(e, d)`
-(`Schema.ts:11490`) and `Schema.Exit(...)` (`:15666`) are factories too, but their
-arguments are required, so forgetting to call them is an immediate type error.
-Only the zero-or-optional-arg factories type-check uncalled.
-
-**And do not over-correct: `layer` is usually a value.** `TestConsole.layer` is a
+`Schema.Cause(e, d)` (`Schema.ts:11354`) and `Schema.Exit(...)` (`:15467`) are
+factories too, but their arguments are required, so forgetting to call them is
+an immediate type error. **And do not over-correct:** `TestConsole.layer` is a
 plain `Layer.Layer<TestConsole>` (`testing/TestConsole.ts:330`), so
-`TestConsole.layer()` is an error. The pair sits in the same directory and reads
-identically. Check the declaration; do not pattern-match on the name.
+`TestConsole.layer()` is an error. Check the declaration, not the name.
 
-## Verify, don't remember
+## Additional resources
 
-One runtime probe beats an hour of type-error archaeology. From any package on
-the v4 catalog:
-
-```bash
-node --input-type=module -e "
-import * as Effect from 'effect/Effect'
-console.log(typeof Effect.TheApiYouWant)
-"
-```
-
-If it prints `undefined`, the name moved — check `node_modules/effect/dist/` for
-the `.d.ts`, or climb the `effect-v4-source-lookup` ladder, before writing.
+- [errors-and-causes.md](./references/errors-and-causes.md) — `Effect.catch` and a `never` channel, `catchReason`/`catchReasons`/`catchEager`, `Defect` versus typed fields, `EncodingError`'s leaked input, the `Cause` guards, a typed failure demoted to `Die`, and the `catchCause` probe that lies. Load when: recovery "doesn't run", a finalizer or a sibling fiber can die, you decode a secret, or you sort a cause by reason kind.
+- [platform-error.md](./references/platform-error.md) — the doubled type name, the `reason` shape, what `fs.exists` absorbs, and the factories. Load when: typing or branching on a `FileSystem`/`Path` failure, or writing an existence check.
+- [yieldable-and-bridges.md](./references/yieldable-and-bridges.md) — the probed yieldable table, why the migration note is wrong, `fromOption`/`fromResult`, reading a `Result`, and `Config` as an Effect. Load when: yielding an `Option`, `Result`, `Ref`, `Deferred` or `Fiber`, or a `Not a valid effect` defect appears.
+- [config-inputs.md](./references/config-inputs.md) — `Config.ConfigError`, `Config.option`, `Config.schema` with `fromJsonString`, the `withDefault` table, `preserveEmptyStrings`, and swapping the provider. Load when: reading a structured, JSON or GitHub Actions input, or deciding what an empty variable means.
+- [memoizing-with-cached.md](./references/memoizing-with-cached.md) — what `Effect.cached` stores, why interrupts are never cached, and success-only memoization. Load when: memoizing an effect a caller might retry.
+- [timeouts-and-interruption.md](./references/timeouts-and-interruption.md) — the three timeout forms, the package-owned-ceiling exception, and `HttpClient`/`tryPromise` cancellation. Load when: adding a timeout, a cancellation or an `AbortSignal`.
+- [polling-and-retry.md](./references/polling-and-retry.md) — the `Effect.repeat`/`Effect.retry` options object and its three traps. Load when: writing a poll, a backoff, or anything with `Effect.sleep` in a loop.
+- [scopes-and-fibers.md](./references/scopes-and-fibers.md) — the clear-and-close race, `makeTempDirectoryScoped`'s dying release, a helper's forked child, and keep-alive. Load when: a scope lives in a `Ref`, a temp directory may be removed early, or a helper forks a fiber.
+- [fiber-local-state.md](./references/fiber-local-state.md) — `Differ`'s survival, the twelve `References`, and no `CurrentConcurrency`. Load when: reading or overriding a built-in fiber reference.
+- [runtime-and-entrypoints.md](./references/runtime-and-entrypoints.md) — the run functions, `Effect.runForkWith`, the subpath-import rule and `ManagedRuntime`. Load when: writing a `main`, a Promise-host boundary, or several entrypoints over one layer graph.

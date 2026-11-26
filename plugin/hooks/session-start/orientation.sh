@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # SessionStart hook (no matcher: fires on every start, resume and compact, on
-# both hosts): brief the main agent that the "effected" plugin ships Effect v4
-# skills and four specialist subagents, that its own Effect knowledge is stale
-# by construction, and that the answers are already on disk, so it must
-# delegate or load a skill rather than guess.
+# both hosts): brief the main agent on the lookup ritual this plugin exists
+# for. Before it writes a helper, it greps the kit's construct index and reads
+# core's module map, at the absolute paths this build ships, and names the
+# construct it chose. Then: its Effect knowledge is out of date, the
+# specialists to delegate to, and every skill and agent by name.
 #
 # Also reports the vendored-source posture: whether the session's project
 # vendors Effect v4 source at .repos/effect and whether that pin matches the
@@ -14,6 +15,9 @@
 # response shape (nested hookSpecificOutput on Claude Code, a flat
 # additionalContext on Copilot). Without jq the library makes the hook a
 # silent no-op. Nothing here may write to stdout except the final hook_context.
+#
+# Subagents get no SessionStart briefing: hooks/subagent-start/maps.sh gives
+# the plugin's own agents the same paths.
 
 set -euo pipefail
 # shellcheck source=/dev/null
@@ -25,7 +29,7 @@ set -euo pipefail
 # deliberately a constant rather than read from the host repo's catalog — the
 # point is to tell a LAGGING repo what it should move to, so comparing against
 # that repo's own (possibly stale) catalog would defeat the check.
-EFFECT_PIN="4.1.5"
+EFFECT_PIN="4.1.6"
 
 # --- vendored-source posture -------------------------------------------------
 # The session's project: CLAUDE_PROJECT_DIR on Claude Code, else the envelope's
@@ -34,18 +38,18 @@ PROJECT_DIR="$(hook_session_dir)"
 VENDOR_NOTE=""
 
 if [ ! -f "$PROJECT_DIR/.gitmodules" ]; then
-	VENDOR_NOTE="This repo has NO .gitmodules, so it vendors nothing — you have no
-authoritative v4 source to read and are one step from guessing. Before doing
-Effect work here, vendor the Effect source at .repos/effect. Use silk's repos
-skill (/silk:repos, or \`savvy repos add\`) — it owns the sparse-checkout and
-read-only discipline; do not hand-roll \`git submodule add\`. Pin it to
-effect@${EFFECT_PIN}. Offer this to the user before starting; it is a
-one-time cost that pays for itself on the first API question."
+	VENDOR_NOTE="This repo has NO .gitmodules, so Effect's source is not vendored.
+Read node_modules/effect/src for what exists and its signature: it is the
+installed release, complete. Vendoring adds Effect's own notes and docs at
+.repos/effect: offer the user to add it with silk's repos skill (/silk:repos,
+or \`savvy repos add\`), pinned to effect@${EFFECT_PIN}, rather than a
+hand-rolled \`git submodule add\`."
 elif ! grep -q '\.repos/effect' "$PROJECT_DIR/.gitmodules" 2>/dev/null; then
-	VENDOR_NOTE="This repo has a .gitmodules but NO .repos/effect entry, so Effect v4
-source is not vendored here. Add it with silk's repos skill (/silk:repos, or
-\`savvy repos add\`), pinned to effect@${EFFECT_PIN}. Do not hand-roll
-\`git submodule add\` — the skill owns the sparse-checkout and read-only rules."
+	VENDOR_NOTE="This repo has a .gitmodules but NO .repos/effect entry, so Effect's
+source is not vendored. Read node_modules/effect/src for what exists and its
+signature. To vendor it, use silk's repos skill (/silk:repos, or
+\`savvy repos add\`), pinned to effect@${EFFECT_PIN}, rather than a hand-rolled
+\`git submodule add\`."
 else
 	VENDORED_REF=""
 	if [ -f "$PROJECT_DIR/.repos/config.json" ]; then
@@ -67,42 +71,62 @@ effect and the vendored source ever disagree, node_modules wins."
 	fi
 fi
 
+# --- the maps ----------------------------------------------------------------
+# Absolute paths into this build, so the ritual below is a command the agent
+# can run as written rather than a skill name it has to resolve.
+PLUGIN_ROOT="$(hook_plugin_root)"
+CONSTRUCTS="$PLUGIN_ROOT/skills/effected-packages/references/constructs"
+PACKAGE_REFS="$PLUGIN_ROOT/skills/effected-packages/references"
+MODULE_INDEX="$PLUGIN_ROOT/skills/effect-v4-module-index/SKILL.md"
+
 CONTEXT=$(
 	cat <<CONTEXT
 <effect_plugin>
-The "effected" plugin is loaded: Effect v4 development skills plus four
-specialist subagents, distilled from the @effected packages and the official
-Effect-TS v4 guides.
+The "effected" plugin is loaded: skills and four specialist agents for Effect v4
+and the @effected kit.
+
+<lookup_before_writing>
+Before you write a helper, a service or a module, look it up. The @effected kit
+and Effect core already ship most of what a task needs, and the costly misses in
+this kit were hand-rolled helpers whose replacement was already installed.
+
+1. Name the capability as a verb and an object: "parse YAML", "walk a
+   directory", "match a glob", "read package.json", "compare versions", "run a
+   command", "retry a request", "temp directory", "in-memory filesystem for a
+   test", "CLI flags", "MCP tool".
+2. Grep the kit's construct index for those words, one file per package:
+   grep -ri "walk" "${CONSTRUCTS}"
+   Then read the package reference the hit names:
+   ${PACKAGE_REFS}/<package>.md
+3. Read the "Routing by task" table and the module rows of core's map:
+   ${MODULE_INDEX}
+4. Confirm the export and its signature in source (effect-v4-source-lookup)
+   before you call it.
+5. Say which construct you will use, or which words you grepped and why no hit
+   fits, before you write the code.
+
+Stop and run steps 2 and 3 when you are about to write code over files, paths,
+globs, YAML, JSON, JSONC, TOML, Markdown, package.json, tsconfig, lockfiles,
+semver, subprocesses, HTTP, retries, caches, temp directories, environment
+config, CLI parsing, prompts or MCP, and have not run them in this task. Skip
+them only for code that composes constructs you already confirmed this task.
+</lookup_before_writing>
 
 <do_not_guess>
-READ THIS BEFORE WRITING ANY EFFECT CODE.
+What you know about Effect from training is out of date. This project is Effect
+v4, a redesign whose API differs from the one most training data shows. There is
+no Either module, no Context.Tag, and no @effect/cli or @effect/sql package; CLI,
+SQL, HTTP, AI and the platform contracts are modules of core. A name that feels
+familiar is the signal to look it up, not to write it.
 
-This project is Effect **v4 only**. Effect v4 is a ground-up redesign, not an
-increment on v3, and although it is stable, its API still looks nothing like v3.
-Whatever you know about Effect from training is v3-shaped and is **out of date by
-construction** — not "mostly right", not "close enough to adapt". Modules moved
-into core, Either is gone, @effect/cli and @effect/sql no longer exist as
-packages, and signatures you are confident about have changed.
-
-The answers are already on disk. Guessing burns time and tokens re-deriving
-what this plugin already states, and produces code that type-errors in ways
-that take an hour to unwind. So:
-
-- Do NOT write Effect from memory, and do NOT reason from a v3 API you
-  remember. If you are reaching for a name because it feels familiar, that is
-  the signal to stop and look it up.
-- DELEGATE the work: dispatch effect-developer to write it or effect-reviewer
-  to review and test it. Each arrives with these skills preloaded.
-- If dispatch is unavailable, LOAD THE SKILL instead — effect-v4-module-index
-  to find the right module, effect-v4-idioms and effect-v4-schema for the
-  constructs, effect-v4-source-lookup for the evidence ladder.
-- VERIFY before relying: the vendored source settles what exists and its
-  signature; only a runtime probe settles semantics. A probe beats an hour of
-  type-error archaeology.
-
-This plugin carries no migration material, by design — that era is over and
-the kit is v4-native. Nothing here, and nothing you write, should carry the
-older API's framing.
+- Delegate Effect work when dispatch is available: effect-developer writes it,
+  effect-reviewer reviews and tests it, action-engineer owns GitHub Actions and
+  GitHub API code. Each arrives with the skills and this lookup ritual, and
+  runs a simplifier pass over its diff before it reports.
+- Without dispatch, load the skills yourself: effect-v4-planning before a
+  design, then the skill for the construct you are writing.
+- The vendored source settles what exists and its signature. Only a probe run
+  from inside a package settles behaviour.
 </do_not_guess>
 
 <vendored_source>
@@ -110,173 +134,66 @@ ${VENDOR_NOTE}
 </vendored_source>
 
 <skills>
-Available via the Skill tool (several also auto-load on trigger):
-- effect-v4-planning — the design-first gate: run before writing any
-  implementation code. Walks four design pillars (data types, errors,
-  services/layers, observability, testing) and requires a compact design
-  summary before Schema.Struct/Context.Service gets touched.
-- effect-v4-module-index — the routing map for Effect core: every core module
-  (plus the unstable namespaces) in one what-it-is / when-to-reach-for-it
-  table. Consult FIRST when deciding which module a task needs.
-- effected-packages — the routing map for the @effected kit: what each package
-  contains, when to reach for it, and a per-package reference (services, usage,
-  testing machinery). Consult before building lockfile/config/glob/semver/XDG/
-  workspace/git capability the kit already ships.
-- effected-renovate — /effected-renovate, user-invoked: move a repository onto
-  a new @effected release. Bumps the catalog plugin, regenerates the lockfile,
-  and lists the upgrade-ledger entries the bump crossed, with the files where
-  each one meets your code.
-- effect-v4-source-lookup — the evidence ladder for confirming a v4 API before
-  relying on it: the vendored source settles existence and signature, only a
-  probe settles semantics.
-- effect-v4-house-style — the cross-cutting house style: module layout and the
-  cycle firewall, naming, typed-error taxonomy, TSDoc habits, layer
-  conventions, test organization, observability posture.
-- effect-v4-schema — the one Schema skill (the flagship): house "do this, not this"
-  rules + worked patterns (Class-vs-Struct, optionality, checks/refine/makeFilter,
-  codecs, the FromString static, make-vs-new, brand/Opaque, custom Equal/Hash) on
-  top of Effect's canonical guide split into loadable references/.
-- effect-v4-services-layers — Context.Service class form, Layer composition, and
-  the memoization discipline (build-once-by-reference; the layer-function trap).
-- effect-v4-idioms — core Effect: typed errors, Result, generators,
-  scope/resources, forking, structural equality.
-- effect-v4-cli — command-line programs: effect/cli in core plus
-  the @effected/cli-kit presentation boundary (main assembly, exit codes, stdout
-  vs stderr, human/agent/CI audiences, themed documents and failure reports,
-  prompts, Ink screens and live views, testing a built bin).
-- effect-v4-mcp — MCP servers on effect/ai: stdio wiring that keeps
-  stdout the wire, tools, failures an agent can read, resources, and the
-  in-process and spawned test clients.
-- effect-v4-observability — spans/logging/metrics; OTel composed at the edge,
-  libraries telemetry-agnostic, named spans on public fallible boundaries only.
-- effect-v4-testing — @effect/vitest, it.effect, test layers, property tests,
-  and the false greens (a "0 tests passed" run that exits 0, TestClock at the
-  epoch, an accumulating TestConsole).
-- building-a-format-package — the shared architecture of every @effected
-  format package (jsonc/yaml/toml/markdown): the module-per-concept surface,
-  the own-the-engine policy, the cross-package parity contract, and the
-  conformance-corpus harness.
-- building-schemastore-schemas — publishing JSON Schema documents from Effect
-  Schemas with @effected/schemastore and the schemastore CLI: the config file,
-  the published flag and drift policy, version labels, editor keyword
-  families, and the CI gate that retires a hand-rolled generator script.
-- building-a-package — effected package build and effected.toml for a library
-  built with the kit: every [package.build] key, publish groups, copy, plugins,
-  looseFiles, outSubdir overrides, exe, manifest drop/set, the workspace wiring
-  (links to src/, nodeOptions tsx, the effected-built condition), and reading
-  dist/prod/issues.json with buildOk first.
-- authoring-tsdoc — TSDoc for the build's API Extractor pass: the binary
-  @public/@internal release-tag policy, every ae-*/tsdoc-* fix (typeof locals
-  included), the supported-tag allow-list, custom tags via tagDefinitions, and
-  when a suppressWarnings rule is legitimate.
-- effect-api-extractor-bases — inline class factories + the narrow _base
-  suppression for a zero-warning API (no @public X_base const).
-- hardening-a-parser-port — depth guards, code-point/proto/C0 checks, and the
-  malformed-input-fails-as-a-typed-error-never-a-defect invariant.
-- design-patterns — proven architecture patterns for building on Effect v4 /
-  the @effected kit, indexed as loadable references; the first entry is the
-  carrier package pattern (core/engine/front ends -> carrier) for a tool
-  shipping more than one bin.
-
-The GitHub Actions / API suite — fifteen skills over @effected/github-actions,
-github, commands, npm and sbom. START at the router; the rest are named by it
-and load on demand:
-- building-a-github-action — the ROUTER: which package owns a capability,
-  which skill teaches it, what does NOT exist (no @actions/*, no ANSI API, no
-  GithubMarkdown/ReportBuilder/ErrorAccumulator successor), and the fact that
-  the action bundler and scaffold are downstream savvy-web tooling, not here.
-- designing-an-action — the build PROCESS for a new, rebuilt or ported
-  action: recon, a frozen parity contract with a known-unknowns ledger, one
-  persisted API dossier, a contracts-first walking skeleton whose stubs
-  succeed, then TDD fill per step. The router routes capabilities; this
-  sequences the whole build.
-- structuring-an-action — the canonical repo SHAPE: the annotated file tree,
-  where a piece of code belongs (entry point, step, shared service, shim),
-  and the structural standards and footguns that keep it that way. Designing
-  owns the order you build in; this owns the shape you build into.
-- bootstrapping-an-action — USER-INVOKED ONLY: the eight-question interview
-  that turns a fresh copy of the action template into a plan file, then hands
-  off to action-engineer running designing-an-action. Never auto-load it.
-- actions-runtime — Action.run, ActionServices, ActionRuntime.layer, the extra
-  layer that may require anything the runtime provides, failure rendering.
-- actions-inputs-outputs — ActionInput (Config, INPUT_ mangling) and
-  ActionOutputs, plus the Config.withDefault trap that silently swallows a
-  malformed input behind a default.
-- actions-reporting — logs, groups, buffers, annotations, job summaries, check
-  runs, sticky PR comments.
-- actions-state-and-secrets — ActionState, the Secret declassification seam,
-  DryRun, the DetachedProcess bare-pid guard.
-- actions-cache-and-artifacts — ActionCache, Artifact, BlobStore,
-  ToolInstaller, CacheKey; the Azure confinement and uses:-only-step traps.
-- github-api — the route IS the key (typed params and response, zero casts),
-  pagination, one retry policy, one GitHubError, upsert over TOCTOU.
-- github-app-tokens — GitHubApp, the client constructors, and the GitHubToken
-  provision/read/dispose bridge with its one-hour contract.
-- running-commands-and-tools — Run combinators, ToolDiscovery, LocalExec,
-  Redaction; every subprocess concept is core's and no implementation is.
-- release-and-publish — NpmRegistry, PackagePublish, NpmExecutor, release and
-  tracking tags, versioning strategies, the release-age gate.
-- supply-chain-attestation — SBOM, NTIA, in-toto/SLSA, OIDC, Sigstore signing,
-  attestation upload.
-- testing-actions — the makeTest/layerTest doubles convention, the scripted
-  octokit harness, and this domain's discriminating mutants.
+Load with the Skill tool; most also load on their own trigger.
+The maps, read before writing:
+- effect-v4-module-index — what Effect core ships, by task and by module
+- effected-packages — what each @effected package ships, with the construct index
+- effect-v4-source-lookup — confirming an API exists, its signature, its behaviour
+Effect v4:
+- effect-v4-planning — the design summary to write before implementation code
+- effect-v4-house-style — module layout, naming, error taxonomy, layer and test habits
+- effect-v4-schema — Schema classes, structs, optionality, checks, codecs, brands
+- effect-v4-services-layers — Context.Service, Layer composition, memoization
+- effect-v4-idioms — generators, typed errors, Result, Scope, fibers, Config
+- effect-v4-cli — effect/cli and @effected/cli-kit: output, exit codes, prompts, Ink
+- effect-v4-mcp — MCP servers on effect/ai and @effected/mcp-kit
+- effect-v4-observability — logging, spans, metrics, OpenTelemetry at the edge
+- effect-v4-testing — @effect/vitest, test layers, property tests, false greens
+- design-patterns — proven architectures, such as one carrier package for several bins
+- hardening-a-parser-port — depth guards and typed failures for untrusted text
+- building-a-format-package — the shared shape of the jsonc/yaml/toml/markdown packages
+Building and publishing a kit package:
+- building-a-package — effected package build, effected.toml, dist/prod/issues.json
+- authoring-tsdoc — release tags and every ae-*/tsdoc-* fix
+- effect-api-extractor-bases — class-factory bases and {@link} selectors
+- building-schemastore-schemas — JSON Schema from Effect Schemas, the drift gate
+- upgrade — /effected:upgrade, user-invoked: move a repository onto a new kit release
+GitHub Actions and the GitHub API (start at the router):
+- building-a-github-action — the router: which package and skill owns a capability
+- designing-an-action — the build order for a new, rebuilt or ported action
+- structuring-an-action — where each piece of an action's code belongs
+- bootstrapping-an-action — user-invoked only: the template interview
+- actions-runtime — Action.run and the runtime layer
+- actions-inputs-outputs — ActionInput, ActionOutputs, output contracts
+- actions-reporting — logs, summaries, check runs, pull-request comments
+- actions-state-and-secrets — ActionState, Secret, DryRun, detached processes
+- actions-cache-and-artifacts — caches, artifacts, blob stores, tool installs
+- github-api — typed REST and GraphQL calls, pagination, GitHubError
+- github-app-tokens — App and plain tokens and their lifecycle
+- running-commands-and-tools — subprocesses, tool discovery, redaction
+- release-and-publish — npm registry reads, publishing, release tags
+- supply-chain-attestation — SBOM, in-toto, SLSA, Sigstore, attestations
+- testing-actions — makeTest/layerTest doubles and the scripted octokit harness
 </skills>
 
 <agents>
-When subagent dispatch is available and permitted in this session, prefer
-delegating a whole Effect task to one of these specialists via the Agent tool
-over hand-rolling it inline — each arrives with the relevant skills preloaded
-and carries the discipline end to end. When it is not, load the matching skills
-directly and apply the same discipline inline; the skills are the substance,
-the agents are the delivery mechanism. The specialists:
-- effect-developer — writing NEW Effect v4 code (schemas, services, layers,
-  typed errors, CLIs). Delegate feature implementation here.
-- effect-reviewer — REVIEWING v4 code for idiom, error-channel, and API-surface
-  correctness, and writing or strengthening @effect/vitest tests. Delegate
-  review and test authoring here.
-- action-engineer — building, extending or debugging a GITHUB ACTION, a
-  release/publish pipeline, or any program talking to the GitHub API. Carries
-  the Actions suite above. Delegate whole action- and release-engineering
-  tasks here.
-- tsdoc-fixer — for a package built with \`effected package build\` (an
-  effected.toml, or a build script running it): drives its ae-*/tsdoc-*
-  diagnostics to zero in source, reading issues.json buildOk first, and
-  rebuilds to confirm; config and suppression changes come back as
-  recommendations. Dispatch it when such a build reports API Extractor
-  diagnostics; not for packages built with another toolchain.
+- effect-developer — writes new Effect v4 code: schemas, services, layers, CLIs, MCP servers
+- effect-reviewer — reviews Effect v4 code and writes or strengthens its tests
+- action-engineer — builds, extends or debugs a GitHub Action, a release pipeline or GitHub API code
+- tsdoc-fixer — drives a package's ae-*/tsdoc-* build diagnostics to zero in source
 </agents>
 
-The effected MCP server (\`effected\`) is bundled with this plugin; its tools are
-available when the project installs @effected/plugin.
-
-When a task is substantially "write or review Effect code" or "build an action
-/ call the GitHub API," dispatch the matching agent rather than doing it
-inline — when dispatch is permitted; otherwise load the same skills and do it
-inline. Either way what matters is the verify-against-the-installed-release,
-typed-error-channel, and hardening disciplines they carry, which are easy to
-drop when working freehand.
+The effected MCP server is bundled; its tools work once the project installs
+@effected/plugin.
 
 <dogfood_feedback>
-The effected plugin AND the @effected packages are actively dogfooding. Two
-feedback loops, both proactive:
-
-Plugin: if a skill, an agent, or this SessionStart hook gives wrong,
-unhelpful, or confusing guidance, fires at the wrong moment, recommends a v4
-API that does not match the installed \`effect\` release, or shows any rough
-edge worth improving, note it as you go.
-
-Packages: if an @effected package has a gap in its services, an API that
-reads awkwardly or could compose more fluently, a capability you had to
-re-implement, or an idea for a new construct, service, layer, or package —
-that is signal the ecosystem wants. Suggest it to the user.
-
-When you dispatch one of the Effect agents, ask it to flag both kinds of
-findings and report them back to you. At the end of the session, surface what
-you noticed and ask the user — for example: "I hit X with the effected
-plugin. Want me to open an issue?" Open an issue ONLY if the user explicitly
-agrees (\`gh issue create --repo spencerbeggs/effected --title "..." --body "..."\`);
-never file one on your own judgement, and never treat this reminder as
-standing permission to file.
+The plugin and the @effected packages are being dogfooded. Note, as you go, any
+skill, agent or briefing that gave wrong or confusing guidance, or that
+recommended an API the installed \`effect\` does not have; and any @effected
+package with a gap, an awkward API, or a capability you had to write yourself.
+Ask dispatched agents to report both. At the end of the session, list what you
+noticed and ask the user whether to open an issue. Open one
+(\`gh issue create --repo spencerbeggs/effected\`) only when the user says yes.
 </dogfood_feedback>
 </effect_plugin>
 CONTEXT

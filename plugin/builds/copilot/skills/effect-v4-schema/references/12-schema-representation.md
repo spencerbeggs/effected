@@ -121,7 +121,7 @@ A live `Document` can contain functions in its ordinary annotations. These callb
 behavior:
 
 - a check can provide `toJsonSchema`
-- a declaration or check can provide `toCode`
+- a custom declaration or check can provide `toCode` (built-ins carry none: `Codegen` writes their code itself)
 
 Functions cannot cross the JSON persistence boundary. `toJson` removes them and keeps only JSON-valued ordinary
 annotations. Nested JSON arrays and objects are preserved; a complete annotation value is omitted when it contains a
@@ -368,7 +368,11 @@ const source = module.print()
   pass it as a dependency to `define`, never by string concatenation (a binding throws on string coercion).
 - Recursive representations must contain explicit suspensions.
 
-Opaque declarations and checks provide code through their `toCode` callbacks. A callback must interpolate the
+Built-in schemas and checks carry no `toCode` annotation: `Codegen` writes their code itself, from the arguments
+recorded when the schema or check was made (a `Date` bound mutated afterwards still generates its original value).
+Reading `annotations.toCode` off a built-in finds `undefined`; pass its representation to `addSchemas` and `print`
+instead. A custom declaration or check provides code through its own `toCode` callback, and so does a built-in whose
+representation id you change. A callback must interpolate the
 argument strings it is given unchanged and return a supported schema or type expression: imports, qualified names,
 generic and structural types, API calls, literal, object and array arguments, and zero-argument arrows. Anything else
 throws with its document path, so move code such as a function with local declarations into an imported helper.

@@ -18,6 +18,12 @@ This table routes a capability to the package and skill that own it; it does not
 
 ## I need to… → reach for…
 
+Find the row before you write the code. For a need no row names, grep the kit
+by what you want done before you write it:
+`grep -ri "<intent words>" "${CLAUDE_PLUGIN_ROOT}/skills/effected-packages/references/constructs/"`.
+A runner capability built by hand on `process.env` or `@actions/*` skips the
+typed errors, masking and test doubles the suite ships.
+
 | I need to… | Reach for | Skill |
 | --- | --- | --- |
 | scaffold a new action's build files in a package | `effected action init` (or the `action_init` MCP tool): `effected.toml`'s `[action]` tables, `action.yml`, `src/main.ts`, `src/program.ts` and a `tsconfig.json` on the kit's preset, ready for `effected action build` | `structuring-an-action` |
@@ -109,11 +115,11 @@ This table routes a capability to the package and skill that own it; it does not
 - No rate-limiter subsystem or proactive throttling — one `RetryPolicy` lives inside the client, and `client.rateLimit` exposes the headers for a caller that wants to pace itself.
 - No per-resource error classes — one `GitHubError` carries a `kind` discriminant.
 - No separate GraphQL client construct — GraphQL is a member of the client.
-- No report-shaping construct — but **`GitHubMarkdown` does ship the GFM writer** (`table`, `tableFor(schema)`, `heading`, `link`, `code`, `codeBlock`, `list`, `details`, `raw`), from `@effected/github-actions`, and `ManagedDocument` / `CheckDocument` ship the document surfaces. "Shaping" means the arrangement of a report — which facts, in which order — not the primitives. Never hand-roll a markdown writer: compose `GitHubMarkdown` pieces, or reach for `@effected/markdown` for a document you build as a tree. See `actions-reporting`.
+- No report-shaping construct — but **`GitHubMarkdown` does ship the GFM writer** (`table`, `tableFor(schema)`, `heading`, `link`, `code`, `codeBlock`, `list`, `details`, `raw`), from `@effected/github-actions`, and `ManagedDocument` / `CheckDocument` ship the document surfaces. "Shaping" means the arrangement of a report — which facts, in which order — not the primitives. Never hand-roll a markdown writer: compose `GitHubMarkdown` pieces, or reach for `@effected/markdown` for a document you build as a tree. Load `actions-reporting` before you shape a report.
 - No fan-out-and-accumulate construct — `Effect.partition(items, f)` returns `[successes, failures]` and never fails; `Effect.all(effects, { mode: "result" })` is the per-effect form.
 - No ANSI/colour API — GitHub's log viewer colours the workflow commands itself; do not invent one.
 - No shared `*Test` module family or a `./testing` subpath — every service ships its own `makeTest`/`layerTest`. Grep the installed packages for `makeTest` to see the current set; it is large, not a handful.
-- No named log-level resolver — `Action.run` already lowers `References.MinimumLogLevel` to `Debug` under `RUNNER_DEBUG=1` (opt out with `{ stepDebugLogLevel: false }`). For the raw flag, obtain the service and read its member — `const env = yield* ActionEnvironment; const stepDebug = yield* env.isDebug` — never `ActionEnvironment.isDebug`, which is not a static. See `actions-runtime`.
+- No named log-level resolver — `Action.run` already lowers `References.MinimumLogLevel` to `Debug` under `RUNNER_DEBUG=1` (opt out with `{ stepDebugLogLevel: false }`). For the raw flag, obtain the service and read its member — `const env = yield* ActionEnvironment; const stepDebug = yield* env.isDebug` — never `ActionEnvironment.isDebug`, which is not a static. Load `actions-runtime` before you gate debug output.
 
 ## Present, and easy to miss
 

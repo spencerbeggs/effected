@@ -76,11 +76,15 @@ guard is `@effected/kit`'s business.
   applies the specification's rule (1 only for `exit` without `shutdown`;
   a stdin close is 0). okfit's `ListenOutcome` already has this shape.
 - **`LspStdio.teardown(host)` always ends the process through the host.**
-  `runMain` leaves a code-0 exit to the event loop draining, and with
-  `NodeStdio` reading stdin it never drains while stdin is open — probed:
-  a clean `shutdown`+`exit` sat until the client closed the pipe, which an
-  editor never does first. There is deliberately no drain-only
-  teardown; `LspStdio.test.ts` pins the hang with a no-op-host control.
+  `runMain` leaves a code-0 exit to the event loop draining, and any handle
+  the server does not own stops it draining: `vscode-languageserver`'s
+  `--clientProcessId` liveness interval, or a raw `process.stdin` listener,
+  sat after a clean `shutdown`+`exit` until the client closed the pipe,
+  which an editor never does first. `NodeStdio`'s stdin is not such a
+  handle: it pauses `process.stdin` once its last reader stops, so a server
+  holding nothing else drains (probed both ways; pinned by a test). There
+  is deliberately no drain-only teardown; `LspStdio.test.ts` pins the hang
+  with a no-op host plus a held interval as the control.
 - **One stdout reader.** `LspProbe` runs on `spawnParts` from
   `LspProcess.ts` (internal), with a `settle` option that folds the exit
   code and whole stderr into `StreamEnded` — safe only under the probe's

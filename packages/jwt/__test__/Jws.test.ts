@@ -1,6 +1,7 @@
 import { createHmac, createPublicKey, generateKeyPairSync, sign as nodeSign, verify as nodeVerify } from "node:crypto";
 import { assert, layer } from "@effect/vitest";
 import { Effect, Result, Schema } from "effect";
+import { CryptoError, Signature } from "effect/crypto";
 import * as Base64Url from "effect/encoding/Base64Url";
 import { Jwk as CoreJwk } from "effect/jose";
 import { Jwk } from "../src/Jwk.js";
@@ -350,6 +351,34 @@ layer(CryptoLive, { buildPerTest: true })("Jws documented edges", (it) => {
 			assert.isBelow(error.message.length, 160);
 			assert.notInclude(error.detail, "\u001b");
 			assert.notInclude(error.detail, "\n");
+		}),
+	);
+});
+
+layer(CryptoLive, { buildPerTest: true })("Jws backend failures", (it) => {
+	it.effect("routes a crypto backend failure that is not a rejected key to reason key", () =>
+		Effect.gen(function* () {
+			const pair = yield* JwtKey.generate("ES256", { kid: "k1" });
+			const token = yield* Jws.sign({ sub: "octocat" }, pair.signing);
+			const real = yield* Signature.Signature;
+			// Core reports this as JoseError.CryptoFailed, not InvalidKey.
+			const unsupported = Signature.Signature.of({
+				...real,
+				verify: () =>
+					Effect.fail(
+						new CryptoError.CryptoError({
+							module: "Signature",
+							method: "verify",
+							reason: new CryptoError.Unsupported({ description: "algorithm not supported here" }),
+						}),
+					),
+			});
+			const error = yield* Effect.flip(
+				Jws.verify(token, pair.verification).pipe(Effect.provideService(Signature.Signature, unsupported)),
+			);
+			assert.instanceOf(error, JwtError);
+			assert.strictEqual(error.reason, "key");
+			assert.include(error.message, "Signature.verify: Unsupported");
 		}),
 	);
 });

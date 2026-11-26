@@ -23,7 +23,9 @@ API), `@effected/commands` (subprocesses and tool discovery),
 command (the published JSON Schema for any contract that crosses the action
 boundary, and the `$schema` identity the action writes from).
 
-Use the full fifteen-skill Actions suite in this plugin — treat it as your working
+This host does not preload skills: before you act, read `building-a-github-action`,
+`effect-v4-module-index`, `effected-packages` and `effect-v4-source-lookup`, then
+the Actions skills the task reaches. Treat the fifteen-skill Actions suite as your working
 set, not a core plus an on-demand tail, because a task in this territory
 routinely crosses cache, tokens, publishing and reporting in one build.
 `building-a-github-action` is the index — start there when you are not sure
@@ -42,11 +44,11 @@ plan file, treat its frozen contract as Phase −1 output and start
 
 **Effect v4 is a ground-up redesign.** v3 muscle memory is a liability: names
 moved, modules split, APIs were removed. Use `effect-v4-source-lookup` and
-climb only as far as your claim needs — migration notes settle **renames**,
-the vendored source tree (resolved by that skill's ladder) settles
+climb only as far as your claim needs — Effect's own notes settle **renames**,
+the vendored or installed source tree (resolved by that skill's ladder) settles
 **existence and signature**, and only a probe settles **semantics**. Run any probe from
-inside a package; the workspace root resolves `effect@3` and will describe
-the v3 surface with total confidence.
+inside a package: a workspace root can resolve a different `effect` than the
+package compiles against, and describes that one with total confidence.
 
 Read the package's `CLAUDE.md` first, then its Module concept at
 `okf/modules/<pkg>.md`, then the source. When those disagree, the
@@ -62,11 +64,23 @@ source wins and the concept is a finding to report.
    within the existing contracts. Picking the wrong loop is how a skeleton
    gets skipped and business logic gets written against an unverified API.
 1. **Route before you build.** Decide which package owns the capability
-   (`building-a-github-action`), and check whether the kit already ships it
-   (`effected-packages`). The single most expensive failure mode in this
-   domain is re-implementing something that exists — `ErrorAccumulator`,
-   `GithubMarkdown` and a second existence check before a branch create were
-   all hand-rolled by consumers who had the answer installed.
+   (`building-a-github-action`), and check whether the kit already ships it.
+   The single most expensive failure mode in this domain is re-implementing
+   something that exists — `ErrorAccumulator`, `GithubMarkdown` and a second
+   existence check before a branch create were all hand-rolled by consumers
+   who had the answer installed. For each capability:
+   - name it as a verb and an object ("upsert a branch", "cache a directory",
+     "retry a request", "run a command", "parse a lockfile");
+   - grep the kit's construct index for those words (`references/constructs/`
+     in `effected-packages`; the session's `<effected_maps>` block gives its
+     absolute path) and read the package reference the hit names;
+   - read `effect-v4-module-index`'s "Routing by task" table for what core
+     ships;
+   - name the construct you will use, or the words you grepped and why no hit
+     fits, in your plan and your report.
+   **Do not write a helper over the GitHub API, files, globs, YAML, JSON,
+   package.json, semver, subprocesses, HTTP, retries, caches or temp
+   directories until you have done this for it in this task.**
    1a. **Publishing a structured output?** One `Schema.Class` exported from
        the action feeds `ActionOutputs.setJson` and asserts `$schema` from a
        `HostedSchema` declared beside it; `lib/scripts/schemastore.config.ts`
@@ -94,6 +108,29 @@ source wins and the concept is a finding to report.
 4. **Mutate the edges before declaring green.** A test that cannot fail is
    worse than no test. `testing-actions` lists the recorded discriminating
    mutants for this domain.
+5. **Simplify, then verify again.** Once the change is green and before you
+   report, run the simplifier pass below over the diff you wrote, then re-run
+   the same gates.
+
+## The simplifier pass
+
+Simplifier passes have repeatedly caught real defects that green tests missed.
+Treat every suggested simplification as a possible bug: verify it, apply it, and re-run the same gates.
+Never skip the pass because the tests are green. The pass is done when a round
+yields no further change, or after two rounds.
+
+Walk the diff against this checklist:
+
+- **Reuse**: re-check every helper the diff adds against the kit's construct
+  index and core's "Routing by task" table, as in the lookup gate.
+- **Duplication and dead code**: code repeated within the diff or beside an
+  existing function, and code nothing reaches.
+- **Needless abstraction**: a wrapper, parameter, layer or indirection with one
+  caller and no reason.
+- **A simpler v4 spelling**: an Effect idiom `effect-v4-idioms` or
+  `effect-v4-house-style` writes more directly.
+- **Efficiency**: work repeated per call or per item, and state or collections
+  that grow without bound.
 
 ## Non-negotiables in this territory
 
@@ -154,7 +191,9 @@ source wins and the concept is a finding to report.
 - **Committing.** Report what you changed and let the caller commit, unless
   the caller explicitly asked you to.
 
-Report what you built, what you verified and with which commands, and anything
+Report what you built, the construct you chose for each capability (or the
+grep that found none), that the simplifier pass ran and what it changed (or
+"no change"), what you verified and with which commands, and anything
 you could not confirm against source — say so explicitly rather than shipping
 it. Also flag rough edges in the skills you carried and any gap, awkward API or
 missing capability you hit in an `@effected/*` package; those are improvement
@@ -164,8 +203,9 @@ suggestions the user wants surfaced, never dropped.
 
 - building-a-github-action
 - designing-an-action
-- effect-v4-source-lookup
+- effect-v4-module-index
 - effected-packages
+- effect-v4-source-lookup
 - actions-runtime
 - actions-inputs-outputs
 - actions-reporting

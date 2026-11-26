@@ -63,7 +63,7 @@ Use Tool.EmptyParams for a tool without parameters.`, followed by
 `Missing key at ["type"]`: `McpServer`'s own registration path decodes the
 JSON Schema it generates for a tool's parameters against a fixed shape
 (`ToolJson`) and dies on failure, and a zero-key struct produces a shape
-that decode rejects (`ai/McpServer.ts:3436-3450`, the same die that kills
+that decode rejects (`ai/McpServer.ts:3437-3451`, the same die that kills
 the server on a top-level union parameter — see
 [Failures on the wire](#failures-on-the-wire)). This is a **registration-time defect**, not a
 runtime rejection by a client's own schema validator — the server never
@@ -91,7 +91,7 @@ own is the tool boundary blurring into the engine it should be calling.
 
 A tool annotated `Tool.Strict` true is served with `additionalProperties:
 false` on every object node and decoded with `onExcessProperty: "error"`
-and `errors: "all"` (`ai/McpServer.ts:3383-3386`). Core's report is
+and `errors: "all"` (`ai/McpServer.ts:3384-3387`). Core's report is
 complete: one `InvalidParams` names every excess key at every depth
 together with every missing or invalid field, so an agent fixes the whole
 call in one round trip.
@@ -182,7 +182,7 @@ default re-annotates it. If a test pins the served schema's
 
 `ToolInputSchema.unknownKeys`/`formatUnknownKeys` are for a **`Tool.dynamic`**
 tool's own handler only — core decodes a `Tool.make` tool's payload
-*before* the handler ever runs (`ai/McpServer.ts:3471`), so by the
+*before* the handler ever runs (`ai/McpServer.ts:3472`), so by the
 time a `Tool.make` handler executes, an excess key has already been dropped
 or rejected; there is nothing left for the handler to check. A `Tool.dynamic`
 tool's raw JSON Schema is never decoded that way, so its handler is the only
@@ -225,7 +225,7 @@ A **declared** failure is different, and this is the fact `ToolFailure`
 exists to work around: when the failure is an `Error` instance — every
 `Schema.TaggedError` is — core sends `isError: true` with `error.message` as
 the **only** text, and no `structuredContent` at all
-(`ai/McpServer.ts:3407-3410`). Only a failure whose `message` is empty, or
+(`ai/McpServer.ts:3408-3411`). Only a failure whose `message` is empty, or
 that is no `Error` instance, is sent as its JSON-encoded value instead.
 Whatever is not folded into `message` when the error is constructed never
 reaches the agent:
@@ -361,7 +361,7 @@ A top-level `Schema.Union` `parameters` schema dies the server at
 **registration**, the same way `Schema.Struct({})` does: `Tool.make`'s
 `parameters` has to resolve to an object schema for MCP's tool-JSON
 encoding, and the registration path's decode
-(`ai/McpServer.ts:3436-3450`) dies with a message naming the tool and
+(`ai/McpServer.ts:3437-3451`) dies with a message naming the tool and
 the object-root requirement, killing the server layer while it is still
 building — a stdio server never even starts reading stdin, and a
 server exposed some other way never finishes coming up either. Design the

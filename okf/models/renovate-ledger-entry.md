@@ -1,20 +1,20 @@
 ---
 type: DataModel
 title: An upgrade-ledger entry is one change, selected by the versions a consumer's upgrade crosses
-description: "The effected-renovate ledger's file format: a BASELINE.md naming the round's previous tag and floor, plus one NNNN-slug.md per change with a kind, a shows, an applies map of >=X.Y.Z thresholds and the detect patterns applicable.mjs runs through git grep; the restricted YAML subset it is written in; how entries are selected, ordered and chained across rounds."
+description: "The upgrade ledger's file format: a BASELINE.md naming the round's previous tag and floor, plus one NNNN-slug.md per change with a kind, a shows, an applies map of >=X.Y.Z thresholds and the detect patterns applicable.mjs runs through git grep; the restricted YAML subset it is written in; how entries are selected, ordered and chained across rounds."
 status: draft
-resource: ../../plugin/skills/effected-renovate/references/ledger
+resource: ../../plugin/skills/upgrade/references/ledger
 tags:
   - release
   - dx
   - docs
 sources:
   - id: applicable-mjs
-    resource: ../../plugin/skills/effected-renovate/scripts/applicable.mjs
+    resource: ../../plugin/skills/upgrade/scripts/applicable.mjs
   - id: bump-config-deps-mjs
-    resource: ../../plugin/skills/effected-renovate/scripts/bump-config-deps.mjs
+    resource: ../../plugin/skills/upgrade/scripts/bump-config-deps.mjs
   - id: renovate-bats
-    resource: ../../plugin/__test__/effected-renovate.bats
+    resource: ../../plugin/__test__/upgrade.bats
   - id: effect-upgrade-skill
     resource: ../../.claude/skills/effect-upgrade/SKILL.md
   - id: ere-probe
@@ -23,10 +23,10 @@ sources:
     resource: applicable.mjs fixture probe of floor membership on 2026-11-05
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T01:55:28Z
+  at: 2026-11-26T06:05:38Z
 x-okfit-integrity:
   generated:
-    body: 667d5cd96f4209d1
+    body: 6081373a4b547941
 ---
 
 # An upgrade-ledger entry is one change, selected by the versions a consumer's upgrade crosses
@@ -34,10 +34,10 @@ x-okfit-integrity:
 ## Overview
 
 The upgrade ledger lives at
-`plugin/skills/effected-renovate/references/ledger/` and ships inside the
+`plugin/skills/upgrade/references/ledger/` and ships inside the
 plugin. It is how this repository tells a consumer what a kit release
 changed. Each change a consumer must find or act on is one file. The
-consumer's `/effected-renovate` run hands the ledger to
+consumer's `/effected:upgrade` run hands the ledger to
 `scripts/applicable.mjs`. The script keeps only the entries the
 consumer's own upgrade crossed, and it lists the consumer files where
 each entry's search matched.[^applicable-mjs] The project skill
@@ -59,7 +59,7 @@ and so is any name that does not end in `.md`.
 | Field | Rule |
 | --- | --- |
 | `repo` | `owner/name` of the repository whose tags carry earlier rounds (`spencerbeggs/effected`). |
-| `path` | The ledger's repo-relative directory. It is used at the `previous` tag, so it must be the path the directory had *at that tag*. |
+| `path` | The ledger's repo-relative directory. It is used at the `previous` tag, so it must be the path the directory had *at that tag*. The skill was renamed from `effected-renovate` to `upgrade` after `@effected/ai-plugins@0.53.3`, so `path` keeps the old directory, `plugin/skills/effected-renovate/references/ledger`, until the next `--reset` rewrites it. |
 | `previous` | The `@effected/ai-plugins@<version>` tag that carries the round before this one, or the literal `none` for the first round. |
 | `floor` | A map of package name to a plain version (`X.Y.Z` or `X.Y.Z-pre`, no operator): the versions this round's consumers start from. May be empty. |
 
@@ -214,13 +214,13 @@ consumer, and consider folding it on reset rather than dropping it.
 
 ## Validation and gates
 
-`node plugin/skills/effected-renovate/scripts/applicable.mjs --check
+`node plugin/skills/upgrade/scripts/applicable.mjs --check
 [--ledger <dir>]` validates the baseline and every entry against the
 rules above. It also checks for duplicate ids. It prints every problem
 and exits 1, or prints `N entries valid` and exits 0. A run that is not
 `--check` refuses to select from an invalid ledger.
 
-`plugin/__test__/effected-renovate.bats` pins two repository-wide
+`plugin/__test__/upgrade.bats` pins two repository-wide
 gates.[^renovate-bats] The first is that the shipped ledger passes
 `--check`. The second is that every pending `.changeset/*.md` with a
 `## Breaking Changes` section has its name in some entry's `changesets`.
@@ -239,13 +239,13 @@ and runs with no plugin variables.
 - **A wrong `shows`** sends the consumer to the wrong gate. A `typed`
   entry the compiler never flags is taken as handled.
 
-[^applicable-mjs]: `plugin/skills/effected-renovate/scripts/applicable.mjs`
+[^applicable-mjs]: `plugin/skills/upgrade/scripts/applicable.mjs`
     — `lockfileVersions`, `parseFrontmatter`, `entryProblems`,
     `baselineProblems`, `crossings`, `foldRenames`, `roundRenames`, `olderThanBaseline`, `fetchRound`,
     `detectHits` and `main`.
-[^bump-config-deps-mjs]: `plugin/skills/effected-renovate/scripts/bump-config-deps.mjs`
+[^bump-config-deps-mjs]: `plugin/skills/upgrade/scripts/bump-config-deps.mjs`
     — `ledgerRenames`.
-[^renovate-bats]: `plugin/__test__/effected-renovate.bats` — the chain
+[^renovate-bats]: `plugin/__test__/upgrade.bats` — the chain
     test with a stub `gh` and `GH_HOST=evil.example`, the two `repo:`
     cases, and the `built:` case.
 [^effect-upgrade-skill]: `.claude/skills/effect-upgrade/SKILL.md` — "The

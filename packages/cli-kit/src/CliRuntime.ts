@@ -4,6 +4,7 @@ import type { Distribution } from "@effected/kit";
 import { withDistribution, withDistributionVersion } from "@effected/kit";
 import type { FileSystem, Path, Stdio, Terminal } from "effect";
 import { Cause, Effect, Layer, Logger, MutableRef, Option, Runtime } from "effect";
+import type { Command, GlobalFlag } from "effect/cli";
 import { CliError, CliOutput } from "effect/cli";
 import { Cancelled } from "./Cancelled.js";
 import { CliColor } from "./CliColor.js";
@@ -26,10 +27,11 @@ import {
 	readSpans,
 	refreshFailureTarget,
 } from "./internal/failureTarget.js";
-import { routeHelpOnUsageError } from "./internal/HelpRouting.js";
+import { routeHelpOnUsageError, usageErrorsToStderr } from "./internal/HelpRouting.js";
 import { failureText, tagOf } from "./internal/inspect.js";
 import { isExitCode } from "./internal/isExitCode.js";
 import { TrustedLine } from "./internal/logSafety.js";
+import { withUsageErrorRender } from "./internal/usageErrorRender.js";
 import { NotInteractive } from "./NotInteractive.js";
 
 const isShowHelp = (u: unknown): u is CliError.ShowHelp => CliError.isCliError(u) && u._tag === "ShowHelp";
@@ -203,6 +205,63 @@ export interface ReportFailuresOptions {
 }
 
 /**
+ * What `renderUsageError`'s `render` is told about a usage error.
+ *
+ * @public
+ */
+export interface UsageErrorDetails {
+	/** The parse errors, from the `CliError.ShowHelp` `Command.runWith` failed with. Never empty. */
+	readonly errors: ReadonlyArray<CliError.NonShowHelpErrors>;
+	/** The command path the errors were reported for, root name first, from the same `ShowHelp`. */
+	readonly commandPath: ReadonlyArray<string>;
+	/**
+	 * A global setting's value for this invocation, as core would have provided it to the handler.
+	 *
+	 * @remarks
+	 * `Option.none()` when the setting is not active on `commandPath` (out of scope for that subcommand, or not
+	 * declared on the tree at all), when its own value fails to parse, or when a local or inherited flag on the path
+	 * shares one of its names (the real parse gives that token to the local flag). Otherwise `Option.some` of the value
+	 * given in argv, or of its default (or `Config` fallback) when it is absent, exactly as core parses it.
+	 *
+	 * The value is read by core's own parser, never by a kit lexer: the first call for a setting re-runs
+	 * `Command.runWith` once, synchronously, over the same argv (`Stdio.args`) on a bare probe root that declares only
+	 * that setting's flag, as an action flag that records its value. The probe has no handler, prints nothing (silent
+	 * `CliOutput.Presenter`, no built-ins, `renderErrors: false`) and runs nothing of the program's; it runs only on the
+	 * usage-error path, and only for the settings `render` asks for. A setting whose parse is asynchronous (one that
+	 * reads the file system, say) answers `Option.none()`.
+	 *
+	 * @param setting - the `GlobalFlag.Setting` the program declared with `Command.withGlobalFlags`
+	 */
+	readonly setting: <Id extends string, A>(setting: GlobalFlag.Setting<Id, A>) => Option.Option<A>;
+}
+
+/**
+ * The `renderUsageError` option of `CliRuntime.main`: the command tree, and the render for a usage error.
+ *
+ * @public
+ */
+export interface RenderUsageErrorOptions {
+	/**
+	 * The root command the program runs, the one passed to `Command.run`, `Command.runWith` or `CliAudience.run`.
+	 * `setting` reads the scope of each global setting from it.
+	 */
+	readonly command: Command.Command.Any;
+	/**
+	 * The document stdout carries for this usage error, or `undefined` to keep the behaviour `main` has without the
+	 * option.
+	 *
+	 * @remarks
+	 * Called only for a usage error: a `CliError.ShowHelp` whose `errors` is non-empty, never for `--help`, a bare group
+	 * invocation or `--version`. A string is one line and an array one line per element, written with `Console.log`;
+	 * for an agent or a CI audience escapes are stripped and under GitHub Actions workflow commands neutralized, as for
+	 * `render`.
+	 *
+	 * @param details - the errors, the command path and the setting lookup
+	 */
+	readonly render: (details: UsageErrorDetails) => string | ReadonlyArray<string> | undefined;
+}
+
+/**
  * Options for `CliRuntime.main`.
  *
  * @public
@@ -269,6 +328,32 @@ export interface MainOptions<RP, EP> extends ReportFailuresOptions {
 	 * plain help, with no errors, so it is not a usage error's.
 	 */
 	readonly helpOnUsageError?: "stdout" | "stderr" | undefined;
+	/**
+	 * Print a machine-readable document on stdout for a usage error, such as a JSON envelope under `--format json`.
+	 *
+	 * @remarks
+	 * When `render` returns a document, stdout carries exactly that document and nothing else: the help and errors
+	 * `Command.runWith` presents for the invalid invocation are written to stderr instead, as under
+	 * `helpOnUsageError: "stderr"`, and the exit code is still `usageExitCode`. When it returns `undefined`, the output
+	 * is byte for byte what `main` writes without this option, `helpOnUsageError` included.
+	 *
+	 * To do that, `main` holds an invalid invocation's help until the usage error reaches it, and then presents it
+	 * through the Presenter it was going to (or to stderr). Like `helpOnUsageError`, it routes through core's
+	 * `CliOutput.Presenter`: a Presenter provided inside `program` replaces the hold, and with `Command.runWith`'s
+	 * `renderErrors: false` core presents plain help on stdout, which then precedes the document.
+	 *
+	 * ```ts
+	 * CliRuntime.main(CliAudience.run(root, { version }), {
+	 *   platform,
+	 *   renderUsageError: {
+	 *     command: root,
+	 *     render: ({ errors, setting }) =>
+	 *       Option.contains(setting(Format), "json") ? JSON.stringify({ ok: false, usage: errors.map(String) }) : undefined,
+	 *   },
+	 * })
+	 * ```
+	 */
+	readonly renderUsageError?: RenderUsageErrorOptions | undefined;
 	/**
 	 * The carrier package the bin was installed through, when a carrier launched it: `null` (or `undefined`) for a
 	 * direct install.
@@ -690,9 +775,18 @@ export class CliRuntime {
 		const carried = options.distribution === undefined ? program : withCarrier(program, options.distribution);
 		const run = Effect.gen(function* () {
 			// Inside the platform provide, so the rerouting sees the platform's own Formatter.
+			// The usage-error hold sits inside the stderr routing, so with no document it presents through that routing.
+			const rendered =
+				options.renderUsageError === undefined
+					? carried
+					: withUsageErrorRender(
+							carried,
+							options.renderUsageError,
+							usageErrorsToStderr(options.env?.formatter, options.env?.helpFlags),
+						);
 			yield* options.helpOnUsageError === "stderr"
-				? routeHelpOnUsageError(carried, options.env?.formatter, options.env?.helpFlags)
-				: carried;
+				? routeHelpOnUsageError(rendered, options.env?.formatter, options.env?.helpFlags)
+				: rendered;
 			const exit = yield* CliExit;
 			const code = MutableRef.get(exit.code);
 			// CliExit.set validates, but the cell is a public MutableRef a program

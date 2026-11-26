@@ -31,8 +31,10 @@ export const stderrFormatter = (
  * keep core's rendering, Formatter resolution included, and only the stream
  * moves. An explicit `--help`, a bare group invocation and `--version` are
  * other events, presented by core unchanged on stdout.
+ *
+ * @internal
  */
-const usageErrorsToStderr = (
+export const usageErrorsToStderr = (
 	overrides: Partial<CliOutput.Formatter> | undefined,
 	helpFlags: CliHelpFlags | undefined,
 ): CliOutput.Presenter => ({

@@ -5,8 +5,6 @@ day-to-day wiring; each costs a full session the first time.
 
 ## Split graphs: two resolved copies of one package are two services
 
-Observed 2026-08-14 during the consumer-unblock release wave.
-
 **At the type level** a `Context.Service` tag's identity is the class itself —
 the module instance that declared it. When a dependency graph resolves TWO
 copies of one `@effected` package — e.g. a consumer's caret range and a
@@ -95,63 +93,6 @@ Worked example: `@effected/tsconfig-json`'s `TsconfigLoaderSync`. The async
 pipeline stays the single implementation; the facade only adapts ops and
 unwraps.
 
-## A layer that must be fresh on every provide
-
-**Layers memoize by reference across provides.** When the same layer object
-is required at two places in one layer graph — two sibling layers that both
-depend on it, a nested `CliRuntime.main` and a test helper, two `it.effect`
-cases a `layer()` block shares — Effect builds it **once** and hands the
-same built service to every consumer, exactly the sharing that makes a pure
-service cheap to depend on repeatedly. A layer holding **per-run mutable
-state** — a findings cell, a counter, anything that should start over each
-time it is provided — breaks under that memoization: two logically separate
-"provides" quietly read and write the one cell the first provide built.
-
-`Layer.fresh(Layer.sync(...))` is the fix: it opts the layer out of
-reference memoization, so every site that provides it gets its own build.
-`@effected/cli-kit`'s `CliExit.layer` is exactly this shape — a fresh
-`MutableRef` cell per provide, so a nested run or a test never inherits a
-prior run's exit code.
-
-```ts
-import { Context, Effect, Layer } from "effect"
-
-class Counter extends Context.Service<Counter, { readonly next: () => number }>()(
-  "edge-cases/Counter",
-) {}
-class A extends Context.Service<A, { readonly useA: () => number }>()("edge-cases/A") {}
-class B extends Context.Service<B, { readonly useB: () => number }>()("edge-cases/B") {}
-
-const makeCounterLayer = (): Layer.Layer<Counter> =>
-  Layer.sync(Counter, () => {
-    let n = 0
-    return { next: () => ++n }
-  })
-
-const layerA = (counter: Layer.Layer<Counter>) =>
-  Layer.effect(A, Effect.map(Counter, (c) => ({ useA: () => c.next() }))).pipe(Layer.provide(counter))
-const layerB = (counter: Layer.Layer<Counter>) =>
-  Layer.effect(B, Effect.map(Counter, (c) => ({ useB: () => c.next() }))).pipe(Layer.provide(counter))
-
-const readBoth = (counter: Layer.Layer<Counter>) =>
-  Effect.gen(function* () {
-    const a = yield* A
-    const b = yield* B
-    return [a.useA(), b.useB()] as const
-  }).pipe(Effect.provide(Layer.mergeAll(layerA(counter), layerB(counter))))
-
-const shared = makeCounterLayer()
-console.log("shared, no Layer.fresh:", await Effect.runPromise(readBoth(shared)))
-
-const fresh = Layer.fresh(makeCounterLayer())
-console.log("Layer.fresh:", await Effect.runPromise(readBoth(fresh)))
-```
-
-Prints `shared, no Layer.fresh: [ 1, 2 ]` then `Layer.fresh: [ 1, 1 ]`. Without
-`Layer.fresh`, `A` and `B` share one built `Counter`, so the second read
-continues the first's count. With it, each site's `Counter` starts at zero —
-the shape a per-run cell needs.
-
 ## Heterogeneous requirement unions: annotate the collection up front
 
 When a wrapper collects several values that are generic in a requirements
@@ -184,10 +125,9 @@ takeChain(chain) // compiles
 
 The annotation looks redundant — each element is individually assignable to
 it — but deleting it re-breaks inference at the call site; leave a comment
-saying so. Probed from inside `packages/app` (control `Effect.catchAll`
-failed to compile; the bare two-element chain failed on its second element;
-the annotated chain compiled clean). Surfaced by `AppConfig.layer` wrapping
-`ConfigFile.layer` in the `@effected/app` port.
+saying so. Probed (control `Effect.catchAll` failed to compile; the bare
+two-element chain failed on its second element; the annotated chain compiled
+clean).
 
 ## A "takes your key over shape X" parameter accepts wider shapes
 

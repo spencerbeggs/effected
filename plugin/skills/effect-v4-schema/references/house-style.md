@@ -87,7 +87,7 @@ member) so the instance type advertises it.
 `MakeOptions.disableChecks` reads like an escape hatch from validation. Its
 docstrings say what it really does — "skip filters and checks while still
 parsing types and structure" (`Schema.ts:137`) and "skips filters and checks,
-not parsing of types and structure" (`Schema.ts:17739`) — but the name still
+not parsing of types and structure" (`Schema.ts:17532`) — but the name still
 reads as a validation switch, and the
 vendored cluster code leans on it as the trusted-construction idiom
 (`cluster/EntityAddress.ts:100`, `RunnerAddress.ts:121`, `Runner.ts:140`),
@@ -122,8 +122,7 @@ were never in doubt and remain linear.
 performance. Where such a bypass already exists (`@effected/jsonc`'s
 `makeNodeUnsafe`) it buys trusted-path construction, nothing more — and a
 nested class field accepts a plain literal in both the foreign and
-self-recursive cases, so even that motivation is weak (see the nested-field
-table in `SKILL.md`).
+self-recursive cases, so even that motivation is weak.
 
 If you do keep such a bypass, two corrections to the naive recipe:
 
@@ -139,7 +138,7 @@ If you do keep such a bypass, two corrections to the naive recipe:
   `Equal.equals` is `false` and every `_tag` match falls through. Pass
   `{ _tag: "TNode", ...props }`.
 
-*Evidence: runtime probe from `packages/semver`, Node 26, left-spine build per
+*Evidence: runtime probe, Node 26, left-spine build per
 depth, with the two controls described above.*
 
 ## Fields & optionality
@@ -487,11 +486,10 @@ fields must be `Equal.equals` AND have identical `Hash.hash`.
   `/^[a-f]{8}$/u` control generates. `u` is the flag the compiler supports
   (`regexp.ts:836` generates full code points under it), and it is the flag
   JSON Schema export requires: `isPattern` exports `pattern` only when the
-  flags match `/^[dg]*uy?$/` (`Schema.ts:6950`), so
+  flags match `/^[dg]*uy?$/` (`Schema.ts:6949`), so
   `Schema.String.check(Schema.isPattern(/^[a-z]+$/))` exports as a bare
   `{"type":"string"}` while decoding still enforces the regex. Rewrite
-  `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/u`
-  (`packages/semver/src/SemVer.ts`, `packages/schema-org/src/NodeRef.ts`).
+  `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/u`.
 - **Make the field model canonical or round-trips lie.** If two type-level
   values print to the same string (e.g. prerelease `"7"` vs `7` both print
   `-7`), decode(encode(v)) cannot restore the original. Constrain the schema so

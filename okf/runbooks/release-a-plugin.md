@@ -11,10 +11,10 @@ sources:
     resource: ../../.changeset/config.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T14:55:07Z
+  at: 2026-11-26T06:05:38Z
 x-okfit-integrity:
   generated:
-    body: 398b55efac5cdffa
+    body: 3367cf6f61d0cbfe
 ---
 
 # Release a plugin
@@ -40,7 +40,7 @@ skill, agent, hook or `pluginfinity.config.ts` change, with
    `versionFiles` mapping.[^changeset-config]
 4. CI cuts a git tag named `@effected/ai-plugins@<version>` and a GitHub
    release. The tracking package has no `publishConfig`, so **no npm
-   publish** happens. This tag is also what an `effected-renovate`
+   publish** happens. This tag is also what an `upgrade`
    ledger reset points `BASELINE.md`'s `previous` at, so a round can be
    closed only once a release carries it. See
    [the ledger entry model](../models/renovate-ledger-entry.md).

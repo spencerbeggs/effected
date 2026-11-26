@@ -124,7 +124,7 @@ but that is style, not the rule.
 `it.effect` installs `TestConsole`, and Effect's **default logger writes through
 the same ref** — `Console.Console` *is* `effect.ConsoleRef` (`Console.ts:86`),
 `TestConsole.layer` sets that exact reference (`testing/TestConsole.ts:330`), and
-`Logger.ts:277`, `:318`, `:373` all read
+`Logger.ts:290`, `:335`, `:391` all read
 `options.fiber.getRef(effect.ConsoleRef)`. So `Effect.log` / `logWarning` / `logError` are
 intercepted identically to `Console.*`. One repo's audit cleared
 a package by grepping `Console.*` and missed three live `Effect.logWarning`
@@ -143,3 +143,18 @@ drained is always empty.
 
 **A test whose only assertions are negative is the vacuous-pass shape.** Where a
 positive sibling exists, it is the cheap proof the sink is live.
+
+## Install `@effect/vitest` from the same catalog as `effect`
+
+**Install it from the same catalog as `effect`, so it resolves to the same version** — never bare and never from a dist-tag. Effect releases `effect` and every `@effect/*` package together at one shared version, so `@effect/vitest` must resolve to exactly the version `effect` does. A dist-tag (`latest`, `beta`, `rc`, `snapshot`) is a moving pointer that can resolve to a version other than the one `effect` resolves to.
+
+The failure of a mismatch names neither package: a v3 `@effect/vitest` installed beside v4 `effect` loads with only a one-line `Issues with peer dependencies found` warning; `pnpm peers check` then lists unmet `effect ^3` and `vitest ^3` peers, and the test file fails to load with `Cannot find module '…/effect/dist/Arbitrary.js'`, because the v3 package imports a module the v4 `effect` does not ship. It reads as a broken install rather than a version mismatch. Run `pnpm peers check` and compare `@effect/vitest`'s resolved version with `effect`'s in the lockfile before believing any resolution. With `@effected/pnpm-plugin-effected` the dependency comes from `catalog:effected`, which carries both at the same range.
+
+## A repo without `@effect/vitest`
+
+**A repo without `@effect/vitest` can still test Effect code**: a plain Vitest
+`it` calling a small `Effect.runPromise` helper. What it loses is what
+`it.effect` installs: a per-test `Scope` and the virtual `TestClock` and
+`TestConsole` (`Effect.scoped` and `TestClock.layer()` add the scope and the clock back
+by hand), plus `layer(...)` sharing and `it.effect.prop`. The skill's `it.effect`
+examples assume the package is installed.

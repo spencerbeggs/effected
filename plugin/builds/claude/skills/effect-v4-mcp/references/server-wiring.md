@@ -83,9 +83,9 @@ details from `McpSchema.McpRequestContext` instead. Four consequences:
   and `Logger.consolePretty`. `Logger.consoleJson`, `Logger.consoleLogFmt`
   and `Logger.consoleStructured` are built with `Logger.withConsoleLog`,
   which writes through `console.log` whatever `LogToStderr` says (`effect`'s
-  `src/Logger.ts:273-279` is `withConsoleLog`; `consoleLogFmt` is `:942`,
-  `consoleStructured` `:968` and `consoleJson` `:992`; the default logger reads
-  the reference at `src/internal/effect.ts:7017`). Never install them in an MCP server: every log
+  `src/Logger.ts:286-292` is `withConsoleLog`; `consoleLogFmt` is `:968`,
+  `consoleStructured` `:994` and `consoleJson` `:1018`; the default logger reads
+  the reference at `src/internal/effect.ts:6946`). Never install them in an MCP server: every log
   line lands on stdout, the wire. For JSON logs on stderr, install
   `Logger.layer([Logger.withConsoleError(Logger.formatJson)])`.
 - A malformed `protocols` list — more than one stateless adapter — is the

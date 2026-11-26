@@ -24,7 +24,7 @@ construct-index bats suites.
 
 **Upgrade ledger:** `okf/models/renovate-ledger-entry.md`,
 `okf/decisions/upgrade-ledger-in-the-plugin.md` — Load when: writing an
-`effected-renovate` ledger entry or changing that skill's scripts.
+`upgrade` ledger entry or changing that skill's scripts.
 
 ## Rules
 

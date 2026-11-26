@@ -140,11 +140,12 @@ export class LspStdio {
 	 * The explicit exit is the point. The specification makes the server
 	 * terminate on `exit` with stdin still open, but `runMain` ends the process
 	 * itself only for a non-zero code or a signal, and leaves a code-0 exit to
-	 * the event loop draining. It never drains while stdin is open: a server
-	 * reading stdin through `NodeStdio` sits until the client closes the pipe
-	 * (probed), which an editor never does first. Any other handle the server
-	 * does not own holds it the same way, such as the client-liveness interval
-	 * `vscode-languageserver`'s node entry installs under `--clientProcessId`.
+	 * the event loop draining, and any handle the server does not own keeps it
+	 * from draining: the client-liveness interval `vscode-languageserver`'s
+	 * node entry installs under `--clientProcessId`, or a raw `process.stdin`
+	 * listener, which holds the process until the client closes the pipe, and
+	 * an editor never does that first. `NodeStdio`'s own stdin is not such a
+	 * handle: it pauses once its last reader stops.
 	 *
 	 * `host` is the process: `LspStdio.teardown(process)`. The package never
 	 * reads `process` itself. A non-zero code is ended by `runMain` before

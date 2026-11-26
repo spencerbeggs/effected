@@ -60,14 +60,14 @@ This skill owns the general policy. Two neighbours own the rest, and the three a
 
 ## Footguns
 
-- `@internal` never clears an `ae-forgotten-export`: on an unexported type it changes nothing, and on an exported one it becomes `ae-incompatible-release-tags` → [diagnostics.md](references/diagnostics.md).
-- A named type alias for an internal shape forgotten-exports under its own name → [diagnostics.md](references/diagnostics.md).
-- `static readonly x = x` declares as `typeof x` and forgotten-exports the local; never export the local to silence it → [diagnostics.md](references/diagnostics.md).
-- A `suppressWarnings` list you write replaces the default `_base` rule; restate it → [custom-tags-and-suppression.md](references/custom-tags-and-suppression.md).
-- A `pattern` is a regular expression first, so `.` and `(` match more than they say → [custom-tags-and-suppression.md](references/custom-tags-and-suppression.md).
-- A scoped package name in prose (`@effected/x`) parses as a tag; backtick it, even inside a markdown link's URL → [diagnostics.md](references/diagnostics.md).
-- A backtick span wrapped across two comment lines fans out into brace and inline-tag warnings below it → [diagnostics.md](references/diagnostics.md).
-- `@decorator` is a block tag, not a modifier → [supported-tags.md](references/supported-tags.md).
+- `@internal` never clears an `ae-forgotten-export`: on an unexported type it changes nothing, and on an exported one it becomes `ae-incompatible-release-tags`. Before you tag a type to clear a forgotten export, load [diagnostics.md](references/diagnostics.md).
+- A named type alias for an internal shape forgotten-exports under its own name. Before you name an internal shape on a public signature, load [diagnostics.md](references/diagnostics.md).
+- `static readonly x = x` declares as `typeof x` and forgotten-exports the local; never export the local to silence it. Before you fix a forgotten export that names a module-local, load [diagnostics.md](references/diagnostics.md).
+- A `suppressWarnings` list you write replaces the default `_base` rule; restate it. Before you write a `suppressWarnings` list, load [custom-tags-and-suppression.md](references/custom-tags-and-suppression.md).
+- A `pattern` is a regular expression first, so `.` and `(` match more than they say. Before you write a suppression `pattern`, load [custom-tags-and-suppression.md](references/custom-tags-and-suppression.md).
+- A scoped package name in prose (`@effected/x`) parses as a tag; backtick it, even inside a markdown link's URL. Before you name or link a scoped package in TSDoc, load [diagnostics.md](references/diagnostics.md).
+- A backtick span wrapped across two comment lines fans out into brace and inline-tag warnings below it. Before you chase a brace or inline-tag warning, load [diagnostics.md](references/diagnostics.md).
+- `@decorator` is a block tag, not a modifier. Before you reach for a tag you have not used here, load [supported-tags.md](references/supported-tags.md).
 
 ## Additional resources
 

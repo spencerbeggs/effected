@@ -58,7 +58,8 @@ export interface LiveOptions<E, S> {
 	 *
 	 * A stream: `live` makes its first pull before it returns, so one that subscribes on its first pull without forking
 	 * (`Stream.fromPubSub`) is subscribed by then and sees an event published at once. One that forks its upstream
-	 * (`Stream.merge`, `buffer`, a concurrent `flatMap`) subscribes later, and an event published before that is lost.
+	 * (`buffer`, a concurrent `flatMap`) subscribes later, and an event published before that is lost. `Stream.merge`
+	 * starts both sides at once, so a merged `fromPubSub` is subscribed in time too.
 	 * `close` folds what the view has already pulled; what the stream holds and has not yielded is the stream's.
 	 */
 	readonly events: Stream.Stream<E> | PubSub.Subscription<E>;

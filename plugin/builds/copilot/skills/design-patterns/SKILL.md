@@ -23,7 +23,10 @@ settled, not on first use.
 
 The carrier pattern's references teach the shape; where a piece of that
 shape has shipped as a kit export, reach for the export instead of
-hand-rolling the recipe again.
+hand-rolling the recipe again. For a piece the table does not list, grep the
+kit before you write it:
+`grep -i "<intent words>" "<skill base directory>/../effected-packages/references/constructs/kit.md"`,
+then the rest of the `constructs/` directory.
 
 | construct | import | reach for it when |
 | --- | --- | --- |
@@ -56,32 +59,35 @@ hand-rolling the recipe again.
 
 ## Footguns
 
-- Bin-linking is direct-dependency-only in every package manager — see
-  [carrier-package.md](./references/carrier-package.md) for why hoisting
-  and hand-rolled hoist patterns don't fix it.
+- Bin-linking is direct-dependency-only in every package manager, and
+  hoisting does not fix it. Before you expose a front end's bin through
+  another package, load [carrier-package.md](./references/carrier-package.md).
 - A carrier's front ends belong in `dependencies`, never
-  `peerDependencies` — see
+  `peerDependencies`. Before you split a carrier's dependencies and peers, load
   [carrier-package.md](./references/carrier-package.md).
 - A tool package that takes the kit at caret ranges changes under its own
   version and can bind a kit peer across its closure; pin every kit
-  dependency of a tool package exactly — see
-  [carrier-closure.md](./references/carrier-closure.md).
+  dependency of a tool package exactly. Before you write a kit range in a
+  tool package, load [carrier-closure.md](./references/carrier-closure.md).
 - An MCP `main.ts` that imports its server graph statically runs that graph
   before its crash guards exist: Node prints the throw and exits `1` on its
   own, but the server's own handler never runs — `McpStdio.launch` does not
-  remove this requirement, it sits around it — see
-  [carrier-entry-contract.md](./references/carrier-entry-contract.md) and
-  `effect-v4-mcp`'s `server-wiring.md#crash-guards`.
+  remove this requirement, it sits around it. Before you write an MCP
+  `main.ts`, load [carrier-entry-contract.md](./references/carrier-entry-contract.md)
+  and `effect-v4-mcp`'s `server-wiring.md#crash-guards`.
 - A package.json read for "my own version" reports the wrong package's
   version once code moves to a shared engine — `CurrentDistribution` fixes
-  the identity-threading half of this, not the build-time-literal half —
-  see [carrier-version-threading.md](./references/carrier-version-threading.md).
+  the identity-threading half of this, not the build-time-literal half.
+  Before a tool reports its own version, load
+  [carrier-version-threading.md](./references/carrier-version-threading.md).
 - A plugin loader that dispatches through `pnpm exec` / `bunx` /
-  `npm exec` resolves bins differently per package manager — see
+  `npm exec` resolves bins differently per package manager. Before you write
+  a plugin's loader script, load
   [carrier-plugin-loader.md](./references/carrier-plugin-loader.md).
 - A manifest DAG test with no positive-control fixture can pass while
   checking nothing — `WorkspaceLayering`'s own `edgeCount` guard is that
-  control; a hand-rolled `LAYER_RANKS` table has to add it itself — see
+  control; a hand-rolled `LAYER_RANKS` table has to add it itself. Before you
+  write a repo-shape check, load
   [carrier-verification.md](./references/carrier-verification.md).
 
 ## Additional resources
@@ -141,4 +147,5 @@ hand-rolling the recipe again.
   — assembling `main.ts`, exit codes, protocol wiring, tool definitions and
   testing. This skill teaches the shape a multi-front-end tool takes; the
   two front-end skills teach what happens inside each front end. Knowledge
-  stays split rather than duplicated across all three.
+  stays split rather than duplicated across all three. Load the front end's
+  skill before you write its `main.ts`, its exit codes or its tools.

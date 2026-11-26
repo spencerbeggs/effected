@@ -29,6 +29,10 @@ tag), `distribution` (the carrier: engine's `CurrentDistribution` plus the
 `--version` suffix, wrapping whatever formatter is in effect) and
 `env.displayPath` (a function or `{ relativeTo: root }`, the path display
 every renderer, `Doc.print` and a live view's `final` follow).
+`renderUsageError: { command, render }` prints a document (a JSON envelope) on stdout
+for a usage error, and its `setting(flag)` reads a global setting's value through
+core's own parser (a probe `Command.runWith` on the usage-error path only), never a
+kit lexer: the "not a CLI framework" rule holds.
 `okf/modules/cli-kit.md` has the rows.
 
 **Design doc:** `@./okf/modules/cli-kit.md` — Load when:

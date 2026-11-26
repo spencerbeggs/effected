@@ -330,8 +330,8 @@ export class CliUi {
 	 * `events` is a `PubSub` subscription or a stream, folded in a fiber of the caller's scope. A subscription, made
 	 * before the first publish, is the surest: nothing published after it is missed. `live` makes a stream's first pull
 	 * before it returns, so one that subscribes on its first pull without forking (`Stream.fromPubSub`) is subscribed by
-	 * then; one that forks its upstream (`Stream.merge`, `buffer`, a concurrent `flatMap`) subscribes later, and loses
-	 * what is published before.
+	 * then; one that forks its upstream (`buffer`, a concurrent `flatMap`) subscribes later, and loses what is published
+	 * before. `Stream.merge` starts both sides at once, so a merged `fromPubSub` is subscribed in time too.
 	 *
 	 * `live` returns its handle at once, before Ink has loaded: it loads Ink when a run first mounts (or, when not
 	 * interactive, when an owned run without a `final` prints its final frame), and it waits on nothing asynchronous before returning, so

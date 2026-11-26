@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: Consumer upgrades run one fixed plugin process over an append-only ledger of per-change entries
-description: The effected plugin's /effected-renovate skill is the single upgrade process for kit consumers; what each release changed lives as one ledger file per change that a script selects by the versions a consumer's upgrade crosses; rounds reset at plugin release tags and chain back through them, with every fold-or-drop fate approved by the user.
+description: The effected plugin's /effected:upgrade skill is the single upgrade process for kit consumers; what each release changed lives as one ledger file per change that a script selects by the versions a consumer's upgrade crosses; rounds reset at plugin release tags and chain back through them, with every fold-or-drop fate approved by the user.
 status: stable
 tags:
   - release
@@ -13,14 +13,14 @@ sources:
     author: human:spencer
     last_modified: 2026-11-01T00:00:00Z
   - id: renovate-skill
-    resource: ../../plugin/skills/effected-renovate/SKILL.md
+    resource: ../../plugin/skills/upgrade/SKILL.md
   - id: effect-upgrade-skill
     resource: ../../.claude/skills/effect-upgrade/SKILL.md
   - id: upgrades-history
     resource: ../../.claude/upgrades
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T14:55:07Z
+  at: 2026-11-26T06:05:38Z
 verified:
   - by: human:spencer
     at: 2026-11-02T14:54:01Z
@@ -28,7 +28,7 @@ verified:
     at: 2026-11-25T21:38:57Z
 x-okfit-integrity:
   generated:
-    body: e78c746362c66e16
+    body: b4f8496378c2d385
   verified:
     by: human:spencer
     at: 2026-11-25T21:38:57Z
@@ -60,9 +60,9 @@ had skipped.
 
 ## Decision
 
-- **One process, in the plugin.** `/effected-renovate` is the fixed base
+- **One process, in the plugin.** `/effected:upgrade` is the fixed base
   process for kit consumers. It runs bump, lockfile regeneration, the
-  one-`effect` check, the applicable-entries step, build, test,
+  one-`effect` check, the vendored-Effect repin, the applicable-entries step, build, test,
   alignment, changesets and the report. It ships through the plugin, so
   every consumer runs the same version of it.[^renovate-skill]
 - **Per-change content in an append-only ledger.** Each change a consumer
@@ -93,7 +93,7 @@ had skipped.
 - **`.claude/upgrades/*.md` stop growing.** They stay as history. The
   first ledger round converts the most recent of them.
 - **The owner's global `renovate` skill stays** for repositories that do
-  not consume the kit. `/effected-renovate` ports its two scripts and adds
+  not consume the kit. `/effected:upgrade` ports its two scripts and adds
   the ledger's renames.
 
 ## Why a reset loses nothing
@@ -129,7 +129,7 @@ shipped ledger holds only the current round.
 - The ledger is the one plugin text that names versions and tracking
   issues. [consumer-text-states-current-effect-behaviour](../conventions/consumer-text-states-current-effect-behaviour.md)
   carves it out by path.
-- `effected-renovate` is the first plugin skill to ship `scripts/`. They
+- The `upgrade` skill is the first plugin skill to ship `scripts/`. They
   must be dependency-free, because an installed plugin has no
   `node_modules`. See [skill shape](../conventions/skill-shape.md).
 - A branch that ships a consumer-visible change must write its entry
@@ -137,8 +137,8 @@ shipped ledger holds only the current round.
   are not told about it.
 
 [^owner]: Conversation with the repository owner, 2026-11-01.
-[^renovate-skill]: `plugin/skills/effected-renovate/SKILL.md` — steps 1
-    to 8.
+[^renovate-skill]: `plugin/skills/upgrade/SKILL.md` — steps 1
+    to 9.
 [^effect-upgrade-skill]: `.claude/skills/effect-upgrade/SKILL.md` — "The
     upgrade ledger", "Record mode" and "Reset mode".
 [^upgrades-history]: `.claude/upgrades/` — one document per advance,

@@ -8,7 +8,7 @@ and **auditing for `Console.*` call sites is insufficient**, because Effect's
 default logger writes through the same ref. The identity is source-visible, not
 folklore: `Console.Console` **is** `effect.ConsoleRef` (`Console.ts:86`),
 `TestConsole.layer` is `Layer.effect(Console.Console)(make)`
-(`testing/TestConsole.ts:330`), and `Logger.ts:277`, `:318`, `:373` all read
+(`testing/TestConsole.ts:330`), and `Logger.ts:290`, `:335`, `:391` all read
 `options.fiber.getRef(effect.ConsoleRef)`. One repo's audit cleared a
 package by grepping `Console.*` and missed three live `Effect.logWarning`
 sites. Only direct `console.*`, direct `process.stdout.write` / `stderr.write`,

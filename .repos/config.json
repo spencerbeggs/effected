@@ -2,7 +2,7 @@
 	"repos": {
 		"effect": {
 			"url": "https://github.com/Effect-TS/effect.git",
-			"ref": "effect@4.1.5",
+			"ref": "effect@4.1.6",
 			"purpose": "Read-only Effect v4 source pinned to the tag matching the effect catalog — the authority on what v4 actually exports, plus the v3→v4 migration notes and the @effect/vitest reference implementation. Tracks the main Effect-TS/effect monorepo (v4 development moved back there on 2026-07-19 when the effect-smol repo was archived); vendored at .repos/effect since the 2026-07-24 rename, matching the path a consuming repo would use.",
 			"sparse": [
 				"packages/effect",
@@ -22,12 +22,6 @@
 				"startHere": "packages/effect/src settles what v4 actually exports (evidence-ladder rung 2); migration/*.md settles v3→v4 renames (rung 1). Before trusting an answer, check the pin matches the installed effect version — node_modules wins on disagreement."
 			},
 			"notes": [
-				{
-					"id": "n-5f95",
-					"date": "2026-10-07",
-					"ref": "effect@4.0.2",
-					"note": "4.0.1→4.0.2 advance (2026-10-07): zero kit source breaks. Every module and directly importable export now carries an explicit @stability tag (stable = strict semver, unstable = may break in a minor); newly unstable top-level modules include the platform contracts the kit requires in R — FileSystem, Path, PlatformError, Stdio, Terminal — plus Crypto, Graph, ByteSize, ErrorReporter, ExecutionPlan, LayerMap/LayerRef, Newtype, TxChunk, testing/TestConsole and the new Version module; encoding/Base64|Base64Url|Hex|EncodingError are stable. The added tag lines shifted most src line numbers (skill-anchors.json re-derived through the 460272d3..269a7c86 diff). Consumer-visible semantics: Effect.retry no longer retries a cause carrying a defect or interruption; Config.orElse recovers plain failures only and Config parsing preserves provider defects; Config.Record keeps separators inside values; Yaml.parse keep-chomping (|+ >+) and Toml.parse multiline-string CRLF trimming fixed (core parsers used by config-file, markdown frontmatter, lockfiles); Map/Set schema equivalence no longer equates proper subsets; Stream.peel/tapSink/zipLatest/groupBy/slidingSize fixes; Schema.toTaggedUnion/TaggedUnion expose .tag; interrupt-only spans are Unset with effect.fiber.interrupted; Cause.pretty drops the internal stack frame for non-object failures; AI tracing renamed to OTel GenAI (gen_ai.provider.name; WellKnownSystem/BaseAttributes/TokenAttributes removed); RPC span names default to the method; HTTP/SQL/OTLP tracing realigned to OTel conventions; McpServer.layerHttp gains allowSessionTermination."
-				},
 				{
 					"id": "n-c0e4",
 					"date": "2026-10-11",
@@ -81,6 +75,12 @@
 					"date": "2026-11-21",
 					"ref": "effect@4.1.5",
 					"note": "4.1.4→4.1.5 advance (2026-11-20, feat/effect-4.1.5): patch, zero kit source or test breaks (typecheck 56/56 uncached clean; tests 26072/26080, 8 skipped, 0 failed), no workaround dropped. The mcp-kit stdin guard STAYS: core now replies -32700 to an unparseable NDJSON line (#10579), but still drops non-object JSON, non-JSON-RPC objects and over-cap lines with no reply; the guard answers non-JSON lines before core, so no double reply. Visible kit change with no code edit: @effected/mcp's Readonly tools now list destructiveHint false (getOrUndefined(Destructive) ?? !readOnlyHint, #10752). Removed exports (SchemaRepresentation.toCodeDocument/CodeDocument/Artifact/makeCode, OpenApiTransformer) had no kit use; effect-v4-schema now teaches Codegen.Module addSchemas + print (probed). Probed both versions: fromEnv() captures at first lookup; Result.Success JSON uses `success`; NumberFromString(-0) encodes \"-0\"; DateTime.make(\"2024-1-15\") is UTC midnight regardless of TZ and \"…PDT\" parses; Order.Struct compares symbol fields; Arbitrary SampleError/Exhausted carry UnsupportedPattern diagnostics (generation unchanged). Not a bug: effect/protobuf is NEW in 4.1.5, so no old enter/leave shape existed. New satellites @effect/chat-{slack,discord,whatsapp,telegram,teams} are NOT in the effected catalog (owner decision). git grep trap: pathspec 'packages/*/src' matches nothing; use ':(glob)packages/*/src/**'."
+				},
+				{
+					"id": "n-f104",
+					"date": "2026-11-26",
+					"ref": "effect@4.1.6",
+					"note": "4.1.5→4.1.6 advance (2026-11-26, feat/effect-4.1.6): patch, one kit TYPE break, one kit test break, no src workaround dropped. (1) TYPE, @effected/jwt: JoseError gained CryptoFailed (a non-InvalidKey CryptoError from a backend: core's jose/internal/compact.ts cryptoFailure used to map every backend failure to InvalidKey), so toJwtError's exhaustive switch hit TS2366; mapped to JwtError reason \"key\" (unchanged routing; message now carries \"(module.method: reason)\"), pinned by a fault-injected Signature.verify in Jws.test.ts with a mutation control. (2) UNANNOUNCED in the changelog headline: platform-node-shared NodeStdio now pauses process.stdin when its last Stdio.stdin consumer stops (nextTick after the readable listener is removed), so a runMain program that only read NodeStdio's stdin drains with stdin open (probed 4.1.5 sits until EOF, 4.1.6 exits at once). LspStdio.teardown's explicit host exit STAYS: any handle the server does not own (vscode-languageserver's --clientProcessId interval, a raw process.stdin listener) still holds the loop; the lsp control now holds an interval (--hold-handle) and a new test pins the drain. (3) Stream.merge / Channel.merge start both sides at once (#10857): a merged fromPubSub is subscribed when CliUi.live returns; buffer and a concurrent flatMap still subscribe late (probed all four shapes both versions); cli-kit test repointed at buffer plus a merge test. (4) effect/sql Migrator runs id 0 on a fresh DB (latest is now Option, not 0); Store keeps its positive-integer rule, docs reworded; adoption's gap rule (Migrator never runs an id ≤ its latest) still holds. (5) Built-in schemas/checks lost annotations.toCode (moved into internal/schema/schemaCodegenBuiltIns.ts); Codegen output byte-identical (probed). Not bugs: packed-install bun leg failing with ERR_MODULE_NOT_FOUND typescript predates this advance (failing since 2026-11-24, local-only, CI skips bun)."
 				}
 			]
 		},

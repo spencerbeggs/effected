@@ -9,10 +9,10 @@ tags:
   - release
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-26T06:05:38Z
 x-okfit-integrity:
   generated:
-    body: 831e9f4952a81f8c
+    body: dd4c9705dc6565de
 ---
 
 # Advance the effect pin
@@ -32,7 +32,7 @@ A new `4.x` the kit should build on has published — `effect` core and every sa
 7. **Decide whether a bridge is needed.** The published kit advertises the floored tilde `~4.<minor>.0` as its `effect` peer (releases before the tilde advertised the caret `^4.0.0`). A patch advance needs no bridge. A minor advance does whenever the build toolchain (`@savvy-web/*`, okfit, tsdoctor, vitest-agent, rolldown-pnpm-config) loads the published kit built on the old minor: the derived `effect@^4.0.0` pins move that closure onto the new minor, and if the minor removed an API it imports, it dies at import. Release the kit with the advance, and bridge until the toolchain republishes. See [one resolved effect copy](../conventions/one-resolved-effect-copy.md) for the three shapes (`overrides`, `packageExtensions`, a `.pnpmfile.cjs` `readPackage` hook) and the diagnostic that picks between them. If one is written, install and confirm it closed what it was meant to close: for an `overrides` bridge, the packages-section-scoped count of the old spec reaches zero; for a `packageExtensions` or `readPackage` bridge, the published kit packages resolve the old `effect` while the workspace resolves the new one, and the lockfile's `importers:` section is unchanged from the pre-bridge copy. Then run each tool once: a tool whose own packages peer on `effect` can still split across the two copies.
 8. **Run a full-kit build and test pass** (`pnpm build`, then the workspace test suite) to catch anything the advance did not anticipate before it lands.
 9. **Check the lockfile diff.** Confirm platform binaries (turbo, biome, tsgo) were not stripped by the install, and note any bridge's removal condition in the PR description so a later reader knows when it is safe to take back out.
-10. **Record what consumers must act on.** Every Effect change that can alter a downstream project's types, output or behaviour gets an entry in the `effected-renovate` upgrade ledger, keyed on `effect` at the new version. The same goes for every kit break the advance forces, keyed on the kit package. `/effect-upgrade` writes these entries as it goes, and `node plugin/skills/effected-renovate/scripts/applicable.mjs --check` validates them. See [the ledger entry model](../models/renovate-ledger-entry.md).
+10. **Record what consumers must act on.** Every Effect change that can alter a downstream project's types, output or behaviour gets an entry in the `upgrade` skill's ledger, keyed on `effect` at the new version. The same goes for every kit break the advance forces, keyed on the kit package. `/effect-upgrade` writes these entries as it goes, and `node plugin/skills/upgrade/scripts/applicable.mjs --check` validates them. See [the ledger entry model](../models/renovate-ledger-entry.md).
 
 ## Observable end state
 

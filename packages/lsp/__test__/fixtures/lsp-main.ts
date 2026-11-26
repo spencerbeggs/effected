@@ -44,6 +44,10 @@ const serve = Effect.gen(function* () {
 	return { reason: exited ? "exit" : "closed", shutdownReceived } satisfies LspSessionEnd;
 });
 
+// --hold-handle keeps a handle the server does not own, as vscode-languageserver's
+// --clientProcessId liveness interval does: only an explicit exit ends the process then.
+if (flags.has("--hold-handle")) setInterval(() => {}, 60_000);
+
 const program = serve.pipe(Effect.provide(Layer.mergeAll(NodeStdio.layer, HomeLayer)));
 
 NodeRuntime.runMain(LspStdio.launch(program), {

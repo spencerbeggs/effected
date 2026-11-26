@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # session-start-orientation.bats — covers hooks/session-start/orientation.sh,
-# the plugin's only hook, on BOTH hosts.
+# the plugin's SessionStart hook, on BOTH hosts (subagent-start-maps.bats covers the other hook).
 #
 # One source script serves Claude Code and Copilot through the pluginfinity
 # hook library, so every test runs the BUILT copy under builds/<host>/ with
@@ -11,8 +11,10 @@
 # What the suite pins:
 #   - each host's response shape (nested hookSpecificOutput on Claude Code, a
 #     flat additionalContext on Copilot), exactly one JSON object per run;
-#   - the briefing itself, byte-identical on both hosts, naming every skill and
-#     agent on disk, with the do-not-guess block and no v3 migration framing;
+#   - the briefing itself, byte-identical on both hosts but for each build's
+#     root, naming every skill and agent on disk, with the do-not-guess block,
+#     no v3 migration framing, and a lookup ritual whose map paths resolve in
+#     the build that ran it;
 #   - the vendored-source posture for every branch, against the SESSION's
 #     project (CLAUDE_PROJECT_DIR on Claude Code, the envelope's cwd walked up
 #     to its git root on Copilot);
@@ -118,13 +120,19 @@ _project() {
 	[ -n "$ctx" ]
 }
 
-@test "the briefing is byte-identical on both hosts" {
-	local claude_ctx
+@test "the briefing is byte-identical on both hosts, but for each build's own root" {
+	# The maps are named by absolute path into the build that runs the hook, so
+	# the one permitted difference is that root; everything else matches byte
+	# for byte. The root must actually occur, or the normalization is vacuous.
+	local claude_ctx copilot_ctx
 	_brief claude "$REPO_ROOT"
-	claude_ctx=$ctx
+	grep -qF -- "$PLUGIN_DIR/builds/claude/" <<<"$ctx"
+	claude_ctx=${ctx//"$PLUGIN_DIR/builds/claude"/<root>}
 	_brief copilot "$REPO_ROOT"
-	[ -n "$claude_ctx" ] && [ "$ctx" = "$claude_ctx" ] || {
-		diff <(printf '%s\n' "$claude_ctx") <(printf '%s\n' "$ctx") >&2 || true
+	grep -qF -- "$PLUGIN_DIR/builds/copilot/" <<<"$ctx"
+	copilot_ctx=${ctx//"$PLUGIN_DIR/builds/copilot"/<root>}
+	[ -n "$claude_ctx" ] && [ "$copilot_ctx" = "$claude_ctx" ] || {
+		diff <(printf '%s\n' "$claude_ctx") <(printf '%s\n' "$copilot_ctx") >&2 || true
 		return 1
 	}
 }
@@ -216,6 +224,50 @@ _project() {
 		grep -qF "<do_not_guess>" <<<"$ctx"
 		grep -qF "effect-developer" <<<"$ctx"
 		grep -qiF "out of date" <<<"$ctx"
+	done
+}
+
+@test "lookup ritual: the briefing names maps that exist in its own build, on both hosts" {
+	# The ritual is only checkable if the paths it names resolve: the construct
+	# index directory (with a known package's table in it), the package
+	# references beside it, and core's module map with its routing table.
+	local host root constructs
+	for host in $HOSTS; do
+		_brief "$host" "$REPO_ROOT"
+		root="$PLUGIN_DIR/builds/$host"
+		constructs="$root/skills/effected-packages/references/constructs"
+		grep -qF "<lookup_before_writing>" <<<"$ctx"
+		grep -qF -- "grep -ri \"walk\" \"$constructs\"" <<<"$ctx" || {
+			echo "$host: no runnable construct-index grep in the briefing" >&2
+			return 1
+		}
+		[ -f "$constructs/glob.md" ]
+		grep -qF -- "$root/skills/effected-packages/references/<package>.md" <<<"$ctx"
+		grep -qF -- "$root/skills/effect-v4-module-index/SKILL.md" <<<"$ctx"
+		grep -qF "## Routing by task" "$root/skills/effect-v4-module-index/SKILL.md"
+		# The stop condition and the checkable output: name the construct.
+		grep -qF "Say which construct you will use" <<<"$ctx"
+	done
+}
+
+@test "the briefing tells no Effect version history" {
+	local host
+	for host in $HOSTS; do
+		_brief "$host" "$REPO_ROOT"
+		! grep -qiE "no longer|became|was renamed|moved (in)?to|since (rc|beta|v?4)" <<<"$ctx" || {
+			echo "$host: version-history phrasing in the briefing" >&2
+			return 1
+		}
+	done
+}
+
+@test "no vendored source still points at the installed source, not a guess" {
+	local host
+	for host in $HOSTS; do
+		_brief "$host" "$(_project bare)"
+		grep -qF "node_modules/effect/src" <<<"$ctx"
+		_brief "$host" "$(_project other-submodule)"
+		grep -qF "node_modules/effect/src" <<<"$ctx"
 	done
 }
 

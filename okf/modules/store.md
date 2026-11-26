@@ -16,10 +16,10 @@ sources:
     resource: ../../packages/store/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-26T04:27:59Z
 x-okfit-integrity:
   generated:
-    body: c40f106ce95e7c45
+    body: 1fcaad4112ab2f6f
 ---
 
 # store
@@ -238,8 +238,8 @@ effect/sql recorded and what `adoptMigratorLedger` matches against. A key
 that does not match is skipped, as effect/sql skips it; the list is sorted
 by id; each `up` provides the effect with the store's `SqlClient`, and
 there is no `down`. A differential test runs core's loader over the same
-keys. **It validates nothing**: an id `0` (which `Migrator` silently never
-runs) or two keys with one id (`"1_a"`, `"01_b"`, which `Migrator` refuses
+keys. **It validates nothing**: an id `0` (which `Migrator` runs, but `Store`
+ids are positive integers) or two keys with one id (`"1_a"`, `"01_b"`, which `Migrator` refuses
 typed) dies in `Store.layer` as a wiring defect, deliberately louder than
 effect/sql.
 

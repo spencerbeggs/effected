@@ -41,6 +41,7 @@ export {
 	type DescendOptions,
 	type DescendRecordOptions,
 	type DescendResult,
+	type SkippedLink,
 	type UnreadableDirectory,
 	descend,
 	descendEntries,

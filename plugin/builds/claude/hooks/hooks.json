@@ -15,6 +15,22 @@
 					}
 				]
 			}
+		],
+		"SubagentStart": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "env",
+						"args": [
+							"PLUGINFINITY_EVENT=SubagentStart",
+							"bash",
+							"${CLAUDE_PLUGIN_ROOT}/hooks/subagent-start/maps.sh"
+						],
+						"timeout": 5
+					}
+				]
+			}
 		]
 	}
 }

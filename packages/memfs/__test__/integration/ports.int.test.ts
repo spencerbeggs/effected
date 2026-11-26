@@ -8,6 +8,7 @@ import {
 	mkdtempSync,
 	readFileSync,
 	readdirSync,
+	readlinkSync,
 	realpathSync,
 	rmSync,
 	statSync,
@@ -142,6 +143,25 @@ describe("sync port parity with node:fs", () => {
 					outcome(() => [...sync.readDirectory(`/r/${c}`)].sort()),
 					outcome(() => readdirSync(hostPath(c)).sort()),
 					`readDirectory ${c}`,
+				);
+			}
+		}),
+	);
+
+	it.effect("readLink agrees with readlinkSync on every case: value, code, syscall, path and message", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeHandle(seed);
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			// A target is stored text: the host's links name host paths, so the host prefix maps onto "/r".
+			const answer = (f: () => string) => {
+				const result = outcome(f);
+				return "value" in result ? { value: String(result.value).split(host).join("/r") } : result;
+			};
+			for (const c of [...cases, "dangling/x", "to-dir/inner.txt", "nope/x"]) {
+				assert.deepStrictEqual(
+					answer(() => sync.readLink(`/r/${c}`)),
+					answer(() => readlinkSync(hostPath(c), "utf8")),
+					`readLink ${c}`,
 				);
 			}
 		}),

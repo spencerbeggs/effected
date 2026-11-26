@@ -123,13 +123,27 @@ hands in — never re-derived here.
   as `DescendError` — the OPPOSITE of the upward per-probe absorption, because
   a swallowed subtree in a downward enumeration is silently missing
   membership. `"skip"` absorbs and continues. `"record"` absorbs and resolves
-  to a `DescendResult { matches, unreadable }` instead of a bare array, where
+  to a `DescendResult { matches, unreadable, links }` instead of a bare array, where
   each `UnreadableDirectory` is `{ path, cause }` — the absorbed
   `readDirectory` (or, for a link under `followSymlinks`, `realPath`)
   `PlatformError` travels with the entry, so a caller that
   must report WHY never re-reads the directory. The walk base records as
   `path: ""`. A NotFound mid-walk is a benign vanished-directory race and
   reads as empty in every mode — it is never recorded.
+- **`links`** (record mode only, on `DescendResult` and
+  `DescendEntriesResult`): each `SkippedLink { path, target, kind }` is a
+  link in a directory the walk READ — `path` spelled like `matches`,
+  `target` the verbatim `readLink` text. `"directory"`: resolves to a
+  directory the walk would have entered had it been plain and did not
+  (every such link without `followSymlinks`; under it, only a cycle).
+  `"dangling"`: `stat` does not resolve it, whatever the pattern. Never
+  reported: an entered link, one skipped for another reason (prune name,
+  hidden under `dot: false`, depth bound, a non-descending pattern),
+  anything under a pruned directory or a boundary, a literal pattern's
+  path, a `followSymlinks` link whose `realPath` fails (that is
+  `unreadable`), and a link whose target text cannot be read. The
+  `ReadLink` request is asked only in record mode, so other modes cost
+  nothing more. `__test__/DescendLinks.test.ts` pins it through both drivers.
 - Depth past `maxDepth` (default 256) is a typed `depthExceeded` failure,
   never a truncation; an invalid `maxDepth` is a **defect**, exactly
   `ascend`'s guard.
@@ -173,12 +187,18 @@ hands in — never re-derived here.
 ## One walk, two drivers
 
 The downward walk is ONE generator, `src/internal/descendMachine.ts`, yielding
-filesystem requests (`Stat`, `Lstat`, `RealPath`, `ReadDirectory`).
+filesystem requests (`Stat`, `Lstat`, `RealPath`, `ReadDirectory`, and in
+record mode `ReadLink`).
 `descend` / `descendEntries` (`Descend.ts`) answer them through core's
 `FileSystem`; `descendSync` / `descendEntriesSync` (`DescendSync.ts`) answer
 them from a caller-supplied `WalkerSyncFileSystem` (a `node:fs`-shaped port:
-`readDirectory`, `stat`, `lstat`, `realPath`; `code: "ENOENT"` is the benign
-race). Every rule lives in the machine — **never put one in a driver**; a
+`readDirectory`, `stat`, `lstat`, `realPath`, optional `readLink`;
+`code: "ENOENT"` is the benign race). `readLink` is optional so an external
+port written before it still satisfies the interface; **a port without it
+reports no `links` at all** (dangling ones included), which the TSDoc on the
+member and on `links` states and a test pins. memfs's sync port and
+`nodeWalkerFileSystem` both carry it, and `DescendLinks.test.ts` walks the
+real memfs port — never hand-build a `readLink` there. Every rule lives in the machine — **never put one in a driver**; a
 driver only maps its platform's answers and failures. Path joining is a
 caller function, not a request. The sync forms are on the root entry (pure);
 `@effected/walker/node-sync` binds them to Node (`nodeWalkerSyncOps`), and
@@ -187,7 +207,8 @@ record-mode causes are `unknown` (`UnreadableDirectory<unknown>`): the port has 
 `PlatformError`. Otherwise the sync forms return the Effect forms' own types
 (`DescendResult`, `DescendEntry`, `DescendEntriesResult`) — never add parallel
 sync result types — and an entry's stat lives on `info`. A memfs handle
-satisfies the sync port directly (its sync interface carries `realPath`).
+satisfies the sync port directly (its sync interface carries `realPath` and
+`readLink`).
 
 - **`boundaries`** — marker FILE names. A directory strictly below `cwd`
   holding one contributes nothing (no matches, no descent); `cwd` itself is

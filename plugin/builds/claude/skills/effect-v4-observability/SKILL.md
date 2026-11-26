@@ -5,14 +5,13 @@ description: Use when adding logging, metrics, tracing/spans, or OpenTelemetry t
 
 # Effect v4 observability
 
-Every Effect-core name below was verified to exist against the vendored
-Effect source, and every claimed absence verified absent there.
-Core's own OTLP exporters (`effect/observability`) are verified the same way.
-`@effect/opentelemetry` is **not installed** in this monorepo, so this skill
-names none of its members; verify any you use against the installed package.
-When an API is not listed here, confirm it against the source or a
-type-checked probe before writing code. Module routing (what
-`Tracer`, `Logger`, `References` are) lives in `effect-v4-module-index`.
+Every Effect-core name below exists in the Effect source, and every claimed
+absence is absent there; core's own OTLP exporters (`effect/observability`) are
+held to the same standard. This skill names no `@effect/opentelemetry` member;
+verify any you use against the installed package. When an API is not listed
+here, confirm it against the source or a type-checked probe before writing code.
+Module routing (what `Tracer`, `Logger`, `References` are) lives in
+`effect-v4-module-index`.
 
 ## The house rule (this is the whole point)
 
@@ -72,25 +71,13 @@ boundary only); **bare `Effect.fn` = stack-frame ergonomics** (fine internally);
 **`fnUntraced` = hot path, no frames**. "Boundaries only" governs *named* spans —
 it does not forbid bare `Effect.fn` inside an engine.
 
-**Pure `Result`-returning siblings of a spanned boundary carry no span.** This
-is the kit's **Result-parity rule** — ratified kit-wide policy, not a package
-idiosyncrasy (authoritative statement: the effected repo's
-`formatter-convention.md`, decision 6). Scope test: a public boundary returning
-`Effect` with `R = never`, no async step and no IO — where the wrapper carries
-nothing but a span and the error channel — must expose the sync form as the
-primitive, spelled `*Result` (`Fmt.parseResult` pure, `Fmt.parse` spanned).
-Never `*Sync`: the Effect form is also synchronous, and the kit uses `*Sync`
-for genuinely-blocking-IO facades returning nullables. Interface/adapter seams
-are out of scope — the policy applies to the engine, not every adapter over it
-(a codec implementing an `Effect`-shaped interface stays as it is). The sync
-variant is not an Effect and gets no span, no log, no metric; do not wrap it
-in one to "keep coverage uniform" — the uniform-coverage rule governs the
-*Effect* surface. Two obligations instead: the Effect variant is defined **in
-terms of** the Result variant behind its named span (so tracing sees every
-Effect-path call and the two can never diverge), and the sync variant's TSDoc
-points Effect consumers at the spanned variant. A sync twin whose Effect
-sibling lacks a span, or that quietly grows its own logging, is a review
-finding — as is an in-scope boundary with no `*Result` twin at all.
+**Pure `Result`-returning siblings of a spanned boundary carry no span** — the
+kit's Result-parity rule. A public boundary with `R = never`, no async step and
+no IO exposes a pure `*Result` primitive (never `*Sync`), and the spanned Effect
+variant is defined in terms of it. Before you add, review or span a sync twin,
+load [result-parity.md](references/result-parity.md): it has the scope test, why
+`*Sync` is the wrong name, the adapter carve-out and the three review findings.
+Wrapping the twin in a span "for uniform coverage" is itself a finding.
 
 Explicit / nested / edge spans:
 
@@ -124,32 +111,21 @@ through the engine — a public boundary may log, the hot path does not.
 
 ### Custom loggers — format with `Logger.make`, route with `withConsoleLog`
 
-A `Logger<Message, Output>` is one method, `log(options): Output` (`Logger.ts:66`).
-Keep **formatting** and **routing** as two loggers, because core already ships
-the routing half:
+Keep **formatting** and **routing** as two loggers: `Logger.make` renders, and
+`Logger.withConsoleLog` / `withConsoleError` route through the `Console`
+service. **Never write the routing by hand** with
+`o.fiber.getRef(Console.Console).log(...)`; it duplicates core and drifts from
+it. Reuse a logger inside another by calling `inner.log(options)`.
 
 ```ts
 const format = Logger.make((o) => `${o.logLevel}: ${String(o.message)}`)   // Logger<unknown, string>
-const toStdout = Logger.withConsoleLog(format)                            // Logger<unknown, void>
-const toStderr = Logger.withConsoleError(format)
-program.pipe(Effect.provide(Logger.layer([toStdout])))
+program.pipe(Effect.provide(Logger.layer([Logger.withConsoleLog(format)])))
 ```
 
-`Logger.withConsoleLog` / `withConsoleError` (`Logger.ts:273,314`) read the
-`Console` service off the fiber and call `console.log` / `console.error` with
-`self.log(options)` — which is also how you **reuse a logger inside another**:
-call `inner.log(options)`, never re-render. The trap is writing that routing
-line by hand — `Logger.make((o) => o.fiber.getRef(Console.Console).log(render(o)))`
-— which duplicates core and drifts from it (two such sites had accreted in
-`github-actions` before #769). The built-ins are the same composition:
-`consoleLogFmt` / `consoleStructured` / `consoleJson` are
-`withConsoleLog(formatLogFmt | formatStructured | formatJson)` (`Logger.ts:942-992`),
-and `Logger.map(logger, f)` post-processes an output. Because the route goes
-through the `Console` service, `TestConsole` captures it: probed,
-`Effect.logInfo("hello")` under `Logger.layer([withConsoleLog(format)])` lands
-in `TestConsole.logLines` as `["Info: hello"]` and the `withConsoleError` twin in
-`errorLines` — the `ConsoleRef` coupling `effect-v4-testing` warns about is the
-same mechanism, and here it works for you.
+Before you write a custom logger, or assert on log output in a test, load
+[custom-loggers.md](references/custom-loggers.md): it shows the built-in
+`console*` loggers are this same composition, `Logger.map` for post-processing,
+and exactly what `TestConsole` captures from each route.
 
 ## Metrics
 
@@ -197,117 +173,44 @@ its call to the library.
 ## OpenTelemetry — at the app edge only
 
 Libraries never touch this. An **application** composes one telemetry layer at
-its top level.
+its top level: core's `Otlp.layer` / `layerJson` / `layerProtobuf` /
+`layerFromConfig` from `effect/observability`, provided an `HttpClient`, and the
+optional `@effect/opentelemetry` SDK bridge only when the app must run the SDK
+itself.
 
-### Core OTLP export (`effect/observability`)
+- **`layerFromConfig` exports nothing** unless `OTEL_<SIGNAL>_EXPORTER` includes
+  `otlp` and an endpoint is set; an unset variable counts as an empty list.
+- **Request URLs reach exported spans.** `HttpClient` records `url.full`,
+  `url.path` and `url.query`, and only a short list of signed-URL query names is
+  redacted by default, so a `?token=` or a secret in the path is exported as
+  written.
+- **Core's `HttpClient` sends `b3` and `traceparent` on every request**: turn
+  `HttpClient.TracerPropagationEnabled` off for a client that talks to a third
+  party.
+- **Never flush or shut down an exporter from business code**; the layers own
+  batching and shutdown.
 
-Core ships vendor-neutral OTLP exporters, so most apps need no SDK at all.
-`Otlp.layer` installs the OTLP logger, metrics exporter and tracer exporter from
-one configuration, posting to `/v1/logs`, `/v1/metrics` and `/v1/traces` under
-`baseUrl`. It needs an `HttpClient`, and an `OtlpSerialization` that
-`layerJson` / `layerProtobuf` already provide:
-
-```ts
-import { Layer } from "effect"
-import { FetchHttpClient } from "effect/http"
-import { Otlp, OtlpSerialization } from "effect/observability"
-
-// Explicit endpoint, JSON encoding.
-const TelemetryLayer = Otlp.layerJson({
-  baseUrl: "http://localhost:4318",
-  resource: { serviceName: "todo-service", serviceVersion: "1.0.0" }
-}).pipe(Layer.provide(FetchHttpClient.layer))
-
-// Or from the standard OTEL_* environment (OTEL_SDK_DISABLED, OTEL_EXPORTER_OTLP_*,
-// OTEL_<SIGNAL>_EXPORTER, OTEL_BSP_*); this form takes the serialization explicitly.
-// It exports nothing until OTEL_<SIGNAL>_EXPORTER includes `otlp` (see below).
-const TelemetryFromEnv = Otlp.layerFromConfig({ resource: { serviceName: "todo-service" } }).pipe(
-  Layer.provide(OtlpSerialization.layerJson),
-  Layer.provide(FetchHttpClient.layer)
-)
-
-const AppLayer = Layer.mergeAll(DomainLayer, HttpLayer).pipe(Layer.provide(TelemetryLayer))
-```
-
-- `layer` / `layerJson` / `layerProtobuf` / `layerFromConfig` are the four
-  entry points; the per-signal modules (`OtlpTracer`, `OtlpLogger`,
-  `OtlpMetrics`) exist for an app exporting only one signal.
-- **`layerFromConfig` is gated by the environment, per signal.**
-  `Otlp.layerFromConfig` and `OtlpMetrics.layerFromConfig` (and the tracer and
-  logger equivalents) export nothing — the layer installs only a flusher, and
-  flushing is a no-op — unless `OTEL_<SIGNAL>_EXPORTER` (`OTEL_TRACES_EXPORTER`,
-  `OTEL_METRICS_EXPORTER`, `OTEL_LOGS_EXPORTER`) includes `otlp` **and** an
-  endpoint is set; `OTEL_SDK_DISABLED=true` also disables it. An unset
-  `OTEL_<SIGNAL>_EXPORTER` counts as an empty list, so set it explicitly. A
-  configuration error in these layers is a defect (`Effect.orDie`), not a typed
-  failure. The explicit `layer` / `layerJson` / `layerProtobuf` forms take their
-  options directly and have no exporter gate.
-- Default export intervals differ by signal: traces 5 s, logs 1 s, metrics
-  10 s. Override with `tracerExportInterval`, `loggerExportInterval` and
-  `metricsExportInterval` on `Otlp.layer` / `layerJson` / `layerProtobuf` (the
-  per-signal modules take plain `exportInterval`); `layerFromConfig`
-  reads `OTEL_BSP_SCHEDULE_DELAY` (traces), `OTEL_BLRP_SCHEDULE_DELAY` (logs) and
-  `OTEL_METRIC_EXPORT_INTERVAL` (metrics).
-- **Request URLs reach exported spans.** Whenever a tracer is live, `effect/http`'s
-  `HttpClient` records `url.full`, `url.path` and `url.query` on each request
-  span, and the OTLP tracer ships them off the machine. Only the names in
-  `UrlParams.CurrentRedactedNames` are redacted by default (the signed-URL
-  names `X-Amz-Signature`, `X-Amz-Credential`, `X-Amz-Security-Token`,
-  `AWSAccessKeyId`, `Signature`, `sig`, `X-Goog-Signature`), so a `?token=`
-  query value is exported as written. `url.path` is never redacted, so a secret
-  in the path goes out as written too. Extend the list by providing
-  `UrlParams.CurrentRedactedNames`; a custom list replaces the defaults.
-  For names secret only in one `HttpApi`, annotate the API, group or endpoint
-  with `HttpApi.RedactedNames` instead: `HttpApiBuilder` and `HttpApiClient`
-  add those query and header names to the global lists in their spans. A scoped
-  `CurrentRedactedNames` set inside a handler never reaches the server span,
-  which is recorded after the handler's context is restored.
-  The exporter's own posts are not traced.
-- The layers own export batching and shutdown (`shutdownTimeout`) — **never
-  flush or shut an exporter down from business code.**
-
-### Bridging trace context
-
-- **Inbound**, at the HTTP/RPC/queue adapter only: `HttpTraceContext.fromHeaders`
-  (`effect/http`) reads `traceparent`/`b3` into an `Option<Tracer.ExternalSpan>`;
-  for any other carrier build one with `Tracer.externalSpan({ spanId, traceId })`.
-  Parent the handler on it with `Effect.withSpan(name, { parent })` or
-  `Effect.withParentSpan(span)`.
-- **Outbound**, core's `HttpClient` writes `b3` and `traceparent` on every
-  request by default. That is right inside your own system and wrong toward a
-  third party, which then receives your trace and span ids. Turn it off per
-  client with the `HttpClient.TracerPropagationEnabled` reference; the client
-  span is still recorded locally:
-
-  ```ts
-  const http = HttpClient.transform(yield* HttpClient.HttpClient, (effect) =>
-    Effect.provideService(effect, HttpClient.TracerPropagationEnabled, false)
-  )
-  ```
-
-  The kit's example is `@effected/github-actions`' S3 `BlobStore`, which signs
-  requests to a third-party object store and sends it no trace context.
-
-### `@effect/opentelemetry` (optional SDK bridge)
-
-Reach for it only when the app must run the OpenTelemetry JS SDK itself (its
-span processors, an exporter core does not ship, or another library already
-instrumented through the SDK). It is not vendored in this kit, so **verify
-every name against the installed package** before writing it; do not take one
-from memory or from older guides.
-
-**Anti-patterns:** constructing OTel SDK clients inside services; wiring
-exporters in domain code; scattering shutdown logic; per-subsystem telemetry
-config instead of one top-level layer; propagating trace headers to a
-third-party API.
+Before you wire telemetry into an app, export from an HTTP client or server that
+carries secrets in URLs, or continue an inbound trace, load
+[otlp-export.md](references/otlp-export.md): it has the layer examples, the
+per-signal environment gate and export intervals, the redaction lists and how to
+extend them per `HttpApi`, inbound `HttpTraceContext` and `Tracer.externalSpan`,
+the propagation switch, and the SDK-bridge anti-patterns. A misconfigured
+`layerFromConfig` exports nothing and reports no error.
 
 ## How to verify quickly
 
 ```bash
-cd packages/yaml && node --input-type=module -e "
+cd packages/<pkg> && node --input-type=module -e "
 import * as Metric from 'effect/Metric';
 console.log(typeof Metric.withAttributes, typeof Metric.tagged);
 "   # → function undefined
 ```
 
 One runtime probe beats an hour of guessing whether a name exists.
+
+## Additional resources
+
+- [references/result-parity.md](references/result-parity.md) — the Result-parity scope test, the `*Result` naming rule, the adapter carve-out, the two obligations and the review findings. Load when: a public boundary is synchronous and pure, you are adding or reviewing a `*Result` twin, or deciding whether a sync function gets a span.
+- [references/custom-loggers.md](references/custom-loggers.md) — `Logger`'s one method, the format/route split, the built-in loggers as the same composition, `Logger.map`, and what `TestConsole` captures. Load when: writing or reviewing a custom logger, routing logs to stdout or stderr, or testing log output.
+- [references/otlp-export.md](references/otlp-export.md) — core OTLP layers with examples, the `layerFromConfig` environment gate, export intervals, URL redaction in HTTP spans, inbound and outbound trace context, and the `@effect/opentelemetry` bridge and its anti-patterns. Load when: an app exports traces, metrics or logs, an HTTP client or API carries secrets in a URL, a handler continues an inbound trace, or a client talks to a third-party API.

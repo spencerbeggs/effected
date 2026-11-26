@@ -43,9 +43,10 @@ routing index, not the catalogue.
 - **Let the route decide what's paginatable, at compile time.** `RestRoute`
   covers every documented route; `RestPaginatingRoute` is the narrower set
   `client.paginate` actually accepts, so a non-paginating route handed to it
-  is rejected before the request is ever built. See
-  [`references/pagination-retry-errors.md`](references/pagination-retry-errors.md)
-  for the full type-level surface (`RestParams`, `RestData`, `RestExtras`).
+  is rejected before the request is ever built. Before you type a helper over
+  routes, params or response data, load
+  [`references/pagination-retry-errors.md`](references/pagination-retry-errors.md):
+  it has the full type-level surface (`RestParams`, `RestData`, `RestExtras`).
 - **`requestDecoded` is an escape hatch from the route table, never from
   typing.** Reach for it only when a route is absent from GitHub's OpenAPI
   map or its live shape diverges, and always pass the schema — a shape
@@ -109,9 +110,9 @@ Verified against the live API:
   as absent whatever the type says, and check the version's breaking-change
   list before reading a new one.
 - **A per-call header wins over the option.** `Attestation` pins its own
-  version per call through the typed `headers` extra (`RestExtras`, see
-  [`references/pagination-retry-errors.md`](references/pagination-retry-errors.md)),
-  and a client pinned elsewhere leaves it alone.
+  version per call through the typed `headers` extra (`RestExtras`; load
+  [`references/pagination-retry-errors.md`](references/pagination-retry-errors.md)
+  before you pass one), and a client pinned elsewhere leaves it alone.
 - **On the old default, GitHub adds `Deprecation`/`Sunset`/`Link` headers
   only on endpoints the new version CHANGED**, and octokit prints a warning
   for each that cannot be silenced (its fetch wrapper logs via
@@ -135,10 +136,12 @@ Verified against the live API:
 - `GitTag.latestSemver` picks the **highest parsed version**, not the most
   recently created tag — in a monorepo with independently-versioned
   packages the two disagree; scope with `prefix` to the package you mean.
-  See [`references/resources.md`](references/resources.md).
+  Before you pick a release's base tag, load
+  [`references/resources.md`](references/resources.md).
 - A route absent from the generated paginating-route map (e.g.
   `GitHubCommit.changedFiles`) needs its own page source — never a manual
-  loop that reimplements pagination beside the one real engine. See
+  loop that reimplements pagination beside the one real engine. Before you
+  page a route the map does not list, load
   [`references/pagination-retry-errors.md`](references/pagination-retry-errors.md).
 - A hand-written route (release-asset upload, attestation upload) owns its
   own query parameters in the URI template — a parameter passed only as an

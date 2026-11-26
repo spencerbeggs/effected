@@ -19,10 +19,10 @@ sources:
     resource: "npm:pluginfinity"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-09T20:42:55Z
+  at: 2026-11-26T06:05:38Z
 x-okfit-integrity:
   generated:
-    body: 5e2c8e8e320b499d
+    body: b02fc57e77d34ffe
 ---
 
 # ai-plugin
@@ -31,7 +31,7 @@ x-okfit-integrity:
 
 `plugin/` is the workspace package `@effected/ai-plugins`, the single
 source of the "effected" agent plugin: a catalog of skills, four
-specialist subagents, a SessionStart briefing hook and, on Claude Code
+specialist subagents, a SessionStart briefing hook, a SubagentStart maps hook and, on Claude Code
 only, one background monitor. It is dogfooded
 during package work. `pluginfinity`, a devDependency from
 npm,[^pluginfinity-npm] builds the one source into two host plugins:
@@ -180,12 +180,16 @@ documents through `@effected/schemastore` and the `effected schema`
 command of the effected tool — the config file (`defineSchemastore` from
 `@effected/plugin`), the drift policy, document authoring, and the CI gate.
 
-**Consumer upgrades**: `effected-renovate`, which is user-invoked only
+**Consumer upgrades**: `upgrade`, which is user-invoked only
 (`disable-model-invocation: true`). It moves a consumer repository onto a
 new kit release: bump the config dependencies, regenerate the lockfile,
-confirm one `effect`, list the upgrade-ledger entries the upgrade
+confirm one `effect`, repin a vendored Effect submodule to the resolved
+`effect@<version>` tag, list the upgrade-ledger entries the upgrade
 crossed together with their hits in the consumer's code, build, test,
-align, write changesets and report. It is the first skill to ship
+align and adopt, write changesets and report. It runs unattended:
+invoking it is consent to every repository-local step, `adopt` entries
+included, and it holds an adoption back only for a serious issue it
+names in its body. It never commits, pushes or opens a pull request. It is the first skill to ship
 `scripts/`: three dependency-free `.mjs` helpers that `SKILL.md` names
 through `{{skill_dir}}`. Its `references/ledger/` is the one
 version-keyed plugin text. This repository writes the ledger through the
@@ -228,7 +232,7 @@ authoring contract every one of these follows.
 Four subagents live under `plugin/agents/` — `effect-developer.md`,
 `effect-reviewer.md`, `action-engineer.md`, `tsdoc-fixer.md` — each
 arriving with its relevant skills preloaded via frontmatter `skills`
-lists. The first three preload `effected-packages` and `effect-v4-house-style`, verify at
+lists. The first three preload `effected-packages`, `effect-v4-module-index` and `effect-v4-house-style`, gate any new helper on a lookup in those maps (and name the construct they chose in their report), verify at
 capability level by running the host repo's own gates (preferring
 structured session tools over hard-coded pnpm/turbo commands), and
 report `@effected` package improvement suggestions alongside skill rough
@@ -310,7 +314,7 @@ reads the source.
 - `construct-index.bats` and `construct-index-gate.bats` — the generator
   and the pre-push gate; see
   [construct-annotations](../models/construct-annotations.md).
-- `effected-renovate.bats` — the `effected-renovate` scripts against
+- `upgrade.bats` — the `upgrade` scripts against
   fixture lockfiles and ledgers. It covers selection by crossing,
   ordering, `--check`, the chain fetch through a stub `gh` with
   `GH_HOST` scrubbed, and `bump-config-deps` renames. It also holds two
@@ -360,9 +364,14 @@ own. `EFFECT_PIN` in that script is the plugin's only statement of the
 kit's Effect pin. The briefing names the skills and agents the
 plugin ships and tells the main agent to delegate whole write-or-review
 Effect tasks to the matching agent rather than hand-rolling them inline.
+It opens with a `<lookup_before_writing>` ritual: name the capability as a verb and an object, grep the construct index and read the package reference, read core's "Routing by task" table, confirm in source, then name the construct used or the reason none fits. Its paths are absolute, built from `hook_plugin_root`, so the grep runs as written in an installed plugin.
 Its `dogfood_feedback` block carries two loops — plugin feedback and
 `@effected` package feedback — and filing an issue always requires the
 user's explicit agreement.
+
+## SubagentStart maps hook
+
+Subagents receive no SessionStart briefing, and an agent body cannot spell a skill directory on Copilot, so `hooks/subagent-start/maps.sh` (registered under `SubagentStart` for both hosts, with no matcher because Copilot ignores one) injects an `<effected_maps>` block with the same absolute paths and lookup rule. It filters on `agent_type` itself: `effect-developer`, `effect-reviewer` and `action-engineer`, plain or `effected:`-scoped, get the block; every other agent, `tsdoc-fixer` included, gets a no-op. `subagent-start-maps.bats` pins both sides.
 
 ## The effected MCP server
 

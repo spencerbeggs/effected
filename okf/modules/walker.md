@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/walker/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-10T22:27:38Z
+  at: 2026-11-26T05:06:32Z
 x-okfit-integrity:
   generated:
-    body: a56a6c988217cb2e
+    body: ba18a521b592b18e
 ---
 
 # walker
@@ -199,12 +199,12 @@ pins that at compile time. No walk reads a file.
 
 **One walk, two drivers.** The downward walk is one generator,
 `internal/descendMachine.ts`, yielding filesystem requests (`Stat`,
-`Lstat`, `RealPath`, `ReadDirectory`); every rule lives in the machine, and
+`Lstat`, `RealPath`, `ReadDirectory`, and in record mode `ReadLink`); every rule lives in the machine, and
 a driver only maps its platform's answers and failures. `descend` and
 `descendEntries` answer the requests through core's `FileSystem`;
 `descendSync` and `descendEntriesSync` answer them from a
 `WalkerSyncFileSystem`, a `node:fs`-shaped port (`readDirectory`, `stat`,
-`lstat`, `realPath`; an error with `code: "ENOENT"` is the benign race),
+`lstat`, `realPath`, an optional `readLink`; an error with `code: "ENOENT"` is the benign race),
 plus a `WalkerSyncPath` (`join`), together the `WalkerSyncOps` a caller
 spreads into the options. The sync forms are on the root entry, pure; the
 Node binding is `@effected/walker/node-sync` (`nodeWalkerFileSystem`,
@@ -219,6 +219,31 @@ since the port has none. `__test__/DescendSync.test.ts` is a parity matrix:
 sync against Effect over one memfs volume, with faults mirrored on the sync
 port and fixtures reaching every driver mapping (a vanished directory, an
 unresolvable and a denied link).
+
+**Skipped links (record mode).** Under `onUnreadable: "record"` both
+result types also carry `links: ReadonlyArray<SkippedLink>`, each
+`{ path, target, kind }`: `path` spelled as `matches` spells it under the
+same root, `target` the link's own text verbatim (`readLink`, never
+resolved). `kind: "directory"` is a link resolving to a directory the
+walk would have entered had it been a plain one and did not: always under
+`followSymlinks: false`, and under `followSymlinks: true` only when it
+closes a cycle on its branch. A link the walk enters is not reported, nor
+one it would have skipped anyway (pruned by name, hidden under
+`dot: false`, past the pattern's depth bound, under a pattern that never
+descends). `kind: "dangling"` is any link in a directory the walk reads
+that `stat` cannot resolve, whatever the pattern. Only entries of
+directories the walk reads are seen, so nothing under a pruned directory or
+a boundary, and nothing for a literal pattern, is reported. A link under
+`followSymlinks` whose `realPath` fails stays an `unreadable` entry, not a
+link. The machine asks a `ReadLink` request only in record mode, so the
+other modes pay no extra syscall; a link whose target text cannot be read
+is not reported. The sync port's `readLink` is optional, so an external
+port written before it still type-checks, but a port without it reports no
+links at all, dangling ones included, while matches and unreadable
+directories are unchanged: a success that did nothing, which the TSDoc on
+the member and on `links` states and a test pins. memfs's sync port and
+`nodeWalkerFileSystem` carry it. `__test__/DescendLinks.test.ts` pins every
+case through both drivers over the real memfs port.
 
 **`descendEntries`** returns each match as `DescendEntry { path, info }`,
 `info` being the `stat` the walk already read (links followed), so a
@@ -399,8 +424,8 @@ inverts with direction.
   on a quietly wrong set. Unreadable directories fail by default; a skip
   mode exists for callers who explicitly want best-effort, and a third
   mode, `onUnreadable: "record"`, resolves to `DescendResult { matches,
-  unreadable }` carrying the absorbed `PlatformError` per unreadable
-  directory. Depth exhaustion is a typed failure, never a silent
+  unreadable, links }` carrying the absorbed `PlatformError` per unreadable
+  directory and every skipped symbolic link. Depth exhaustion is a typed failure, never a silent
   truncation. `NotFound` mid-walk is never recorded — it is the same
   benign vanished-directory race in every mode.
 

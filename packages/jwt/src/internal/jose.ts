@@ -98,6 +98,10 @@ export const toJwtError = (error: JoseError.JoseError | Schema.SchemaError, stat
 			return JwtError.of("badSignature", "the signature does not verify", extra);
 		case "InvalidKey":
 			return JwtError.of("key", reason.description, { ...extra, cause: error });
+		case "CryptoFailed":
+			// The provider cannot use this key's algorithm: still a key the verifier
+			// cannot use, so the same reason a rejected key gets.
+			return JwtError.of("key", reason.message, { ...extra, cause: error });
 		case "KeyNotFound":
 		case "AmbiguousKey":
 			return JwtError.of("unknownKid", reason.message, extra);

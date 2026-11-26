@@ -56,7 +56,7 @@ wrong (fail), or did the *world* simply not contain what they asked for (succeed
 ## `CliRuntime.main` assembles the whole program, in one order
 
 `CliRuntime.main(program, { platform, env?, logger?, render?, exitCode?,
-exitCodes?, usageExitCode?, helpOnUsageError?, distribution? })` wraps an `effect/cli` program so every failure — a parse error, a
+exitCodes?, usageExitCode?, helpOnUsageError?, renderUsageError?, distribution? })` wraps an `effect/cli` program so every failure — a parse error, a
 layer-build failure, a domain error, a findings exit — reports the same way.
 The order it assembles in is the whole point, not an implementation detail:
 
@@ -83,6 +83,29 @@ whichever `CliOutput.Formatter` is in effect where `Command.runWith` runs, one
 provided inside the program included. A `CliOutput.Presenter` provided inside
 the program replaces it. Customise the formatter `main` installs (the version
 line, say) through `env.formatter`.
+
+`render` is never called for a usage error, so a program that prints a JSON
+envelope under `--format json` passes `renderUsageError: { command, render }`
+for one. `render({ errors, commandPath, setting })` is called only for a
+`ShowHelp` carrying errors, and `setting(Format)` returns the global setting's
+value as core would have provided it to the handler: `Option.none()` when the
+setting is out of scope for `commandPath`, when its value fails to parse or when
+a local flag on the path shares its name, and its default when it is absent.
+Return a document and stdout carries only that document, with the help and the
+errors on stderr and the exit still `usageExitCode`. Return `undefined` and the
+output is exactly what it would be without the option. Do not scan argv for
+`--format` yourself: that also fires for a subcommand that has no such setting.
+
+~~~ts
+CliRuntime.main(CliAudience.run(root, { version }), {
+  platform,
+  renderUsageError: {
+    command: root,
+    render: ({ errors, setting }) =>
+      Option.contains(setting(Format), "json") ? JSON.stringify({ ok: false, usage: errors.map(String) }) : undefined,
+  },
+})
+~~~
 
 `CliRuntime.main` makes no platform choice of its own — pass `platform` and
 still call your own runtime's runner:

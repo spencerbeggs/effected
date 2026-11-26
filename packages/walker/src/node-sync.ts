@@ -21,7 +21,7 @@
  * @packageDocumentation
  */
 
-import { lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { lstatSync, readFileSync, readdirSync, readlinkSync, realpathSync, statSync } from "node:fs";
 import * as path from "node:path";
 import type { WalkerSyncFileSystem, WalkerSyncOps, WalkerSyncPath } from "./DescendSync.js";
 
@@ -31,7 +31,7 @@ export type { WalkerSyncFileSystem, WalkerSyncOps, WalkerSyncPath, WalkerSyncSta
 
 /**
  * `WalkerSyncFileSystem` over `node:fs`: `readdirSync`, `statSync`,
- * `lstatSync`, `realpathSync`, and `readFileSync(path, "utf8")`.
+ * `lstatSync`, `realpathSync`, `readFileSync(path, "utf8")` and `readlinkSync`.
  *
  * @public
  */
@@ -41,6 +41,7 @@ export const nodeWalkerFileSystem: WalkerSyncFileSystem = {
 	lstat: (p) => lstatSync(p),
 	realPath: (p) => realpathSync(p),
 	readFile: (p) => readFileSync(p, "utf8"),
+	readLink: (p) => readlinkSync(p),
 };
 
 /**
