@@ -54,18 +54,14 @@ Nothing in it is hand-rolled. `ActionManifest` decodes `action.yml`,
 // __test__/unit/schema/manifest-sync.test.ts
 import { assert, describe, it } from "@effect/vitest";
 import { ActionInput, ActionManifest } from "@effected/github-actions";
-import { MemoryFileSystem } from "@effected/memfs";
+import { NodeSyncFileSystem } from "@effected/memfs/node-sync";
 import { Effect } from "effect";
-import * as fs from "node:fs";
 import { INPUT_NAMES, readInputs } from "../../../src/schema/inputs.js";
 import { OUTPUT_NAMES, emitOutputs } from "../../../src/schema/outputs.js";
 
-// Read through FileSystem, seeded from the real file, so the suite exercises ActionManifest.read itself.
-const manifest = Effect.runSync(
- ActionManifest.read("/action.yml").pipe(
-  Effect.provide(MemoryFileSystem.layerWith({ "/action.yml": fs.readFileSync("action.yml", "utf8") })),
- ),
-);
+// Read the real file through FileSystem, so the suite exercises ActionManifest.read itself.
+// NodeSyncFileSystem is a read-only FileSystem over the disk that runs under Effect.runSync.
+const manifest = Effect.runSync(ActionManifest.read("action.yml").pipe(Effect.provide(NodeSyncFileSystem.layer)));
 
 describe("action.yml is the single source", () => {
  it("declares exactly the inputs and outputs the tuples name", () => {

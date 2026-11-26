@@ -158,12 +158,13 @@ compare and default-mirroring code every action used to write:
 ```ts
 import { assert, it } from "@effect/vitest";
 import { ActionInput, ActionManifest } from "@effected/github-actions";
-import { Effect, Result } from "effect";
-import { readFileSync } from "node:fs";
+import { NodeSyncFileSystem } from "@effected/memfs/node-sync";
+import { Effect } from "effect";
 import { readInputs } from "../src/schema/inputs.js";
 
-// A loud throw is the right failure for a broken manifest in a test.
-const manifest = Result.getOrThrow(ActionManifest.decodeResult(readFileSync("action.yml", "utf8")));
+// Read the real action.yml through FileSystem, synchronously; a loud throw is
+// the right failure for a missing or broken manifest in a test.
+const manifest = Effect.runSync(ActionManifest.read("action.yml").pipe(Effect.provide(NodeSyncFileSystem.layer)));
 
 it.effect("the code's defaults ARE the manifest's defaults", () =>
   Effect.gen(function* () {

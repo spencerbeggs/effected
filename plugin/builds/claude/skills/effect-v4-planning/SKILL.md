@@ -144,15 +144,22 @@ settle it with a probe per `effect-v4-source-lookup`; in a repo with a
 `scratchpad/` workspace, write the probe there
 (`pnpm scratchpad:probe probes/<name>.ts`).
 
-**Inventory core *and* the sibling `@effected` packages, not core alone.** In
-this monorepo the likelier duplication is not a core primitive but a *sibling
-kit package that already owns the concept*. Before designing a local primitive,
-consult the `effected-packages` index and grep the relevant sibling's `src`:
-`WorkspaceRoot.find`'s `stopAt` ceiling was about to be re-invented locally
-until a read of `Walker.ascend` found the concept already there with correct
-inclusive semantics. The core grep catches "Effect already provides this"; the
-sibling-package check catches "another kit package already provides this" — run
-both, and state which authority you inventoried against.
+**Inventory core *and* the `@effected` kit, not core alone.** The likelier
+duplication is often not a core primitive but a *kit package that already owns
+the concept*: `WorkspaceRoot.find`'s `stopAt` ceiling was about to be
+re-invented locally until a read of `Walker.ascend` found the concept already
+there with correct inclusive semantics. Run both checks, one per capability the
+feature needs:
+
+1. Core: the *Routing by task* table and module tables in
+   [effect-v4-module-index](../effect-v4-module-index/SKILL.md), then the
+   signature in `$EFFECT_SRC`.
+2. Kit: `grep -ri "<intent words>" "${CLAUDE_PLUGIN_ROOT}/skills/effected-packages/references/constructs/"`,
+   then the package's reference in
+   [effected-packages](../effected-packages/SKILL.md).
+
+Write the result in the summary's **Inventory** row: what each check found, or
+the query that found nothing.
 
 The same grep doubles as a **style consult**: the vendored source is the
 paradigm reference, not just the API authority. Read how core writes the
@@ -212,6 +219,7 @@ Design *for* the test now, so it is not retrofitted:
 ```text
 ## Design: <feature>
 - Altitude: pure-tier | service-tier
+- Inventory: <capability → core module / kit construct reused, or "none: <query run>">
 - Data types: <schemas + Struct/Class/brand/codec choices>
 - Errors: <ErrorName → kind / shape / audience>   (one row per error)
 - Services/Layers: <service(s) + Live/Test split, OR "none — plain module">
@@ -252,6 +260,8 @@ the change focused; do not scope-creep a refactor the user did not ask for.
 
 ## Self-check before you present
 
+- The Inventory row names a core or kit check for every capability, and nothing
+  the design builds is already in either.
 - Every fallible operation has a named typed error with a stated audience.
 - Pillar 0 was run: the pure part is named and lives outside the service, or you
   can say why there isn't one. No algorithm is sealed in a `Layer.effect` closure.

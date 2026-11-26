@@ -14,6 +14,14 @@ which is the JSON-RPC wire — plus tool-failure shaping and strict-by-default
 registration. `@effected/mcp-kit/testing` owns the in-process and spawned test
 clients.
 
+**Look it up first.** Before you hand-write stdout handling, a tool-error
+shape, a crash handler or a test client, grep the kit:
+`grep -i "<intent words>" "${CLAUDE_PLUGIN_ROOT}/skills/effected-packages/references/constructs/mcp-kit.md" "${CLAUDE_PLUGIN_ROOT}/skills/effected-packages/references/constructs/kit.md"`.
+Confirm a core name in `$EFFECT_SRC/ai/McpServer.ts` or `Tool.ts`
+([effect-v4-source-lookup](../effect-v4-source-lookup/SKILL.md)) before you
+call it. A server that shares its logic with a CLI follows the carrier pattern
+in [design-patterns](../design-patterns/SKILL.md).
+
 | construct | import | reach for it when |
 | --- | --- | --- |
 | `McpServer`, `Tool`, `Toolkit`, `McpSchema` | `effect/ai` | declaring the server, its tools, and the protocol-level schemas |

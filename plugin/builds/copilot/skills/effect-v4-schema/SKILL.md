@@ -1,6 +1,6 @@
 ---
 name: effect-v4-schema
-description: Use when designing, reading, reviewing, or debugging any Effect v4 Schema — the Class-vs-Struct decision, fields and optionality, checks/refine/makeFilter, tagged unions, transformations and codecs (decodeTo, the FromString static), make-vs-new construction, brand/Opaque scalars, custom Equal/Hash, and derived tooling (Arbitrary.schema, toJsonSchemaDocument). Also covers primitives, records, recursive schemas, custom declare types, serialization (JSON/XML/FormData), and error formatting.
+description: "Use when designing, reading, reviewing, or debugging any Effect v4 Schema — the Class-vs-Struct decision, fields and optionality, checks/refine/makeFilter, tagged unions, transformations and codecs (decodeTo, the FromString static), make-vs-new construction, brand/Opaque scalars, custom Equal/Hash, and derived tooling (Arbitrary.schema, toJsonSchemaDocument). Also covers primitives, records, recursive schemas, custom declare types, serialization (JSON/XML/FormData), and error formatting. Also use when: validate input, decode unknown JSON into a type, parse a JSON string, JSON Schema from a type, data model, DTO, zod-style validation, optional field, discriminated union"
 ---
 
 # Effect v4 Schema
@@ -20,6 +20,16 @@ carries three layers:
 
 Do not load all references at once — each is a standalone topic (some >1000
 lines).
+
+**Look it up first.** Before you write a schema for a format someone else
+defines (a version, a version range, an SPDX licence, `package.json`,
+`tsconfig.json`, a lockfile, a GitHub event, a JSON Schema document), grep the
+kit: `grep -ri "<format> schema" "<skill base directory>/../effected-packages/references/constructs/"`.
+Core already ships `SemVer`, `SemVerRange`, `ByteSize`, `Duration`,
+`DateTime` and network-address schemas
+([effect-v4-module-index](../effect-v4-module-index/SKILL.md)). A hand-written
+schema for one of these drifts from the format and from every kit API that
+takes the kit's class.
 
 ## Do this, not this
 

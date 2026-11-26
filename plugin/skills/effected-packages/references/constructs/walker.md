@@ -29,7 +29,7 @@
 | `UpwardAcceptCache` | Interface | A caller-owned memo of an accept function's answers, keyed by directory — the `get` / `set` subset of a `Map`, so a `Map<string, Option<A>>` (or an LRU of the same shape) satisfies it. | memoize each ancestor's answer in a sync upward search, hot path |
 | `UpwardAccepted` | Interface | `Walker.findUpwardSyncWith`'s answer: the nearest directory the accept function took, and the value it answered for it. | |
 | `UpwardMatches` | Interface | `Walker.findUpwardAll`'s answer: the nearest directory holding any candidate, and every candidate that exists there. | |
-| `Walker` | Class | Upward path traversal primitives: the directory chain from a start path to the root, and first-match scans over it. | walk up directories, nearest config file or valid manifest, stop at .git, sync forms |
+| `Walker` | Class | Upward path traversal primitives: the directory chain from a start path to the root, and first-match scans over it. | find up, find-up, walk up directories, nearest config file or manifest, stop at .git |
 | `WalkerSyncFileSystem` | Interface | The synchronous file operations the sync walk needs, supplied by the consumer — `node:fs` satisfies it (`nodeWalkerFileSystem` from `@effected/walker/node-sync`). | |
 | `WalkerSyncOps` | Interface | The platform half of every sync walk. | |
 | `WalkerSyncPath` | Interface | The synchronous path operations the sync forms need — a structural subset of `node:path`, so the module itself (or its `win32` / `posix` variant) satisfies it. It shapes only the absolute paths handed to the `WalkerSyncFileSystem`; matching is POSIX-relative by the glob contract. | |

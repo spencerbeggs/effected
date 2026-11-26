@@ -1,7 +1,14 @@
 ---
 name: running-commands-and-tools
-description: Use when running a subprocess in Effect v4, spawning a command, capturing stdout/stderr/exit code, checking whether a CLI tool is installed or which copy to run, running a package-manager script through the project's launcher, detaching a background process, or redacting a secret from argv or captured output.
-when_to_use: Run.collect, Run.text, Run.json, Run.detach, ToolDiscovery, LocalExec, ExecContext, Redaction, Retry, ScriptedSpawner, ChildProcessSpawner, run git/pnpm/npm/npx from Effect
+description: >-
+  Use when running a subprocess in Effect v4, spawning a command, capturing stdout/stderr/exit code, checking
+  whether a CLI tool is installed or which copy to run, running a package-manager script through the project's
+  launcher, detaching a background process, or redacting a secret from argv or captured output, even when the
+  task only says "shell out" or reaches for node:child_process.
+when_to_use: >-
+  Run.collect, Run.text, Run.json, Run.detach, ToolDiscovery, LocalExec, ExecContext, Redaction, Retry,
+  ScriptedSpawner, ChildProcessSpawner, run git/pnpm/npm/npx from Effect, child_process, execa, exec, spawn,
+  shell out, which, is a tool installed, capture command output
 ---
 
 # Running commands and finding tools

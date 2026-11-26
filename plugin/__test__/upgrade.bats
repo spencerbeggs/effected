@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# effected-renovate.bats — the effected-renovate skill's scripts and its ledger.
+# upgrade.bats — the upgrade skill's scripts and its ledger.
 #
 # Most cases run the source scripts against fixtures built in each test's temp
 # directory. The last cases pin the real ledger (every entry valid, every
@@ -11,8 +11,8 @@ load "$BATS_TEST_DIRNAME/../node_modules/pluginfinity/bats/pluginfinity.bash"
 
 PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 REPO_ROOT="$(cd "$PLUGIN_ROOT/.." && pwd)"
-SCRIPTS="$PLUGIN_ROOT/skills/effected-renovate/scripts"
-LEDGER="$PLUGIN_ROOT/skills/effected-renovate/references/ledger"
+SCRIPTS="$PLUGIN_ROOT/skills/upgrade/scripts"
+LEDGER="$PLUGIN_ROOT/skills/upgrade/references/ledger"
 
 # _lockfile <file> <effect> <kit> — a two-document pnpm lockfile: the config
 # dependency document, then an importer with effect, one kit package and a link.
@@ -66,7 +66,7 @@ _entry() {
 # _baseline <dir> <previous> [floor-effect]
 _baseline() {
 	{
-		printf -- '---\nrepo: owner/repo\npath: plugin/skills/effected-renovate/references/ledger\nprevious: %s\nfloor:\n  effect: "%s"\n---\n\nBaseline.\n' "$2" "${3:-4.0.7}"
+		printf -- '---\nrepo: owner/repo\npath: plugin/skills/upgrade/references/ledger\nprevious: %s\nfloor:\n  effect: "%s"\n---\n\nBaseline.\n' "$2" "${3:-4.0.7}"
 	} >"$1/BASELINE.md"
 }
 
@@ -226,7 +226,7 @@ EOF
 	[ "$status" -eq 0 ]
 	[[ "$output" == *"applicable: 2 of 2 ledger entries apply"* ]]
 	[[ "$output" == *"read: $BATS_TEST_TMPDIR/state/effected/renovate/@effected_ai-plugins@0.40.0/0001-entry.md"* ]]
-	grep -q 'GH_HOST=unset api repos/owner/repo/contents/plugin/skills/effected-renovate/references/ledger?ref=%40effected%2Fai-plugins%400.40.0' "$BATS_TEST_TMPDIR/gh.log"
+	grep -q 'GH_HOST=unset api repos/owner/repo/contents/plugin/skills/upgrade/references/ledger?ref=%40effected%2Fai-plugins%400.40.0' "$BATS_TEST_TMPDIR/gh.log"
 	! grep -q evil.example "$BATS_TEST_TMPDIR/gh.log"
 }
 
@@ -317,9 +317,44 @@ EOF
 	fi
 }
 
+@test "skill: SKILL.md repins a vendored Effect submodule to the resolved effect tag on every upgrade" {
+	local skill="$PLUGIN_ROOT/skills/upgrade/SKILL.md"
+	grep -q '^## Step 4: repin the vendored Effect source$' "$skill"
+	grep -q 'every upgrade, a patch included' "$skill"
+	grep -qF '.gitmodules' "$skill"
+	grep -qF 'Effect-TS/effect(-smol)?' "$skill"
+	grep -qF '.repos/config.json' "$skill"
+	grep -qF 'pnpm savvy repos pin effect effect@<version>' "$skill"
+	grep -qF 'git -C <path> fetch --depth 1 origin tag effect@<version>' "$skill"
+	grep -qF 'git -C <path> describe --tags --exact-match HEAD' "$skill"
+	grep -q 'vendored Effect submodule' "$skill"
+}
+
+@test "skill: SKILL.md runs unattended and holds an adoption back only for a serious issue" {
+	local skill="$PLUGIN_ROOT/skills/upgrade/SKILL.md"
+	grep -q '^\*\*Invoking this skill is consent to every repository-local step below\.\*\*' "$skill"
+	grep -q '^\*\*Apply every `adopt` entry step 5 listed\*\*' "$skill"
+	grep -q '^\*\*Hold back an adoption or a fix only for a serious issue\*\*' "$skill"
+	run grep -niE 'do not apply them unasked|ask when unsure|stop and ask' "$skill"
+	[ "$status" -eq 1 ] || { echo "permission stop left in SKILL.md: $output" >&2; return 1; }
+}
+
+@test "repo: BASELINE.md's path is the ledger's directory at its previous tag" {
+	local previous path
+	previous="$(sed -n 's/^previous: "\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "$LEDGER/BASELINE.md")"
+	path="$(sed -n 's/^path: //p' "$LEDGER/BASELINE.md")"
+	[ -n "$path" ]
+	[ "$previous" != "none" ] || skip "first round: no previous tag"
+	git -C "$REPO_ROOT" rev-parse -q --verify "refs/tags/$previous" >/dev/null || skip "tag $previous is not fetched"
+	git -C "$REPO_ROOT" cat-file -e "$previous:$path/BASELINE.md" || {
+		echo "BASELINE.md path $path does not exist at $previous; applicable.mjs fetches the previous round from there" >&2
+		return 1
+	}
+}
+
 @test "built: applicable.mjs runs from both builds with only a skill script's environment" {
 	for host in claude copilot; do
-		run_script "$host" skills/effected-renovate/scripts/applicable.mjs --cwd "$PROJECT" --check
+		run_script "$host" skills/upgrade/scripts/applicable.mjs --cwd "$PROJECT" --check
 		[ "$status" -eq 0 ] || { echo "$host: $output $stderr" >&2; return 1; }
 	done
 }
@@ -425,7 +460,7 @@ STALE_FIXTURES="$PLUGIN_ROOT/__test__/fixtures/stale-edges"
 
 @test "built: stale-edges.mjs runs from both builds with only a skill script's environment" {
 	for host in claude copilot; do
-		run_script "$host" skills/effected-renovate/scripts/stale-edges.mjs "$STALE_FIXTURES/split.yaml"
+		run_script "$host" skills/upgrade/scripts/stale-edges.mjs "$STALE_FIXTURES/split.yaml"
 		[ "$status" -eq 2 ] || { echo "$host: $status $output $stderr" >&2; return 1; }
 		[[ "$output" == *'"@vitest-agent/plugin>@effected/npm": "0.34.0"'* ]]
 	done

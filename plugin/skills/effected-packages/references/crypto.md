@@ -62,13 +62,14 @@ const check = (secret: Redacted.Redacted<string>, body: Uint8Array, signature: s
 ```ts
 import { SigV4 } from "@effected/crypto";
 import type { SigV4Credentials } from "@effected/crypto";
-import { Effect } from "effect";
+import { DateTime, Effect } from "effect";
 
+// Read the signing instant from the Clock, so a test pins it with TestClock.
 const signGet = (credentials: SigV4Credentials, key: string) =>
-  SigV4.sign(
-    { method: "GET", host: "bucket.example.com", path: key, payloadHash: SigV4.EMPTY_PAYLOAD_HASH, now: new Date() },
-    credentials,
-  ).pipe(
+  DateTime.now.pipe(
+    Effect.flatMap((now) =>
+      SigV4.sign({ method: "GET", host: "bucket.example.com", path: key, payloadHash: SigV4.EMPTY_PAYLOAD_HASH, now }, credentials),
+    ),
     // The target exactly as signed: never rebuild it with encodeURIComponent or a URL join.
     Effect.map(({ headers, path, query }) => ({
       url: `https://bucket.example.com${path}${query ? `?${query}` : ""}`,

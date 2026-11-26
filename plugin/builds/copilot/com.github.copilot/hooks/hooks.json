@@ -10,6 +10,16 @@
 					"PLUGINFINITY_EVENT": "SessionStart"
 				}
 			}
+		],
+		"subagentStart": [
+			{
+				"type": "command",
+				"bash": "bash \"${PLUGIN_ROOT}/hooks/subagent-start/maps.sh\"",
+				"timeoutSec": 5,
+				"env": {
+					"PLUGINFINITY_EVENT": "SubagentStart"
+				}
+			}
 		]
 	}
 }

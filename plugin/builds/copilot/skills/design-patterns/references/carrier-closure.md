@@ -77,7 +77,7 @@ so every kit peer under the tool resolves to the version the tool pinned.
 The full seal is bundling the closure into the tool's published `dist`, so
 nothing resolves at install time. Until a tool bundles, these two gaps are
 why a tool on a much older kit release can still need a bridge in a
-consuming repository; the `effected-renovate` skill's step 3 has the
+consuming repository; the `upgrade` skill's step 3 has the
 parent-scoped override recipe.
 
 ## The library side: breaking floors

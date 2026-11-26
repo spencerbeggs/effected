@@ -15,9 +15,17 @@ against a control before leaning on them for something load-bearing.
 A service is a typed key into the runtime's context; a layer is the recipe that
 builds it. Get three things right — the one service form, provide-once
 composition, and memoization by
-reference — and the wiring stays honest and cheap. For what any core module
-*is* and when to reach for it, see `effect-v4-module-index`; to settle whether a
-name exists at all, `effect-v4-source-lookup`.
+reference — and the wiring stays honest and cheap.
+
+**Look it up first.** Before you declare a service, check that core does not
+already declare the contract (`FileSystem`, `Path`, `HttpClient`,
+`ChildProcessSpawner`, `Stdio`, the `effect/crypto` families) in
+[effect-v4-module-index](../effect-v4-module-index/SKILL.md), and that the kit
+does not already ship it with a test layer:
+`grep -ri "<intent words>" "<skill base directory>/../effected-packages/references/constructs/"`.
+A contract core declares is required in `R`, never re-declared. Settle whether
+a name exists with
+[effect-v4-source-lookup](../effect-v4-source-lookup/SKILL.md).
 
 ## One service form: `Context.Service`
 

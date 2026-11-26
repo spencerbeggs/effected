@@ -11,10 +11,10 @@ sources:
     resource: ../../plugin/skills/effected-packages
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T14:55:07Z
+  at: 2026-11-26T06:05:38Z
 x-okfit-integrity:
   generated:
-    body: 2d14e4011d779a8d
+    body: 09d673dc0c79873a
 ---
 
 # A plugin skill is a lean index over references
@@ -53,7 +53,7 @@ Effect prerelease version or since-version history from a skill's own
 prose — see
 [consumer-text-states-current-effect-behaviour.md](consumer-text-states-current-effect-behaviour.md)
 for the full rule and its narrow exceptions. The one directory exempt
-from the versions and issue-numbers ban is the `effected-renovate`
+from the versions and issue-numbers ban is the `upgrade`
 skill's upgrade ledger, whose entries are version-keyed by design. Its
 `SKILL.md` and its other references are not exempt. Citations into the vendored
 Effect source are the sanctioned exception, and they are load-bearing
@@ -80,13 +80,13 @@ form, but it cannot see every phrasing.
 ## Scripts a skill ships
 
 A skill may ship executable helpers under its own `scripts/` directory,
-as `effected-renovate` does. `SKILL.md` names each one through
+as the `upgrade` skill does. `SKILL.md` names each one through
 pluginfinity's `{{skill_dir}}` token
 (`node "{{skill_dir}}/scripts/<name>.mjs"`), and the build resolves that
 token for each host. A script must be dependency-free Node, because an
 installed plugin has no `node_modules`. It is pinned by a bats suite
 that runs the **built** script on both hosts through pluginfinity's
-`run_script`, as `plugin/__test__/effected-renovate.bats` does.
+`run_script`, as `plugin/__test__/upgrade.bats` does.
 
 ## The frontmatter contract
 

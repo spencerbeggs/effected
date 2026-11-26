@@ -1566,7 +1566,7 @@
 		"GlobExpansionError": "handle pattern-to-files expansion failure, compile or descend stage error, wraps GlobPatternError or DescendError",
 		"PathEscapeError": "handle path escaping a base directory, zip slip, symlink escape, absolute or dot-dot refused",
 		"PathEscapeReason": "why a confined path was refused, traversal, symlink outside base, unresolvable, win32 reserved",
-		"Walker": "walk up directories, nearest config file or valid manifest, stop at .git, sync forms",
+		"Walker": "find up, find-up, walk up directories, nearest config file or manifest, stop at .git",
 		"compileAndExpand": "compile a glob string, expand against the filesystem, pattern to matching files",
 		"confineReal": "check a path stays inside a base directory physically, resolve symlinks, refuse escapes",
 		"confineRealSync": "synchronous symlink-aware containment check over a caller-supplied fs port, Result",

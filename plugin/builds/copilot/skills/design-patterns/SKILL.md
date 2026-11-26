@@ -23,7 +23,10 @@ settled, not on first use.
 
 The carrier pattern's references teach the shape; where a piece of that
 shape has shipped as a kit export, reach for the export instead of
-hand-rolling the recipe again.
+hand-rolling the recipe again. For a piece the table does not list, grep the
+kit before you write it:
+`grep -i "<intent words>" "<skill base directory>/../effected-packages/references/constructs/kit.md"`,
+then the rest of the `constructs/` directory.
 
 | construct | import | reach for it when |
 | --- | --- | --- |

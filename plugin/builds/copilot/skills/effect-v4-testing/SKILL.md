@@ -21,13 +21,6 @@ tests are plain Vitest is not "nothing to migrate on the testing axis": add
 conversion has its own traps →
 **[references/migrating-a-repo.md](./references/migrating-a-repo.md)**.
 
-**Testing a specific front end or a repo-shape check routes elsewhere first.**
-This skill owns the general `@effect/vitest` mechanics; a front end's own
-testing subpath owns the rest: testing a CLI bin → `effect-v4-cli` (`CliTest`); an Ink screen, a wizard or a live view → `effect-v4-cli` (`CliUiTest`: its `session` transcript, and its snapshot serializer registered through Vitest's `snapshotSerializers` config, snapshots being the one place a test needs `expect`);
-testing an MCP server → `effect-v4-mcp` (`McpHarness`, `McpProbe`); a
-monorepo's own repo-shape checks (layering, source boundaries, packed
-installs) → `@effected/workspaces/testing` (see `effected-packages`).
-
 **Install it from the same catalog as `effect`, so it resolves to the same version** — never bare and never from a dist-tag. Effect releases `effect` and every `@effect/*` package together at one shared version, so `@effect/vitest` must resolve to exactly the version `effect` does. A dist-tag (`latest`, `beta`, `rc`, `snapshot`) is a moving pointer that can resolve to a version other than the one `effect` resolves to.
 
 The failure of a mismatch names neither package: a v3 `@effect/vitest` installed beside v4 `effect` loads with only a one-line `Issues with peer dependencies found` warning; `pnpm peers check` then lists unmet `effect ^3` and `vitest ^3` peers, and the test file fails to load with `Cannot find module '…/effect/dist/Arbitrary.js'`, because the v3 package imports a module the v4 `effect` does not ship. It reads as a broken install rather than a version mismatch. Run `pnpm peers check` and compare `@effect/vitest`'s resolved version with `effect`'s in the lockfile before believing any resolution. With `@effected/pnpm-plugin-effected` the dependency comes from `catalog:effected`, which carries both at the same range.
@@ -52,6 +45,30 @@ release spies with `Effect.acquireUseRelease` instead →
 `TestConsole` (`Effect.scoped` and `TestClock.layer()` add the scope and the clock back
 by hand), plus `layer(...)` sharing and `it.effect.prop`. The skill's `it.effect`
 examples assume the package is installed.
+
+## Pick the double before you write one
+
+A hand-written double encodes only what its author remembered, and the gap
+becomes a green test over broken code. Find the service in your test's `R` here
+and use the double named. For anything not listed, grep the kit's construct
+index:
+`grep -ri "test double\|layerTest\|<service name>" "<skill base directory>/../effected-packages/references/constructs/"`.
+
+| Service in `R`, or thing under test | Use | From |
+| --- | --- | --- |
+| `FileSystem` | `MemoryFileSystem.layerWith(seed)` — never `FileSystem.layerNoop` or a `node:fs` stub | `@effected/memfs` ([memfs](./references/memfs.md)) |
+| `Path` | `Path.layer` (POSIX) | `effect` |
+| `ChildProcessSpawner` | `ScriptedSpawner.make(script)`: `{ layer, spawns }` | `@effected/commands` |
+| `HttpClient` | `HttpClient.make((request) => Effect.succeed(HttpClientResponse.fromWeb(request, new Response(body))))` in a `Layer.succeed(HttpClient.HttpClient, …)` | `effect/http` |
+| `Config` reads | `ConfigProvider.fromUnknown({ KEY: "value" })` — never `process.env` ([below](#the-env-seam-swap-configprovider-never-processenv)) | `effect` |
+| `Clock`, `Schedule`, timeouts | `TestClock` (already installed by `it.effect`) | `effect/testing` |
+| `Stdio` | `Stdio.layerTest({ … })` | `effect` |
+| a `Store`, or an app on `@effected/app` | `Store.layerTest({ migrations })`; `AppTest.layer(options)` | `@effected/store`; `@effected/app/testing` |
+| a CLI bin; an Ink screen | `CliTest`; `CliUiTest`, whose snapshot serializer is the one place a test uses `expect` ([effect-v4-cli](../effect-v4-cli/SKILL.md)) | `@effected/cli-kit/testing`; `@effected/cli-kit/ui/testing` |
+| an MCP server; an LSP server | `McpHarness`, `McpProbe` ([effect-v4-mcp](../effect-v4-mcp/SKILL.md)); `LspProbe` | `@effected/mcp-kit/testing`; `@effected/lsp/testing` |
+| a JWT or OIDC verifier | `TestIssuer` | `@effected/jwt/testing` |
+| an action, the GitHub API, an SBOM signer | the doubles in [testing-actions](../testing-actions/SKILL.md) | `@effected/github-actions`, `@effected/github` |
+| a monorepo's own layering and packed installs | the repo-shape checks | `@effected/workspaces/testing` |
 
 ## The default runner: `it.effect` + `Effect.gen`
 

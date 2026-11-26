@@ -1,15 +1,43 @@
 ---
 name: effect-v4-source-lookup
-description: Use when you need to confirm an Effect v4 API before relying on it — does this symbol exist, what is its signature, what does it actually do at runtime. Gives the evidence ladder (migration notes settle renames, vendored source settles existence and signature, only a probe settles semantics) and the probe preconditions that keep a probe from silently false-passing against Effect v3.
+description: >-
+  Use before writing, reviewing or relying on an Effect v4 API you have not confirmed in this task: whether a
+  symbol exists, its signature, what it does at runtime. Also use when a type error names an Effect symbol, or a
+  reviewer's claim about Effect needs settling. Gives the evidence ladder and the probe preconditions that keep a
+  probe from passing against the wrong effect.
+when_to_use: >-
+  does this exist in Effect v4, is there an Either, Context.Tag, what is the signature of, node_modules/effect/src,
+  .repos/effect, vendored source, write a probe, type error in an Effect call, typeof says undefined, @stability
+  unstable, which effect resolves here
 ---
 
 # Looking up the truth about Effect v4
 
-Never write, review, or rely on a v4 API you have not confirmed. Memory is confidently wrong, and so is any `effect@3` a workspace root happens to resolve.
+Never write, review, or rely on a v4 API you have not confirmed. Memory is confidently wrong, and so is source resolved from a directory that does not depend on `effect@4`: the resolution block below refuses it.
 
 This skill tells you where to look and how far to go. (If the question is
-merely "which module does X" — start at `effect-v4-module-index`, then verify
-here.)
+merely "which module does X" — start at
+[effect-v4-module-index](../effect-v4-module-index/SKILL.md), then verify
+here. For a kit construct, grep
+[effected-packages](../effected-packages/SKILL.md)' construct index first.)
+
+## The one-minute path
+
+Most questions are "does `X` exist, and what is its signature?" That is rung 2,
+and it takes three steps:
+
+1. Run [the resolution block](#resolving-src-and-effect_src) once per shell. It
+   refuses a v3 `effect`.
+2. `grep -n "export const X\|export function X\|export {" "$EFFECT_SRC/<Module>.ts"`;
+   a namespace module is `$EFFECT_SRC/<ns>/<Module>.ts`.
+3. Read the TSDoc above the declaration, `@stability` tag included.
+
+Grep by symbol name, never by a line a skill cites: a `Module.ts:N` citation
+names the vendored tree's line, and the installed copy's lines differ. A name
+that greps absent and collides with a built-in (`Array`, `Record`) is usually
+renamed in an `export {}` block
+([below](#a-bare-existence-grep-false-negatives-on-built-in-names)). A claim
+about behaviour needs rung 3, [the probe](#probe-protocol).
 
 **Every claim this skill settles is written about current behaviour, never a
 version.** Cite a source finding by module and symbol, with the line resolved

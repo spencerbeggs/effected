@@ -32,6 +32,15 @@ NodeRuntime.runMain(
 )
 ```
 
+**Look it up first.** The table holds what most CLIs need. Before you
+hand-write colour, a table, a spinner, a prompt, a `--json` mode or a `process`
+read, grep the rest of the kit:
+`grep -i "<intent words>" "${CLAUDE_PLUGIN_ROOT}/skills/effected-packages/references/constructs/cli-kit.md" "${CLAUDE_PLUGIN_ROOT}/skills/effected-packages/references/constructs/env.md"`.
+Confirm a core constructor in `$EFFECT_SRC/cli/Flag.ts` or `Argument.ts`
+([effect-v4-source-lookup](../effect-v4-source-lookup/SKILL.md)) before you
+write it: they are PascalCase (`Flag.Boolean`), and a camelCase guess does not
+exist.
+
 | construct | import | reach for it when |
 | --- | --- | --- |
 | `Command`, `Flag`, `Argument`, `Prompt` | `effect/cli` | declaring the command tree, its flags, positional arguments and core's line prompts |
@@ -147,11 +156,19 @@ Anchors in this skill and its references cite the vendored tag at
 
 ## Related skills
 
-- **`effect-v4-module-index`** — which core module owns a capability, including
-  `effect/process` and the `NodeServices.layer` boundary.
-- **`effect-v4-idioms`** — `PlatformError`, typed errors and core patterns.
-- **`effect-v4-services-layers`** — providing `Command.Environment` once at the
-  boundary, and the memoization discipline.
-- **`effect-v4-testing`** — `TestClock`, `TestConsole`, and proving a suite can fail.
-- **`effected-packages`** — the `@effected/env` and `@effected/cli-kit` rows and
-  their construct index.
+- [effect-v4-module-index](../effect-v4-module-index/SKILL.md) — which core
+  module owns a capability, including `effect/process` and the
+  `NodeServices.layer` boundary.
+- [effect-v4-idioms](../effect-v4-idioms/SKILL.md) — `PlatformError`, typed
+  errors and core patterns.
+- [effect-v4-services-layers](../effect-v4-services-layers/SKILL.md) —
+  providing `Command.Environment` once at the boundary, and the memoization
+  discipline.
+- [effect-v4-testing](../effect-v4-testing/SKILL.md) — `TestClock`,
+  `TestConsole`, and proving a suite can fail.
+- [effected-packages](../effected-packages/SKILL.md) — the `@effected/env` and
+  `@effected/cli-kit` rows, their references
+  ([cli-kit.md](../effected-packages/references/cli-kit.md),
+  [env.md](../effected-packages/references/env.md)) and the construct index.
+- [design-patterns](../design-patterns/SKILL.md) — a CLI that shares its logic
+  with an MCP server through one carrier package.

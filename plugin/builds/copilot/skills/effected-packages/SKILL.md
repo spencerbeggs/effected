@@ -1,6 +1,6 @@
 ---
 name: effected-packages
-description: The @effected package index — what each kit package contains and when to reach for it. Use when working in a repo that uses @effected/* packages and about to add a capability the kit may already ship — parsing/editing JSONC/YAML/TOML/Markdown, semver, SPDX, glob matching, an in-memory filesystem, package.json/tsconfig/config files, workspace and git introspection, running commands, JSONL journals, the GitHub API and Actions runtime, CLI output, prompts and TUIs (Ink), MCP servers, JWT/OIDC sign/verify, HMAC, AWS SigV4, webhook signature verification (Stripe, GitHub, Svix, Sanity), parsing a shell command string without running it, S3/R2 objects, markdownlint custom rules over kit trees, SBOM signing, or SchemaStore and schema.org publishing. Per-package depth and construct search live in references/.
+description: "Use before writing any helper the @effected kit may already ship: parsing or editing YAML, JSONC, TOML or Markdown, matching globs, walking directories, reading package.json, tsconfig or a lockfile, comparing semver, running commands, the GitHub API and Actions runtime, an in-memory filesystem for tests, CLI output, prompts and TUIs (Ink), MCP servers, JWT/OIDC, HMAC, AWS SigV4, webhook signatures, a shell command string parsed without running it, S3/R2 objects, markdownlint rules, SBOMs, SchemaStore and schema.org publishing. Also use when choosing dependencies for a new Effect v4 app or library, or when a task names an @effected package. Per-package depth and a per-construct intent search (references/constructs/) sit one level down."
 ---
 
 # The @effected package index
@@ -9,24 +9,52 @@ description: The @effected package index — what each kit package contains and 
 `pnpm-plugin-effected` companion, and the four packages of
 the `effected` tool) designed against the
 v4 line, released together, with every
-`effect` dependency drawn from one pnpm catalog range held to one Effect minor (a tilde range, `lock-minor`). Before
-designing lockfile/config/glob/semver/path/state/workspace/git capability by
-hand, check this table — the kit probably ships it, schema-first and with a
-typed error channel.
+`effect` dependency drawn from one pnpm catalog range held to one Effect minor (a tilde range, `lock-minor`).
 
-**Tier vocabulary** (what depending on a package costs you): **pure** — peers
-on `effect` only, no IO; **boundary** — does IO through core service contracts
-(`FileSystem`, `Path`, `HttpClient`, `ChildProcessSpawner`) required in `R`,
-so you provide one platform layer at the edge; **integrated** — carries a real
-backend/runtime dependency that propagates to consumers. **Companion** and **tool** packages carry no tier: a companion fronts one library, a tool package belongs to the `effected` tool (an application, not a library). Check core first
-(`effect-v4-module-index`), then the kit — never re-implement either.
+## Look it up first
 
-**Core's `effect/crypto` replaces `node:crypto`:** `createHash` goes to `Digest`, HMAC to `Mac`, signing to `Signature`, random bytes and UUIDs to `SecureRandom`; the kit's `@effected/crypto` builds on them.
+Run these steps before you write a helper, a parser, a layer or a test double.
+They take under a minute. A kit capability rebuilt by hand costs a review
+round, a second copy to maintain, and the kit's schema-first typed errors.
+
+1. **Check core.** Read the *Routing by task* table in
+   [the core module index](../effect-v4-module-index/SKILL.md). The kit builds
+   on core and never duplicates it.
+2. **Grep the construct index by what you want done,** not by a name you
+   guess. Use two or three intent words, then a second phrasing:
+
+   ```bash
+   grep -ri "<intent words>" "<skill base directory>/references/constructs/"
+   grep -ri "glob\|match a path" "<skill base directory>/references/constructs/"
+   ```
+
+   One file per package (`constructs/glob.md` is `@effected/glob`), one row
+   per export: `| Construct | Kind | Purpose | Reach for it when |`. A last
+   column ending `from @effected/<pkg>/<sub>` names a subpath import. One
+   ending `implements … from` or `implemented by … in` names the other half of
+   a contract split, which lives in a different package.
+3. **Read the package's row in the [Index](#index) and its
+   `references/<pkg>.md`** before the first import. The reference gives the
+   import line, what the layers need in `R`, and the traps.
+4. **Confirm the signature in what you installed:**
+   `grep -rn --include='*.d.ts' "<Construct>" node_modules/@effected/<pkg>/`.
+5. **Treat no match as "not found yet", never as "absent".** Try another
+   phrasing and the package reference first. If you still write it yourself,
+   tell the user the kit lacks it: the kit is dogfooded, and that report is
+   how it grows.
 
 ## Index
 
 Load a package's reference when you are about to import from it, design
 against its services, or test code that uses it.
+
+**Tier vocabulary** (what depending on a package costs you): **pure** — peers
+on `effect` only, no IO; **boundary** — does IO through core service contracts
+(`FileSystem`, `Path`, `HttpClient`, `ChildProcessSpawner`) required in `R`,
+so you provide one platform layer at the edge; **integrated** — carries a real
+backend/runtime dependency that propagates to consumers. **Companion** and **tool** packages carry no tier: a companion fronts one library, a tool package belongs to the `effected` tool (an application, not a library).
+
+**Core's `effect/crypto` replaces `node:crypto`:** `createHash` goes to `Digest`, HMAC to `Mac`, signing to `Signature`, random bytes and UUIDs to `SecureRandom`; the kit's `@effected/crypto` builds on them.
 
 | Package | What it contains | Reach for it when | Tier | Reference |
 | --- | --- | --- | --- | --- |
@@ -89,37 +117,12 @@ against its services, or test code that uses it.
 **Every row has a `references/` file.** Each package's own `CLAUDE.md` remains the
 authority when the two disagree; the reference is the routing layer over it.
 For `github`, `github-actions` and `commands` specifically, depth also lives
-one level up: `building-a-github-action` routes a 14-skill suite (capability
+one level up: [building-a-github-action](../building-a-github-action/SKILL.md) routes a 14-skill suite (capability
 references plus `designing-an-action`'s build sequence) covering these three
 packages and `npm`/`sbom` in more depth than one reference file can — start
 there when you are actually building an action.
 
-## Search by intent
-
-The package table routes when you know *which package*; the construct index
-routes when you know *what you want done* but not what it is called. One
-generated file per package lives in
-[references/constructs/](./references/constructs/) — every export in the kit,
-with its kind, TSDoc purpose, and intent keywords ("validate NTIA compliance",
-"run a workspace binary", "build a GFM table node").
-
-Before concluding the kit lacks a capability, grep the index by intent words:
-
-```bash
-grep -ri "table" plugin/skills/effected-packages/references/constructs/
-grep -ri "oidc\|identity token" plugin/skills/effected-packages/references/constructs/
-```
-
-(In a consumer repo the plugin's install path replaces `plugin/`.) Rows whose
-last column names an `implements` / `implemented by` pair are the kit's
-deliberate contract↔implementation splits — the capability lives in a
-different package than its contract. A no-match result means "not found in
-this index" — check the package's reference and source before concluding the
-kit lacks the capability. That is still far stronger evidence than never
-grepping at all: hand-rolling a capability without an intent grep is how every
-documented miss happened.
-
-Facts about the kit that change how you depend on it:
+## Facts that change how you depend on the kit
 
 - **`@effected/markdown` peers on `@effected/yaml` / `@effected/toml` /
   `@effected/jsonc` *optionally*** (`peerDependenciesMeta`), consumed only by the
@@ -268,22 +271,18 @@ Three standing directives for a downstream repo rebuilding against this kit:
 
 ## Related skills
 
-`effect-v4-module-index` routes Effect core; this skill routes the kit. Check
-core first — the kit deliberately requires core contracts (`FileSystem`,
-`ChildProcessSpawner`) rather than re-declaring them. `effect-v4-cli` and
-`effect-v4-mcp` teach the CLI and MCP boundaries in depth; `design-patterns`
-teaches the carrier pattern shared between a CLI and an MCP front end that
-`@effected/kit` supports. `building-a-package` teaches `effected package build`
-and `effected.toml` for a library a consumer builds with the kit, and
-`authoring-tsdoc` the TSDoc and API Extractor rules that build enforces.
+- [effect-v4-module-index](../effect-v4-module-index/SKILL.md) routes Effect
+  core; check it first. The kit requires core contracts (`FileSystem`,
+  `ChildProcessSpawner`) in `R` rather than re-declaring them.
+- [effect-v4-cli](../effect-v4-cli/SKILL.md) and
+  [effect-v4-mcp](../effect-v4-mcp/SKILL.md) teach the CLI and MCP boundaries
+  in depth; [design-patterns](../design-patterns/SKILL.md) teaches the carrier
+  pattern a CLI and an MCP front end share through `@effected/kit`.
+- [building-a-package](../building-a-package/SKILL.md) teaches
+  `effected package build` and `effected.toml`, and
+  [authoring-tsdoc](../authoring-tsdoc/SKILL.md) the TSDoc and API Extractor
+  rules that build enforces.
 
-**Construct-level coverage — does every export get named somewhere in
-`skills/` — is checked, not maintained by hand here.**
-`plugin/__test__/construct-index.bats` regenerates the construct index from
-every package's api-extractor doc model and fails on any drift from the
-committed tables under `references/constructs/`, and its strict mode requires
-an intent annotation for every value-kind export. The generated tables, not
-this file's prose, are the source of truth for whether a given export is
-covered — a hand-maintained claim of completeness drifts the same way this
-file's own stale reference-file count once did. The maintenance loop lives in
-the repo's `constructs` skill.
+The construct index is generated from every package's API model, so it lists
+every export the kit ships. When the tables and this file's prose disagree, the
+tables are right.

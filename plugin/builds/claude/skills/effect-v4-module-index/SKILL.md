@@ -1,6 +1,16 @@
 ---
 name: effect-v4-module-index
-description: The routing map for Effect v4 core — every module in one table, what it is, when to reach for it, and where to read it in the vendored source. Use FIRST when asking "what module do I reach for", "does Effect have a Sink/Pool/Trie/pattern-matcher", "what is Sink/Channel/Deferred/RcMap for", "where does X live in the source", or before designing ANY capability (the contract-inventory gate greps this map's territory). Opens with a routing-by-task table for the ones people miss by name — spawning a subprocess, a TTL cache with in-flight de-duplication, writing to stdout from a library. Rows route; they do not teach — patterns live in the other effect-v4-* skills, and the source is the authority on signatures and semantics.
+description: >-
+  Use before writing any Effect v4 helper, service or module, to find what core already ships for the task: a
+  subprocess, a retry or polling schedule, a TTL cache, a temporary directory, an HTTP call, hashing or signing,
+  stdout from a library, a queue, a pool, a stream, a file system. Also use when asking which module to import,
+  whether Effect has a given data type, or where a module lives in the source. Rows route; the other effect-v4-*
+  skills teach the patterns.
+when_to_use: >-
+  which Effect module, does Effect have, is there a core module for, effect/process, ChildProcess, Schedule,
+  Effect.retry, Cache, Pool, Queue, PubSub, Stream, Sink, Channel, Deferred, RcMap, Stdio, FileSystem, Path,
+  HttpClient, effect/crypto, effect/cli, effect/ai, effect/sql, @stability unstable, writing a helper core may
+  already ship
 ---
 
 # Effect v4 module index
@@ -10,13 +20,42 @@ for it**. This skill exists so the other skills can stop explaining what things
 are and spend their space on patterns — and so no one designs a capability core
 already ships (the `effect-v4-planning` contract-inventory gate).
 
-**Where things live.** Every row's source is the vendored tree's
-`packages/effect/src/<Name>.ts` (testing modules under
-`src/testing/`, the namespace modules below under `src/<ns>/`; resolve the
-tree root via `effect-v4-source-lookup`). The vendored
-submodule is pinned to the installed `effect` release and is the authority on existence,
-signatures, and — read alongside a probe — semantics (`effect-v4-source-lookup`
-owns the evidence ladder). It is also the **style oracle**: before building
+## Look it up first
+
+Run these steps before you design a helper, a loop, a cache or a parser. A
+hand-rolled copy of something core ships is the most common review finding
+against Effect code, and it is the cheapest one to avoid.
+
+1. **Find the row.** Start at [Routing by task](#routing-by-task), which is
+   keyed by what you were about to build, then search the module tables for
+   your task word (`retry`, `glob`, `diff`, `temp`, `cache`, `env`).
+2. **Verify the signature before you write the call.** A row says what exists,
+   not its exact shape. From inside a package that depends on `effect@4`:
+
+   ```bash
+   node -p 'require("effect/package.json").version'   # must print 4.x; if not, cd into a v4 package
+   EFFECT_SRC="$(node -p 'const p=require("node:path");p.join(p.dirname(require.resolve("effect/package.json")),"src")')"
+   grep -n "export const <name>\|export function <name>\|export {" "$EFFECT_SRC/<Module>.ts"
+   ```
+
+   A namespace row lives one level down (`$EFFECT_SRC/http/HttpClient.ts`). Read
+   the TSDoc above the match and its `@stability` tag. For a claim about
+   behaviour, climb to the probe in
+   [effect-v4-source-lookup](../effect-v4-source-lookup/SKILL.md).
+3. **Then check the kit.** A kit package may wrap the module with the schema,
+   the typed errors or the test double you need:
+   `grep -ri "<intent words>" "${CLAUDE_PLUGIN_ROOT}/skills/effected-packages/references/constructs/"`,
+   then [effected-packages](../effected-packages/SKILL.md) for the package.
+
+## Source and stability
+
+**Where things live.** Every row's source is `src/<Name>.ts` (testing modules
+under `src/testing/`, the namespace modules below under `src/<ns>/`), in the
+installed `node_modules/effect/src` and in a vendored Effect tree where the
+project has one. The installed copy is what you compile against, so it settles
+existence and signatures; a probe settles semantics
+([effect-v4-source-lookup](../effect-v4-source-lookup/SKILL.md) owns the
+evidence ladder). It is also the **style oracle**: before building
 anything module-shaped, read how core writes the analogous module.
 
 **Stability split.** A module's stability is an annotation, not a separate
@@ -54,6 +93,13 @@ phrasing and missed on its module name.
 
 | You want to… | Reach for | Note |
 | --- | --- | --- |
+| **find files by pattern, or test a path against a glob** | `FileSystem.glob(pattern, { root, exclude, dot })` walks a tree; `Glob.make` + `Glob.match` test a path with no IO (`experimental`) | Never a hand-written `readDirectory` recursion or a glob regex. Core is enough for `*`, `**`, `?`, classes and braces. Prefer kit `@effected/glob` (`GlobPattern.compile`, `GlobSet`) when you need extglob or `!` negation (core leaves both uninterpreted and treats malformed syntax as literal), a typed `GlobPatternError` for an untrusted pattern, include/exclude sets, or a stable API. `@effected/walker` adds upward search (`Walker.findUpward`) and `descend`, a glob walk over a real tree. |
+| **parse, compare, bump or range-match a version** | `SemVer` (`parse`, `Order`, `bump*`) and `SemVerRange` (`parse`, `matches`, `maxSatisfying`) | Never a semver regex or a split on `.`. Core is enough inside one module. Prefer kit `@effected/semver` when the value crosses a kit API, or you need range algebra (`Range.intersect`, `isSubset`, `simplify`), parse errors with a position, or `Result` twins. Never mix kit and core values in one `HashSet`/`HashMap`; see the `SemVer` row. |
+| **parse YAML, TOML, JSONC, JSON5, INI or CSV** | `effect/encoding` — `Yaml`, `Toml`, `Jsonc`, `Json5`, `Ini`, `Csv` | Core decodes to values. Kit `@effected/yaml`, `@effected/toml` and `@effected/jsonc` edit text with its comments and layout kept, and report positioned errors; `@effected/config-file` loads a config file through a codec. |
+| **retry, back off, poll, or repeat on a schedule** | `Effect.retry` / `Effect.repeat` with a `Schedule` (`Schedule.exponential`, `Schedule.spaced`); `HttpClient.retryTransient` for HTTP | Never a recursive `Effect.sleep` loop or a counter in a `Ref`. The polling shapes are in `effect-v4-idioms`. |
+| **read an environment variable or a setting** | `Config` (`Config.String("NAME")`, `Config.schema(S, "NAME")`), fed by `ConfigProvider` | Never `process.env`: a test swaps the `ConfigProvider` instead of mutating the process. Kit `@effected/env` answers "agent, CI or person, and what can this terminal do". |
+| **make a temporary directory that cleans itself up** | `FileSystem.makeTempDirectoryScoped({ prefix })` | Removed when the scope closes, failure or not. Never `node:os` `tmpdir()` plus a `finally`. |
+| **call an HTTP API** | `effect/http` — require `HttpClient` in `R`, provide `FetchHttpClient.layer` at the edge | Never bare `fetch` in library code. Kit `@effected/github` owns the GitHub API, `@effected/npm` the npm registry. |
 | **spawn a subprocess / run a command / shell out** | `effect/process` — `ChildProcess` (command values) + `ChildProcessSpawner` (the service) | NOT `cli`'s `Command`, which is the CLI *declaration*. Core declares the contract and ships **no layer**: require `ChildProcessSpawner` in `R`, let the app provide `NodeServices.layer`. Never hand-roll `node:child_process`. Arguments are `CommandLine.Word` (`string \| Redacted<string>`), and a template with shell syntax (`\|`, `$HOME`, `*`) throws `CommandLineError` when `make` is called. |
 | **hash, HMAC, sign, encrypt, derive a key, or draw secure random bytes / a UUID** | `effect/crypto` — `Digest`, `Mac`, `Signature`, `Aead`/`Cipher`, `Kdf`, `SecureRandom` (each a service) | No `effect/Crypto` module exists. Require the service in `R` and provide it at the edge: `NodeCrypto.layer` (every family) or a family layer such as `NodeCrypto.layerDigest` from `@effect/platform-node`, or core's `<Family>.layerWebCrypto` on any WebCrypto runtime. **`NodeServices.layer` carries no crypto.** JOSE (JWS/JWE/JWT/JWK/JWKS) is `effect/jose`. |
 | **cache an effectful lookup with a TTL and in-flight de-duplication** | core `Cache` — `Cache.makeWith(lookup, { capacity, timeToLive })`, or `Cache.make` for a fixed TTL | Already does both jobs: it "shares an in-progress lookup when multiple callers request the same missing key" (`Cache.ts:4`) and expires by `timeToLive` (`Cache.ts:118`). Do not build a promise-map de-duplicator beside it — but read the two `Cache` sharp corners below before choosing a TTL. |
@@ -319,11 +365,17 @@ follows from it.
 
 ## How the skills divide the territory
 
-This index routes. For patterns: `effect-v4-idioms` (errors, resources,
-fibers), `effect-v4-schema` (everything Schema), `effect-v4-services-layers`
-(Context/Layer discipline), `effect-v4-testing` (the test idioms),
-`effect-v4-observability` (spans/logs/metrics), `effect-v4-cli` (`cli`),
-`effect-v4-source-lookup` (how to verify any row here against the source).
+This index routes core; [effected-packages](../effected-packages/SKILL.md)
+routes the kit. For patterns:
+[effect-v4-idioms](../effect-v4-idioms/SKILL.md) (errors, resources, fibers),
+[effect-v4-schema](../effect-v4-schema/SKILL.md) (everything Schema),
+[effect-v4-services-layers](../effect-v4-services-layers/SKILL.md)
+(Context/Layer discipline), [effect-v4-testing](../effect-v4-testing/SKILL.md)
+(the test idioms), [effect-v4-observability](../effect-v4-observability/SKILL.md)
+(spans/logs/metrics), [effect-v4-cli](../effect-v4-cli/SKILL.md) (`cli`),
+[effect-v4-mcp](../effect-v4-mcp/SKILL.md) (`ai`'s MCP server), and
+[effect-v4-source-lookup](../effect-v4-source-lookup/SKILL.md) (how to verify
+any row here against the source).
 
 ### `HttpClientError`: the `reason` tags are not the type names
 

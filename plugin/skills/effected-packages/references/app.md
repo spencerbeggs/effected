@@ -34,6 +34,7 @@ import { Store } from "@effected/store";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer, Schema } from "effect";
+import { SecureRandom } from "effect/crypto";
 
 class Settings extends Schema.Class<Settings>("Settings")({ registry: Schema.String }) {}
 class SettingsFile extends ConfigFile.Service<SettingsFile, Settings>()("myapp/Settings") {}
@@ -45,10 +46,12 @@ const MainLive = ConfigLive.pipe(Layer.provideMerge(AppLive), Layer.provide(Node
 
 const main = Effect.gen(function* () {
  const store = yield* Store;
- yield* store.client`INSERT INTO runs (id) VALUES (${crypto.randomUUID()})`;
+ const random = yield* SecureRandom.SecureRandom; // NodeServices.layer carries no crypto
+ const id = yield* random.uuidV4();
+ yield* store.client`INSERT INTO runs (id) VALUES (${id})`;
 });
 
-NodeRuntime.runMain(main.pipe(Effect.provide(MainLive)));
+NodeRuntime.runMain(main.pipe(Effect.provide(Layer.merge(MainLive, SecureRandom.layerWebCrypto))));
 ```
 
 ## CLIs: directories everywhere, databases per command

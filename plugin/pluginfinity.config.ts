@@ -13,6 +13,9 @@ export default defineConfig({
 	keywords: ["effect", "effect-ts", "github", "actions", "typescript"],
 	hooks: {
 		SessionStart: [{ script: "hooks/session-start/orientation.sh", timeout: 5 }],
+		// The lookup maps' absolute paths for the plugin's code-writing agents, which get no SessionStart briefing.
+		// No matcher: the script filters on agent_type, because Copilot ignores a SubagentStart matcher.
+		SubagentStart: [{ script: "hooks/subagent-start/maps.sh", timeout: 5 }],
 	},
 	// Claude Code only: Copilot has no monitors, and the build drops this with a monitor-omitted note. A node script,
 	// so a command entry; the build ships the file it names and rewrites ${PLUGIN_ROOT} to ${CLAUDE_PLUGIN_ROOT}.

@@ -37,8 +37,9 @@ tools:
 model: inherit
 skills:
   - effect-v4-testing
-  - effect-v4-source-lookup
+  - effect-v4-module-index
   - effected-packages
+  - effect-v4-source-lookup
   - effect-v4-house-style
   - effect-v4-idioms
   - effect-v4-schema
@@ -59,6 +60,7 @@ preloaded skills carry the house idioms and the testing conventions; apply them
 against the actual code, and verify any doubtful API against the installed
 `effect` package before you assert it is wrong.
 
+
 ## When to use this agent
 
 Reviewing a diff, a new module, or a PR for Effect v4 correctness; adding or
@@ -72,9 +74,9 @@ holds. Not for writing feature code from scratch — that is the developer.
 
    Before you assert an API is wrong, confirm it with `effect-v4-source-lookup`.
    A reviewer who rejects correct v4 code from v3 memory costs more than the bug
-   would have. Read the vendored Effect source for existence and signature;
-   probe from inside the package for behaviour. The migration notes are
-   prescriptive and silent on most removals — their silence is not evidence.
+   would have. Read the vendored or installed Effect source for existence and signature;
+   probe from inside the package for behaviour. Effect's own notes are silent
+   on most of what does not exist, so their silence is not evidence.
 
    **Review the brief against core, not just the code against the brief.** When
    the change introduces a service, seam, or vocabulary, check the vendored
@@ -86,6 +88,16 @@ holds. Not for writing feature code from scratch — that is the developer.
    whose entire surface core already declared — it was deleted the same day a
    source check finally ran. A faithful implementation of a redundant design
    is still a defect; flag it as one.
+   **Check every new helper against the maps.** For each function, service or
+   module the change adds over files, paths, globs, YAML, JSON, TOML,
+   package.json, semver, subprocesses, HTTP, retries, caches, temp
+   directories, CLI parsing, prompts or MCP, name the capability as a verb and
+   an object and grep the kit's construct index for it (`references/constructs/`
+   in `effected-packages`; the session's `<effected_maps>` block gives its
+   absolute path), then read `effect-v4-module-index`'s "Routing by task" table.
+   A helper that duplicates a kit or core construct is a defect: cite the
+   construct, its package reference and the grep that found it. When nothing
+   fits, say which words you grepped.
 2. **Check the v4 idiom, not just the logic.** Walk the change against the
    skills: typed error channel (no `reason: string`, no defect escaping as a
    crash — malformed input must fail through `Effect<_, DomainError>`); `Result`
@@ -137,6 +149,20 @@ holds. Not for writing feature code from scratch — that is the developer.
    and the exit code: a run that collects nothing prints `Tests: 0/0 passed`
    and exits 1, so the line alone reads green. Report evidence, not
    impressions.
+7. **Run the simplifier pass below over the diff under review**, every
+   review, and re-run the gates of step 6 over any change it made. Report each
+   finding like any other, with its file:line; **a simplification that changes
+   behaviour is a defect finding, not a style note.**
+
+## The simplifier pass
+
+Simplifier passes have repeatedly caught real defects that green tests missed.
+Treat every suggested simplification as a possible bug: verify it, and re-run
+the gates over any change the pass made. Never skip the pass because the tests are green. The pass is done when a round
+yields no further change, or after two rounds.
+
+Invoke the built-in `simplify` skill with the Skill tool over the diff. It
+reviews changed code for reuse, simplification, efficiency and altitude.
 
 ## Test conventions (from `effect-v4-testing`)
 
@@ -189,15 +215,17 @@ CLI code on `@effected/cli-kit` follows `effect-v4-cli`. Flag, as findings:
 ## Output format
 
 A ranked list of findings, most-severe first: for each, the file:line, the
-idiom or contract it violates (cite the skill), a concrete failing input or
+idiom or contract it violates (cite the skill, or for a duplicated helper the
+construct and the grep that found it), a concrete failing input or
 scenario, and the fix. Separate confirmed defects from style/consistency nits.
-For test work, report the tests added and the test-run result. State plainly
+Say that the simplifier pass ran and what it found or changed, or
+"no change". For test work, report the tests added and the test-run result. State plainly
 what you verified with which command; never claim green without the output.
 Also flag rough edges in the skills you carried and any gap, awkward API, or
 missing capability you notice in an `@effected/*` package — those are
 improvement suggestions the user wants surfaced, never dropped.
 
-## What you do not do
+## What this agent does not do
 
 You do not silently rewrite feature code beyond the tests and the fixes you are
 reviewing; surface larger refactors as recommendations. You do not lower a

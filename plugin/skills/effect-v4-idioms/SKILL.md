@@ -1,15 +1,30 @@
 ---
 name: effect-v4-idioms
-description: Use when writing core Effect v4 code — generators (Effect.gen/Effect.fn), typed error handling and recovery (catch/catchTag/catchFilter/catchReason), yieldable errors, PlatformError on FileSystem/Path IO, Cause inspection, Scope and resource cleanup, forking and fibers, runtime/entrypoints, FiberRef-as-Context.Reference, structural equality, Config.schema inputs (a JSON-string input is Config.schema(Schema.fromJsonString(S)), and what withDefault does and does not swallow), and polling with Effect.repeat options instead of a recursive Effect.sleep. Teaches the idiomatic v4 spelling.
+description: >-
+  Use when writing core Effect v4 code — generators (Effect.gen/Effect.fn), typed error handling and recovery
+  (catch/catchTag/catchFilter/catchReason), yieldable errors, PlatformError on FileSystem/Path IO, Cause
+  inspection, Scope and resource cleanup, forking and fibers, runtime/entrypoints, FiberRef-as-Context.Reference,
+  structural equality, Config.schema inputs (a JSON-string input is Config.schema(Schema.fromJsonString(S)), and
+  what withDefault does and does not swallow), and retrying or polling with Effect.retry/Effect.repeat options
+  instead of a recursive Effect.sleep. Teaches the idiomatic v4 spelling.
+when_to_use: >-
+  retry with backoff, poll until done, Effect.sleep loop, acquireRelease, finalizer, fork, Fiber, environment
+  variable, Config, Result, Cause, Effect.runPromise
 ---
 
 # Effect v4 core idioms
 
 The idiomatic way to write core v4 code — generators, errors, resources, fibers,
-runtime, equality. For *which module* to reach for in the first place (what is
-`Sink`, `RcMap`, `Latch`…), consult `effect-v4-module-index` — this skill owns
-patterns, not the map. For confirming that a name exists before you rely on it,
-see `effect-v4-source-lookup`. Every identifier below was verified to exist, and
+runtime, equality. This skill owns patterns, not the map.
+
+**Look it up first.** Before you write a retry loop, a poll, a cache, a
+resource wrapper, a parser or a path walk, find what core ships in
+[effect-v4-module-index](../effect-v4-module-index/SKILL.md)'s *Routing by
+task* table, then grep the kit:
+`grep -ri "<intent words>" "{{skill_dir effected-packages}}/references/constructs/"`.
+Confirm a name exists with
+[effect-v4-source-lookup](../effect-v4-source-lookup/SKILL.md) before you rely
+on it. Every identifier below was verified to exist, and
 every `file:line` citation checked against the vendored tree; when you reach
 past this list, run one runtime probe
 (`node --input-type=module -e "import * as Effect from 'effect/Effect'; console.log(typeof Effect.X)"`)

@@ -1,6 +1,6 @@
 ---
 name: building-a-format-package
-description: Use when building, scaffolding, or extending an @effected format package — a parse/edit/format library for a text format (jsonc, yaml, toml, markdown, or the next one). Covers the canonical module-per-concept surface (facade/Document/Node/Edit/Format/Visitor/Diagnostic), the engine-origin policy (own the engine — vendor+harden or from-scratch, never a runtime parser dependency), the Effect-wrapping and Result-parity policy, the cross-package parity contract (Edit/Range field-identity, the diagnostic five-field core, MAX_NESTING_DEPTH=256), the conformance-corpus harness pattern (vendored fixtures + pin file, empty skip map, differential oracle), and the scaffold gotchas. Trigger phrases — new format package, corpus harness, VENDORED pin, differential oracle, parity contract, parse/edit/format surface.
+description: "Use when building, scaffolding or extending an @effected format package, a parse/edit/format library for a text format (jsonc, yaml, toml, markdown, or the next one): the module-per-concept surface, the own-the-engine policy, Effect wrapping and Result parity, the cross-package parity contract, and the conformance-corpus harness. Also use when: new format package, parse/edit/format surface, Document Node Edit Format Visitor Diagnostic modules, vendor and harden a parser, runtime parser dependency, corpus harness, VENDORED pin, differential oracle, parity contract, nesting depth cap, Edit and Range field identity"
 ---
 
 # Building a format package

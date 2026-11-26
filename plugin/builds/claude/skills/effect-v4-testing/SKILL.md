@@ -1,7 +1,7 @@
 ---
 name: effect-v4-testing
-description: Use when writing, reviewing, or fixing tests for Effect v4 code with @effect/vitest — it.effect + Effect.gen as the default runner, asserting typed errors via Effect.flip or Effect.result (Exit + Cause for defects), providing test/mock layers with layer(...) for any service in R (owned or consumed), fault-injecting one method of a real layer, property tests with it.effect.prop over a Schema, TestClock for time-dependent logic, converting a plain-Vitest repo, and the mutate-the-edges discipline for proving a suite can actually fail — the discriminating input wrong in exactly one way, per-clause and per-path mutation, and the positive control a "nothing found" result needs before it's believed.
-when_to_use: "it.scoped removed, Arbitrary size clamp/-0/exhaustion/dropped-regex traps, Path.layer + @effected/memfs need no platform package, vi.mock must import vi from vitest, layer() memoizing while Effect.provide does not, TestConsole swallowing Effect.log* through ConsoleRef, a small real delay hanging the virtual clock, Tests: 0/0 passed lying while the exit code is honest, a project-filtered run from inside a package not loading the root config, TestClock starting at the epoch (1970), an eagerly-recording layerNoop stub, a narrowing if with no else branch, structural checks over source text (import walkers, export assertions, comment strippers), the two-latch rule for concurrency-leak tests, unhandledErrors and a stray process.exitCode making a green suite lie"
+description: Use when writing, reviewing or fixing tests for Effect v4 code with @effect/vitest, or choosing a test double — an in-memory filesystem (memfs), a fake FileSystem, ChildProcessSpawner, HttpClient, Config, Clock or Stdio — before hand-writing one. Covers it.effect + Effect.gen, asserting typed errors with Effect.flip or Effect.result, test layers via layer(...), fault-injecting one method of a real layer, it.effect.prop over a Schema, TestClock, and proving a suite can fail by mutating the edges.
+when_to_use: "in-memory filesystem, memfs, fake or mock a service, test double, it.scoped removed, layer() memoizing while Effect.provide does not, TestConsole swallowing Effect.log*, TestClock at the epoch (1970), a real delay hanging the virtual clock, Tests: 0/0 passed lying, vi.mock must import vi from vitest, layerNoop stub, positive control, mutation testing, concurrency-leak tests"
 ---
 
 # Effect v4 testing with `@effect/vitest`
@@ -21,13 +21,6 @@ tests are plain Vitest is not "nothing to migrate on the testing axis": add
 `@effect/vitest` and route Effect-returning tests through `it.effect`. The
 conversion has its own traps →
 **[references/migrating-a-repo.md](./references/migrating-a-repo.md)**.
-
-**Testing a specific front end or a repo-shape check routes elsewhere first.**
-This skill owns the general `@effect/vitest` mechanics; a front end's own
-testing subpath owns the rest: testing a CLI bin → `effect-v4-cli` (`CliTest`); an Ink screen, a wizard or a live view → `effect-v4-cli` (`CliUiTest`: its `session` transcript, and its snapshot serializer registered through Vitest's `snapshotSerializers` config, snapshots being the one place a test needs `expect`);
-testing an MCP server → `effect-v4-mcp` (`McpHarness`, `McpProbe`); a
-monorepo's own repo-shape checks (layering, source boundaries, packed
-installs) → `@effected/workspaces/testing` (see `effected-packages`).
 
 **Install it from the same catalog as `effect`, so it resolves to the same version** — never bare and never from a dist-tag. Effect releases `effect` and every `@effect/*` package together at one shared version, so `@effect/vitest` must resolve to exactly the version `effect` does. A dist-tag (`latest`, `beta`, `rc`, `snapshot`) is a moving pointer that can resolve to a version other than the one `effect` resolves to.
 
@@ -53,6 +46,30 @@ release spies with `Effect.acquireUseRelease` instead →
 `TestConsole` (`Effect.scoped` and `TestClock.layer()` add the scope and the clock back
 by hand), plus `layer(...)` sharing and `it.effect.prop`. The skill's `it.effect`
 examples assume the package is installed.
+
+## Pick the double before you write one
+
+A hand-written double encodes only what its author remembered, and the gap
+becomes a green test over broken code. Find the service in your test's `R` here
+and use the double named. For anything not listed, grep the kit's construct
+index:
+`grep -ri "test double\|layerTest\|<service name>" "${CLAUDE_PLUGIN_ROOT}/skills/effected-packages/references/constructs/"`.
+
+| Service in `R`, or thing under test | Use | From |
+| --- | --- | --- |
+| `FileSystem` | `MemoryFileSystem.layerWith(seed)` — never `FileSystem.layerNoop` or a `node:fs` stub | `@effected/memfs` ([memfs](./references/memfs.md)) |
+| `Path` | `Path.layer` (POSIX) | `effect` |
+| `ChildProcessSpawner` | `ScriptedSpawner.make(script)`: `{ layer, spawns }` | `@effected/commands` |
+| `HttpClient` | `HttpClient.make((request) => Effect.succeed(HttpClientResponse.fromWeb(request, new Response(body))))` in a `Layer.succeed(HttpClient.HttpClient, …)` | `effect/http` |
+| `Config` reads | `ConfigProvider.fromUnknown({ KEY: "value" })` — never `process.env` ([below](#the-env-seam-swap-configprovider-never-processenv)) | `effect` |
+| `Clock`, `Schedule`, timeouts | `TestClock` (already installed by `it.effect`) | `effect/testing` |
+| `Stdio` | `Stdio.layerTest({ … })` | `effect` |
+| a `Store`, or an app on `@effected/app` | `Store.layerTest({ migrations })`; `AppTest.layer(options)` | `@effected/store`; `@effected/app/testing` |
+| a CLI bin; an Ink screen | `CliTest`; `CliUiTest`, whose snapshot serializer is the one place a test uses `expect` ([effect-v4-cli](../effect-v4-cli/SKILL.md)) | `@effected/cli-kit/testing`; `@effected/cli-kit/ui/testing` |
+| an MCP server; an LSP server | `McpHarness`, `McpProbe` ([effect-v4-mcp](../effect-v4-mcp/SKILL.md)); `LspProbe` | `@effected/mcp-kit/testing`; `@effected/lsp/testing` |
+| a JWT or OIDC verifier | `TestIssuer` | `@effected/jwt/testing` |
+| an action, the GitHub API, an SBOM signer | the doubles in [testing-actions](../testing-actions/SKILL.md) | `@effected/github-actions`, `@effected/github` |
+| a monorepo's own layering and packed installs | the repo-shape checks | `@effected/workspaces/testing` |
 
 ## The default runner: `it.effect` + `Effect.gen`
 

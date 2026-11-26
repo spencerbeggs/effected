@@ -7,6 +7,14 @@
 * Updated @effected/memfs
 * Updated walker
 * Updated @effected/cli-kit
+* Updated A plugin skill is a lean index over references
+* Updated Advance the effect pin
+* Updated An upgrade-ledger entry is one change, selected by the versions a consumer's upgrade crosses
+* Updated Consumer upgrades run one fixed plugin process over an append-only ledger of per-change entries
+* Updated Consumer-facing text states current Effect behaviour, never versions
+* Updated Release a plugin
+* Updated The carrier libraries take -kit names, with no shim
+* Updated ai-plugin
 
 ## 2026-11-25
 

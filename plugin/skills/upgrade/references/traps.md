@@ -21,4 +21,4 @@ Things the upgrade process has hit in real repositories, each with what it looks
 
 ## Found this round
 
-<!-- effected-renovate: traps found since the last ledger reset go below this line -->
+<!-- upgrade: traps found since the last ledger reset go below this line -->

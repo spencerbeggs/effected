@@ -17,6 +17,12 @@ This table routes a capability to the package and skill that own it; it does not
 
 ## I need to… → reach for…
 
+Find the row before you write the code. For a need no row names, grep the kit
+by what you want done before you write it:
+`grep -ri "<intent words>" "<skill base directory>/../effected-packages/references/constructs/"`.
+A runner capability built by hand on `process.env` or `@actions/*` skips the
+typed errors, masking and test doubles the suite ships.
+
 | I need to… | Reach for | Skill |
 | --- | --- | --- |
 | scaffold a new action's build files in a package | `effected action init` (or the `action_init` MCP tool): `effected.toml`'s `[action]` tables, `action.yml`, `src/main.ts`, `src/program.ts` and a `tsconfig.json` on the kit's preset, ready for `effected action build` | `structuring-an-action` |

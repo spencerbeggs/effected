@@ -1,6 +1,6 @@
 ---
 name: effect-v4-house-style
-description: The house style for Effect v4 library code — module layout, naming, typed-error taxonomy, API-surface and TSDoc habits, layer conventions, test organization, and observability posture. Use when writing or reviewing any Effect v4 module and deciding how to lay out files, name things, shape errors, document exports, wire layers, or organize tests — or when asked why this codebase "looks the way it does". Distilled from the @effected kit with the DX-north-star package (semver), a parser engine (toml), a boundary package (config-file) and the app plane (app) as the evidence base. Cross-cutting rules only; Schema depth lives in effect-v4-schema, hardening in hardening-a-parser-port.
+description: "Use when writing or reviewing any Effect v4 module and deciding how to lay out files, name things, shape errors, document exports, wire layers or organize tests, or when asked why this codebase looks the way it does. Cross-cutting rules only: Schema depth lives in effect-v4-schema, hardening in hardening-a-parser-port. Also use when: module layout, file naming, barrel file, index.ts re-export, cycle between modules, error taxonomy, error naming, TSDoc habits, layer naming, test file organization, __test__ directory, why is it written like this"
 ---
 
 # Effect v4 house style

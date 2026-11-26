@@ -166,3 +166,102 @@ _tools_block() {
 		return 1
 	}
 }
+
+@test "the three code-writing agents preload both maps and the source ladder" {
+	# The maps are what stop a hand-rolled helper: core's module index, the
+	# kit's package index with its construct index, and the evidence ladder.
+	# Every other preload is territory; these three are the lookup itself.
+	local agent skill
+	for agent in effect-developer effect-reviewer action-engineer; do
+		for skill in effect-v4-module-index effected-packages effect-v4-source-lookup; do
+			_skills_block "$AGENTS/$agent.md" | grep -qx -- "$skill" || {
+				echo "agent $agent does not list $skill under skills:" >&2
+				return 1
+			}
+		done
+	done
+}
+
+@test "the three code-writing agents carry the lookup gate in their body" {
+	# A preload is not an instruction: the body must say to grep the construct
+	# index and name the construct, so the gate holds on Copilot too, where
+	# nothing is preloaded.
+	local agent
+	for agent in effect-developer effect-reviewer action-engineer; do
+		grep -qF "references/constructs/" "$AGENTS/$agent.md" || {
+			echo "agent $agent never names the construct index" >&2
+			return 1
+		}
+		grep -qF "Routing by task" "$AGENTS/$agent.md" || {
+			echo "agent $agent never names core's routing table" >&2
+			return 1
+		}
+	done
+}
+
+@test "every Copilot agent build tells the agent to read its skills first" {
+	# Copilot preloads nothing; the source's copilot host block is the only
+	# thing that makes the agent read the maps before it acts.
+	local agent built
+	for agent in effect-developer effect-reviewer action-engineer tsdoc-fixer; do
+		built="$PLUGIN_ROOT/builds/copilot/com.github.copilot/agents/$agent.agent.md"
+		grep -qF "This host does not preload skills" "$built" || {
+			echo "copilot $agent has no read-first instruction" >&2
+			return 1
+		}
+		! grep -qF "This host does not preload skills" "$PLUGIN_ROOT/builds/claude/agents/$agent.md" || {
+			echo "claude $agent carries the copilot-only read-first block" >&2
+			return 1
+		}
+	done
+}
+
+@test "the three code-writing agents run a simplifier pass and report it" {
+	# Simplifier passes catch defects green tests miss; the step, its stop
+	# condition and its line in the report must all survive an edit.
+	local agent
+	for agent in effect-developer effect-reviewer action-engineer; do
+		grep -qF "simplifier pass" "$AGENTS/$agent.md" || {
+			echo "agent $agent has no simplifier pass" >&2
+			return 1
+		}
+		grep -qF "after two rounds" "$AGENTS/$agent.md"
+		# Prose wraps, so match on the file with its lines joined.
+		tr '\n' ' ' <"$AGENTS/$agent.md" | tr -s ' ' | grep -qF "Never skip the pass because the tests are green" || {
+			echo "agent $agent does not forbid skipping the pass on green" >&2
+			return 1
+		}
+		grep -qF '"no change"' "$AGENTS/$agent.md" || {
+			echo "agent $agent does not report the pass's outcome" >&2
+			return 1
+		}
+	done
+	tr '\n' ' ' <"$AGENTS/effect-reviewer.md" | tr -s ' ' | grep -qF "a simplification that changes behaviour is a defect finding"
+}
+
+@test "Claude builds name the simplify skill; Copilot builds carry the inline checklist" {
+	local agent claude copilot
+	for agent in effect-developer effect-reviewer action-engineer; do
+		claude="$PLUGIN_ROOT/builds/claude/agents/$agent.md"
+		copilot="$PLUGIN_ROOT/builds/copilot/com.github.copilot/agents/$agent.agent.md"
+		grep -qF 'built-in `simplify` skill' "$claude" || {
+			echo "claude $agent does not name the simplify skill" >&2
+			return 1
+		}
+		! grep -qF 'built-in `simplify` skill' "$copilot" || {
+			echo "copilot $agent names a skill the host does not have" >&2
+			return 1
+		}
+		for item in "**Reuse**" "**Duplication and dead code**" "**Needless abstraction**" \
+			"**A simpler v4 spelling**" "**Efficiency**"; do
+			grep -qF -- "$item" "$copilot" || {
+				echo "copilot $agent lacks checklist item $item" >&2
+				return 1
+			}
+			! grep -qF -- "$item" "$claude" || {
+				echo "claude $agent carries the copilot checklist item $item" >&2
+				return 1
+			}
+		done
+	done
+}
