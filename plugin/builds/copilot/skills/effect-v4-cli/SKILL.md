@@ -157,17 +157,23 @@ Anchors in this skill and its references cite the vendored tag at
 
 - [effect-v4-module-index](../effect-v4-module-index/SKILL.md) — which core
   module owns a capability, including `effect/process` and the
-  `NodeServices.layer` boundary.
+  `NodeServices.layer` boundary. Load it before a command spawns a process or
+  you write a helper core may ship.
 - [effect-v4-idioms](../effect-v4-idioms/SKILL.md) — `PlatformError`, typed
-  errors and core patterns.
+  errors and core patterns. Load it before you recover from a handler's
+  failure.
 - [effect-v4-services-layers](../effect-v4-services-layers/SKILL.md) —
   providing `Command.Environment` once at the boundary, and the memoization
-  discipline.
+  discipline. Load it before you provide a layer to a command.
 - [effect-v4-testing](../effect-v4-testing/SKILL.md) — `TestClock`,
-  `TestConsole`, and proving a suite can fail.
+  `TestConsole`, and proving a suite can fail. Load it before you trust a
+  green CLI test.
 - [effected-packages](../effected-packages/SKILL.md) — the `@effected/env` and
   `@effected/cli-kit` rows, their references
   ([cli-kit.md](../effected-packages/references/cli-kit.md),
   [env.md](../effected-packages/references/env.md)) and the construct index.
+  Load it before you reach for a `cli-kit` or `env` construct this skill does
+  not name.
 - [design-patterns](../design-patterns/SKILL.md) — a CLI that shares its logic
-  with an MCP server through one carrier package.
+  with an MCP server through one carrier package. Load it when the tool also
+  ships an MCP server or a second bin.

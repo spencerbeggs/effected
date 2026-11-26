@@ -63,119 +63,98 @@ is the version the tool carries.
   scripts.** `schema:build` runs `effected schema build`, `schema:check` runs
   `effected schema check`; run them next to the config or pass its path (no
   config found is exit `2`); make turbo's `build` depend on `schema:build`. Scripts,
-  flags and a drift test are the CLI's job, not a generator script's. See
-  [references/config.md](references/config.md) and
-  [references/ci-gate.md](references/ci-gate.md).
+  flags and a drift test are the CLI's job, not a generator script's. Before you set up the config and scripts, load [references/config.md](references/config.md) and [references/ci-gate.md](references/ci-gate.md).
 - **A schema entry is keyed by its own name — never spell `$id` or `path` by
   hand.** They, and every catalog URL, derive from the key, `outputDir`,
   `baseUrl` and `layout`. `baseUrl: "schemastore"` forces the flat layout; a
-  custom `baseUrl` defaults to `"versioned"`. See
-  [references/config.md](references/config.md).
+  custom `baseUrl` defaults to `"versioned"`. Before you name a schema entry or choose a layout, load [references/config.md](references/config.md).
 - **Leave `published` at its default (`false`) until the catalog entry is
   accepted upstream, then flip it that day.** An unpublished schema
   regenerates in place through any change, contract included; a published
   one is held to the drift policy. To change a published schema's contract,
   append a new label to `versions` and make it `current` — never edit the
-  old file in place. See
-  [references/drift-and-versioning.md](references/drift-and-versioning.md).
+  old file in place. Before you flip `published` or change a published contract, load [references/drift-and-versioning.md](references/drift-and-versioning.md).
 - **Answer a `DRIFT contract` line by bumping the version in the config, not
   by forcing.** The CLI suggests a minor bump; bump major yourself when you
   know the change is breaking. `--force` is `--drift=allow` for one run and
-  rewrites a URL consumers pin. See
-  [references/drift-and-versioning.md](references/drift-and-versioning.md).
+  rewrites a URL consumers pin. Before you answer a drift line, load [references/drift-and-versioning.md](references/drift-and-versioning.md).
 - **Annotate at the definition site, and annotate a `Schema.Class` root on
   the `Struct` it wraps.** A usage-site annotation on a hoisted schema carries
-  nothing; a class-level annotation never reaches the `$defs` entry. See
-  [references/document-authoring.md](references/document-authoring.md).
+  nothing; a class-level annotation never reaches the `$defs` entry. Before you annotate a schema, load [references/document-authoring.md](references/document-authoring.md).
 - **Use only the declared keyword families for non-standard keys** — the
   vscode five by exact name, the `x-taplo`, `x-tombi-`, `x-intellij-`
   prefixes, and the house `x-ai-` namespace. An undeclared key annotated on
   a schema node is silently dropped — the build passes and the key is gone;
   admitted through `rootAnnotations` or an `includeAnnotationKey` predicate
-  it fails the build with `UndeclaredAnnotationKeyError`. See
-  [references/document-authoring.md](references/document-authoring.md).
+  it fails the build with `UndeclaredAnnotationKeyError`. Before you add a non-standard keyword, load [references/document-authoring.md](references/document-authoring.md).
 - **Classify a change by what a validator asserts or a tool writes, not by
   Draft-07's taxonomy.** `default`, `examples`, `readOnly` and `writeOnly`
   are contract changes; `x-ai-*` and `markdownDescription` are annotations.
-  See [references/document-authoring.md](references/document-authoring.md).
+  Before you classify a change as contract or annotation, load [references/document-authoring.md](references/document-authoring.md).
 - **Generated objects are closed by default (`additionalProperties:
   false`); pin `jsonSchema: { onExcessProperty: "ignore" }` on the ONE
   target that must stay open.** The package no longer follows core's open
   default, so a config that used to pin `"error"` on every entry can drop
-  the pin. See
-  [references/document-authoring.md](references/document-authoring.md).
+  the pin. Before you open or close a generated object, load [references/document-authoring.md](references/document-authoring.md).
 - **When the application writes `$schema` itself, build a `HostedSchema`
   once and hand it to both.** `HostedSchema.github({ repo, path, name,
   versions })` (or `.schemastore(...)` / `.custom(...)`) derives `$id`,
   the catalog URL and the file name; `Schema.Literal(hosted.$id)` in the
   app and `{ schema, hosted }` in the config, keyed by `hosted.name`, so the
-  two cannot disagree. See [references/config.md](references/config.md).
+  two cannot disagree. Before you write `$schema` from the application, load [references/config.md](references/config.md).
 - **Run `schema:check` in CI and read its exit code.** `0` is clean (or drift
   under `--on-drift=warn`), `1` is drift, a gate failure, or a stale document
-  a build would write, `2` is a config problem, `64` is a usage error. See
-  [references/ci-gate.md](references/ci-gate.md).
+  a build would write, `2` is a config problem, `64` is a usage error. Before you wire `schema:check` into CI, load [references/ci-gate.md](references/ci-gate.md).
 - **Let an agent use the `schema_*` tools instead of shelling out.**
   `schema_check` and `schema_validate` are read-only and `schema_build`
   writes. Drift and staleness arrive as ordinary results with the verdict;
-  only a config that fails to load or a broken engine is a tool error. See
-  [references/ci-gate.md](references/ci-gate.md).
+  only a config that fails to load or a broken engine is a tool error. Before you call the `schema_*` tools, load [references/ci-gate.md](references/ci-gate.md).
 - **Build the config from `@effected/plugin`, and align the library through
   the catalog, not the flag.** When a value the config holds comes from an
   `@effected/schemastore` at another version than the one the tool carries,
   the CLI fails with exit `2` naming both versions and `@effected/plugin` as
   the remedy; `--ignore-version-mismatch` runs on with
   a warning, and the MCP tools run and carry a `versionMismatch` warning in
-  the result. See [references/ci-gate.md](references/ci-gate.md).
+  the result. Before you fix a version-mismatch failure, load [references/ci-gate.md](references/ci-gate.md).
 - **Retire the generator script when the config lands** — the script, its
   drift test, the `CATALOGUED`-style constant and the hand-written catalog
-  entry. See
-  [references/migrating-a-generator-script.md](references/migrating-a-generator-script.md).
+  entry. Before you retire a generator script, load [references/migrating-a-generator-script.md](references/migrating-a-generator-script.md).
 
 ## Footguns
 
 - A `versions` label with no file on disk fails the build with
   `FrozenVersionMissingError`, before anything is generated — either
   generate it once as `current` and then freeze it, or drop it from
-  `versions`. See
-  [references/drift-and-versioning.md](references/drift-and-versioning.md).
+  `versions`. Before you freeze a version label, load [references/drift-and-versioning.md](references/drift-and-versioning.md).
 - Relative `outputDir`/`path` values resolve against the config file's
   directory, never the working directory — a root-level run and a filtered
-  package run must write the same files. See
-  [references/config.md](references/config.md).
+  package run must write the same files. Before you set a relative `outputDir` or `path`, load [references/config.md](references/config.md).
 - `check` reports `held (drift elsewhere)` for a clean schema when a sibling
   drifted under `onDrift: error`, because nothing is written on a refused
-  run — fix the sibling, not the held one. See
-  [references/drift-and-versioning.md](references/drift-and-versioning.md).
+  run — fix the sibling, not the held one. Before you fix a `held` schema, load [references/drift-and-versioning.md](references/drift-and-versioning.md).
 - Gate failures (lint warnings, ajv strict findings) exit `1` under either
-  `--on-drift` value; `--force` does not touch them. See
-  [references/drift-and-versioning.md](references/drift-and-versioning.md).
+  `--on-drift` value; `--force` does not touch them. Before you read a gate failure, load [references/drift-and-versioning.md](references/drift-and-versioning.md).
 - A document the build rewrites is in the canonical layout (every array
   expanded), which Biome's default collapses — so `lint` after `schema:build`
   fails in CI while `check` stays green. Scope Biome's `expand: "always"` to
-  the generated files. See
-  [references/ci-gate.md](references/ci-gate.md#make-the-formatter-agree-with-the-writer).
+  the generated files. Before you format generated documents, load [references/ci-gate.md](references/ci-gate.md#make-the-formatter-agree-with-the-writer).
 - `1`, `1.0` and `1.0.0` are one version — `defineConfig` rejects two
   spellings of it under one name — and a bare-major label enumerates ahead of
   every dotted key in the catalog's `versions` map (cosmetic; SchemaStore reads
-  it by key). See
-  [references/drift-and-versioning.md](references/drift-and-versioning.md).
+  it by key). Before you spell a version label, load [references/drift-and-versioning.md](references/drift-and-versioning.md).
 - Adopting `x-ai-*` on an already-published document rewrites it in place —
   correct, since annotations are transparently replaceable — while adding a
-  `default` bumps a version. See
-  [references/document-authoring.md](references/document-authoring.md).
+  `default` bumps a version. Before you adopt `x-ai-*` on a published document, load [references/document-authoring.md](references/document-authoring.md).
 - An `x-ai-*` payload carrying an `$id` (or a repeated `$anchor`) at any depth
   fails the ajv compile; so does a key with a dot, space, slash, `@`, `+` or
-  non-ASCII character after the prefix. See
-  [references/document-authoring.md](references/document-authoring.md).
+  non-ASCII character after the prefix. Before you write an `x-ai-*` payload, load [references/document-authoring.md](references/document-authoring.md).
 - Configs sharing a merged catalog must share one `catalogDir`, with names
   unique case-insensitively and schema keys unique across configs, or they
-  overwrite each other. See
-  [references/multi-config.md](references/multi-config.md).
+  overwrite each other. Before you add a second config sharing a catalog, load [references/multi-config.md](references/multi-config.md).
 - A failure is the `@effected/cli-kit` standard report on stderr (`✗ DriftError: …`, then an `in:` span line when it failed inside a span); gate on the exit code, never on the line's leading characters.
 - Under `--agent` the format defaults to JSON; otherwise a person gets human
   text and `check` shows a coloured line diff. A JSON run puts human text on
-  stderr; parse stdout only. See
-  [references/ci-gate.md](references/ci-gate.md).
+  stderr; parse stdout only. Before you parse the command's output, load [references/ci-gate.md](references/ci-gate.md).
 
 ## Out of scope — see the named skill
 

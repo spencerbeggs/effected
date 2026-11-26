@@ -46,95 +46,35 @@ export class SemVer extends Schema.Class<SemVer>("SemVer")({
 
 That yields `dist/prod/issues.json` = `{ warnings: 0, errors: 0, suppressed: N }`,
 with the `SemVer_base` (and every other `*_base`) entry in the **`suppressed`**
-bucket.
+bucket. The same form holds for recursive `Schema.Class` + `Schema.suspend`,
+`Context.Service` and named field-schema consts, with no annotation and no
+`@public` on the consts. A `@public X_base` const is the retired idiom: inline
+the factory and delete the const.
 
-### Why this is principled, not a "silence the warning" cop-out
+When a reviewer asks why suppressing is not a cop-out, or a recursive class or
+`Context.Service` seems to need a base annotation, load
+[class-factory-bases.md](references/class-factory-bases.md) before you add one:
+it holds the emitted `.d.ts` that proves the base is internal and the factory
+kinds the inline form is proven on.
 
-The emitted `.d.ts` proves the base is genuinely internal:
+## The suppression covers `_base` ONLY
 
-```text
-declare const SemVer_base: Schema.Class<SemVer, /* full inlined shape */>;
-declare class SemVer extends SemVer_base { /* full shape: fields, statics, methods */ }
-export { SemVer /* , ... */ };   // <- SemVer_base is NOT exported
-```
+`pattern: "_base"` matches only the synthesized bases, by design, so genuine
+surface leaks are never masked. The binary release-tag rule still applies:
+*anything a `@public` signature names must itself be `@public`*. Two leaks it
+does not cover, both real and both to be fixed, not suppressed:
 
-`X_base` is a module-local `declare const` that never appears in the export
-list, and the exported class carries its full shape. A consumer can neither
-name nor need `X_base`. The suppression is **narrow** (`pattern: "_base"`
-matches only these synthesized symbols), **accounted for** (it lands in the
-`suppressed` bucket and the build log reports the count — it is logged, not
-silenced), and **harmless** (`ae-forgotten-export` means "a public API names a
-type a consumer can't import"; here nothing a consumer needs is lost). That is
-categorically different from muting, say, an `ae-missing-release-tag` you don't
-feel like fixing.
+- **An internal type on a `@public` method or function signature** — watch the
+  `X.fromRaw` / `X.of` / codec-adapter statics that bridge an internal engine to
+  the public classes. **Inline the type structurally** on the signature (best
+  for anything under `src/internal/`), or tag it `@public` and re-export it when
+  it is genuinely API.
+- **An unexported interface passed as a factory's type argument**
+  (`Context.Service<VersionCache, VersionCacheShape>()`,
+  `Schema.Class<Self, Fields>`) — it leaks under its own name, which has no
+  `_base` suffix. **Export the shape type**: it is the service's contract.
 
-### Validated across every factory kind
-
-Confirmed clean (`warnings: 0`, the `*_base` in `suppressed`) with `tsgo`
-green and **no hand-written annotations** on:
-
-- `Schema.Opaque`, `Schema.Class`, `TaggedClass`, `TaggedError`.
-  (Naming trap: there is no `Schema.asClass` — zero occurrences in
-  `Schema.ts`. To give a schema value a class identity you subclass it
-  directly: `class MyString extends Schema.String {}`.)
-- **Recursive `Schema.Class` + `Schema.suspend`** (a node whose field
-  references itself): the inline form has **no TS2506** and needs none of the
-  old `Schema.Schema<Self>` base-annotation gymnastics — that failure mode was
-  an artifact of splitting the annotated base const out of the heritage clause,
-  and it evaporates inline. The suspend callback still takes its normal
-  `(): Schema.Schema<Self> => Self` return type; that is ordinary recursive-schema
-  practice, not a base annotation.
-- **`Context.Service`** (`class R extends Context.Service<R, Shape>()("id") {}`):
-  same `R_base` suppression, no annotation.
-- **Named field-schema consts** (`major: nonNegativeInteger`): the const's type
-  **inlines into `X_base`** rather than emitting as `typeof nonNegativeInteger`,
-  so it does **not** forgotten-export and does **not** need `@public`. The old
-  "schema helpers referenced by the annotation become `@public`" cascade retires
-  with the annotation that caused it.
-
-So the former ceremony — the `@public X_base` export, the mandatory explicit
-annotation, the recursive `Schema.Schema<Self>` special-casing, re-exporting
-every base from `index.ts`, and marking field consts `@public` — is all gone.
-Write the class the way Effect's own docs write it and add the one-line
-suppression.
-
-## The suppression is `_base`-scoped ONLY — it does not cover method signatures
-
-The binary release-tag rule still applies to **method and function
-parameter/return types**: *anything a `@public` signature names must itself be
-`@public`*. An internal type on a public method signature is a **different
-symbol** (not suffixed `_base`), so `pattern: "_base"` does **not** suppress it —
-by design, so genuine surface leaks are never masked. In the yaml port, one
-internal `RawDiagnostic` parameter on a `@public`
-`YamlDiagnostic.fromRaw(raw: RawDiagnostic, …)` produced **12**
-forgotten-export warnings (the whole `internal/diagnostics` module). These are
-real and must be fixed, not suppressed:
-
-- **Inline a structural type** on the public signature so no internal symbol is
-  named — best for engine-internal record types that should not become public
-  surface:
-
-  ```text
-  static fromRaw(
-   raw: { readonly code: YamlErrorCode; readonly message: string; readonly offset: number; readonly length: number },
-   text: string,
-  ): YamlDiagnostic { … }
-  ```
-
-  (This is the **landed** form, not a hypothetical: `@effected/yaml`'s
-  `YamlDiagnostic.fromRaw` ships exactly this structural-inline signature — the
-  12-warning `RawDiagnostic` incident above is what motivated it.)
-
-- **Or tag the referenced type `@public`** and re-export it — only when it is
-  genuinely part of the API.
-
-Prefer the structural-inline form for anything under `src/internal/`. Watch for
-this on `X.fromRaw` / `X.of` / codec-adapter statics that bridge the internal
-engine to the public classes — exactly where an internal record type sneaks
-onto a `@public` signature.
-
-**Three escapes that look like they should work and do not.** Two build cycles
-were burned re-discovering this, so it is worth stating outright:
+**Three escapes that look like they should work and do not:**
 
 | Attempted escape | Result |
 | --- | --- |
@@ -142,473 +82,98 @@ were burned re-discovering this, so it is worth stating outright:
 | Mark the *referenced type* `@internal` | **Still fails**, and differently — now you get `ae-incompatible-release-tags` instead. `@internal` never resolves an `ae-forgotten-export`; it only relabels the problem. |
 | Extract the shape to a named `type` alias and use that | **Still fails.** An alias is a named symbol like any other, so it forgotten-exports under its own name. Naming the thing is precisely what you cannot do. |
 
-Only two things actually work: **inline the type structurally** (no name exists,
-so nothing can be forgotten), or **export it** and accept it as public API. There
-is no third option, and the effort spent looking for one is unrecoverable.
+Only two things work: **inline the type structurally** (no name exists, so
+nothing can be forgotten), or **export it** and accept it as public API. A
+declared dependency's own generic (octokit's `Endpoints[R]`, say) is the
+opposite case: API Extractor imports it as an external, so name the precise
+third-party type rather than widening to `unknown`.
 
-### The positive counterpart: third-party generics are free
+Before you widen a suppression pattern, or when a forgotten-export names a
+type that is not an `X_base`, load
+[class-factory-bases.md](references/class-factory-bases.md): it has the
+structural-inline signature, the type-argument leak with its exact diagnostic,
+and the declared-dependency condition for third-party types.
 
-The mirror-image fear — that naming a *dependency's* generic type on a `@public`
-signature will forgotten-export it — is unfounded. **API Extractor resolves
-declared-dependency third-party types as externals and emits real `import`
-statements in the `.d.ts`**: no `ae-forgotten-export`, no inlining, no
-re-export ceremony. Confirmed at `@effected/github`'s first build with octokit's
-`Endpoints[R]` on a `@public` signature.
-
-The condition is that the package be a **declared dependency** (it must be
-resolvable from the emitted `.d.ts`, which a `devDependency` or a transitive
-package is not). Given that, write the precise third-party type rather than
-widening to `unknown` or hand-copying its shape — the gate does not charge you
-for it.
-
-### …nor does it cover a type in the class factory's GENERIC
-
-The same gap bites one step earlier, in the **heritage clause itself**. An
-unexported interface passed as a *type argument* to the factory —
-
-```ts
-import { Context } from "effect"
-
-interface VersionCacheShape {
-  readonly current: string
-} // NOT exported from index.ts
-
-export class VersionCache extends Context.Service<VersionCache, VersionCacheShape>()(
- "@effected/semver/VersionCache",
-) {}
-```
-
-— leaks as a plain `ae-forgotten-export` on **`VersionCacheShape`**, whose symbol
-name has no `_base` suffix, so `pattern: "_base"` does not match it.
-
-**Measured** on `@effected/semver` by un-exporting exactly that interface and
-rebuilding:
-
-| | warnings | suppressed | code | `ciFatal` |
-| --- | --- | --- | --- | --- |
-| baseline | 0 | 12 | — | — |
-| interface un-exported | **1** | 12 (unchanged) | `ae-forgotten-export` | **`true`** |
-
-> `The symbol "VersionCacheShape" needs to be exported by the entry point index.d.ts`
-
-The suppressed bucket stayed at 12 and every entry in it ends in `_base` — the
-narrow suppression does exactly what it says and nothing more.
-
-The fix is to **export the shape type** from the entrypoint (it is genuinely part
-of the API — it is the service's contract), not to widen the suppression. This is
-the case a reviewer walks you into: nitting "dedupe this shape into a named
-interface" is right on the merits, but the moment the name exists it must also be
-exported, or the gate goes red. Applies equally to `Schema.Class<Self, Fields>`
-and every other class factory that takes a type argument.
-
-## TSDoc `{@link}` traps
-
-**The one rule the cases below are instances of:**
+## TSDoc `{@link}`: the one rule
 
 > `{@link}` resolves **only to symbols the entry point exports, under the name it
 > exports them by**. Everything else is a backtick span.
 
-Six ways a name fails that test:
+Read the diagnostic rather than pattern-matching on "unresolved":
 
-- **A schema-declared `Schema.Class` field** — the class owns it, but only
-  through the factory, which API Extractor does not see through.
-- **A module-local renamed at export** — `class Route` exported as
-  `export { Route as RestRoute }` resolves as `{@link RestRoute}` and **never**
-  as `{@link Route}`, no matter that `Route` is the name in the file you are
-  writing the comment in. Confirmed twice at the `@effected/github` build.
-- **A member of a const-only namespace object** — link through the exported
-  const (`{@link Walker.ascend}`), never the bare member.
-- **A module-private const** — never exported, so nothing resolves; backticks.
-- **A re-exported cross-package `Schema.Class`, `{@link}`ed from a file that
-  only `import type`s it** — even when the entry point re-exports the symbol
-  (`export { Package } from "@effected/package-json"`), a `{@link Package}`
-  written in a module that reaches it via `import type` fails with a
-  **different message** than the other cases: *"This type of declaration is
-  not supported yet by the resolver"*, and issues.json may attribute it to an
-  unrelated line through the rollup. Backticks are the fix. Confirmed at the
-  `@effected/sbom` build; the re-export itself is fine — only
-  the `{@link}` form is rejected.
-- **A symbol exported only from the root `.`, `{@link}`ed from a module that
-  ships under a second entry point** (`./testing`, `./ui`, `./node`) — each
-  entry point is its own API Extractor pass with its own export list (see "A
-  second published entrypoint models its own surface" below), so the root's
-  `{@link Foo}` is unresolved from `./testing`'s pass however public `Foo` is
-  at `.`. This is the most common way a multi-entrypoint package breaks the
-  rule. Backticks — or, when the symbol belongs to that surface, re-export it
-  from the second entry point too, and the link resolves there.
+| Diagnostic says | Means | Fix |
+| --- | --- | --- |
+| *"ambiguous… add a TSDoc member reference selector"* on a merged value + type name | A selector works | `{@link (ConfigCodec:interface)}`, `:variable`, `:class`, `:type`; never delete the link |
+| *"ambiguous…"* on an overloaded function | The selector is the 1-based overload index, parenthesized | `{@link (descend:1)}`, not `:function` |
+| *"ambiguous…"* on a same-named `static` and instance member | No selector is accepted | Remove the collision, else backticks |
+| *"does not have an export"* | No selector ever will | Link through the exported const (`{@link Walker.ascend}`), else backticks |
+| *"not supported yet by the resolver"* | The resolver cannot follow the declaration | Backticks |
 
-The diagnostic distinguishes the fixable case from the unfixable one, so read it
-rather than pattern-matching: *"ambiguous… add a TSDoc member reference
-selector"* means a selector will work (below), with one exception: a class
-member whose name is declared both `static` and on the instance (case 4 under
-"Backtick spans" below); *"does not have an export"* means
-no selector ever will; *"not supported yet by the resolver"* means the resolver
-cannot follow the declaration shape at all — backticks, no selector to try.
+Backticks are the only answer for an inherited member (`SemVer.make`), a
+`Schema.Class` field, a symbol you only `import type` from another package, a
+module-private const, and a root-only symbol linked from a second entry
+point's module.
 
-**Merged value + type names: use a member-reference selector, not a backtick.**
+Two traps that report on the wrong line:
 
-Any name carrying **both a value and a type declaration** — an `interface` plus
-a `const` of the same name (`ConfigCodec`, `MergeStrategy`, `VersionAccess`), or
-a branded scalar's `const` schema plus its exported `type` (`PackageName`,
-`SpdxLicense`) — cannot be disambiguated by API Extractor from a bare link. Both
-`{@link X}` and `{@link X.member}` resolve to `ae-unresolved-link`, and the
-diagnostic says so literally: *"the reference is ambiguous… you need to add a
-TSDoc member reference selector."*
+- **Never markdown-link a scoped package name in TSDoc**, in the label or the
+  URL: the URL's bare `@scope` trips `tsdoc-at-sign-in-word`, reported at the
+  next declaration. Backtick the name; put a bare URL beside it if it matters.
+- **A backtick code span must open and close on one comment line.** A span
+  wrapped by reflow fans out into `tsdoc-code-span-missing-delimiter`,
+  `tsdoc-escape-right-brace` and `tsdoc-malformed-inline-tag` warnings below
+  the comment. Rejoin the span; never escape the braces.
 
-The fix is the selector, and the link keeps working:
+`issues.json`'s `line` indexes the generated `.d.ts`, not your source, so find a
+`tsdoc-*` or `ae-unresolved-link` defect by its text.
 
-```ts
-/** Wrap any {@link (ConfigCodec:interface)} with AES-GCM encryption. */
-/** See {@link (ConfigResolver:variable).staticDir}. */
-/** The decoded form of {@link (ConfigEventPayload:variable)}. */
-/** A branded scalar: {@link (PackageName:type)}. */
-```
+Before you fix any `ae-unresolved-link`, `tsdoc-at-sign-in-word` or
+`tsdoc-code-span-missing-delimiter`, load
+[link-resolution.md](references/link-resolution.md): the overload, field and
+selector-keyword cases each look like a selector problem and are not, and a
+wrong selector or an escaped brace costs a full build cycle to discover.
 
-Pick the selector that names the declaration you mean: `:interface`, `:variable`,
-`:class`, `:type`. Getting it wrong still emits `ae-unresolved-link` — `:type` on
-an interface does not resolve — so a zero-warning build is the proof you chose
-correctly. `@effected/yaml` (`{@link (YamlSegment:type)}`) and
-`@effected/config-file` (`{@link (ConfigCodec:interface)}`) both ship these
-zero-warning.
+## Entry points
 
-**Do not "fix" these by deleting the link.** Replacing a resolvable
-`{@link (X:interface)}` with an inert backtick span silently removes an API-doc
-cross-reference; a selector form resolves for every merged name.
+Each entry point in `exports` is its own API Extractor pass and its own closed
+surface. **Re-export from a second entry point (`./testing`, `./node`) every
+kit type its own signatures name**; "already exported from `.`" never satisfies
+that entry point's gate. A bin-only package (`exports` only
+`"./package.json"`) fails with `Cannot merge zero API models`: set
+`[package.build] emitDts = false`, never a fake `index.ts`.
 
-**Member of a const-only namespace object: link through the exported name — no
-selector, and the bare member name never resolves.** Every package entry point
-in this repo exports the shape
+Before you add a second subpath, make one import its own root's types, or
+build a bin-only package, load [entry-points.md](references/entry-points.md):
+the self-import pattern needs three parts together (`dtsExternals`, an
+entry-scoped suppression and a declaration test), and two alone hide a real
+leak.
 
-```ts
-const ascend = (path: string): string => path; // module-local, NOT exported
-export const Walker = { ascend } as const;     // the only export
-```
+## Reading the gate
 
-Here `{@link ascend}` is `ae-unresolved-link` — not because the name is
-ambiguous, but because **there is no export by that name**, so no selector can
-fix it (`{@link (ascend:variable)}` stays red). Do not pattern-match "bare link
-unresolved ⇒ reach for a selector"; that heuristic belongs to the merged-name
-case above, where the diagnostic says "ambiguous". When the diagnostic says
-*"does not have an export"*, the fix is a plain member reference through the
-exported const — `{@link Walker.ascend}` — with no selector, because `Walker`
-carries a value declaration only. `packages/config-file/src/ConfigMigration.ts`
-(`{@link ConfigMigration.make}`) and `packages/walker/src/Walker.ts` both ship
-this form warnings-clean. Expect the mistake to recur: `Jsonc`,
-`ConfigResolver`, `ConfigMigration`, `ConfigCodec`, `MergeStrategy`, and
-`Walker` all use this export shape, and the failure is invisible to `pnpm test`
-and `types:check` — it only surfaces in the **prod** build's `issues.json`.
+`issues.json` is a **false-green oracle**. **Read `buildOk` first**: a crashed
+build leaves every bucket empty, exactly like a clean one, and a package with
+class factories always has at least one `_base` entry in `suppressed`. Trust a
+read only right after your own serial, cold, exit-0 build: an incremental build
+can hide warnings and a concurrent build tears `dist/`.
 
-**Backtick spans remain correct for four cases**, where no selector helps:
+Before you report a package build as clean, load
+[reading-the-gate.md](references/reading-the-gate.md): it has the four rules
+that keep an empty `issues.json` from passing for a green one, and the
+dollar-alias names that look like a defect and are not.
 
-1. **Inherited members** — `{@link SemVer.make}` where `make` comes from the
-   synthesized base. There is no selector for a member the declaration does not
-   own. Write `` `SemVer.make` ``.
-2. **Cross-package symbols you only `import type`.** A selector disambiguates
-   *between local declarations*; it cannot reach a symbol API Extractor never
-   rolled up into this package entry point. An adapter that does
-   `import type { ConfigCodec } from "@effected/config-file"` and writes
-   `{@link (ConfigCodec:interface)}` still gets `ae-unresolved-link`. Write
-   `` `ConfigCodec` ``. Expect this on **every** adapter package that plugs
-   into a seam it does not own.
-3. **A `Schema.Class` FIELD** — `{@link ReleaseAgeGate.exclude}` or
-   `{@link WorkspaceCatalogs.set}`, where the member is a schema-declared field
-   rather than a hand-written class member. API Extractor does not see fields
-   declared in the factory's field object as class members at all, so **no
-   selector form fixes it** — `{@link (ReleaseAgeGate:class).exclude}` stays
-   `ae-unresolved-link` too. Write `` `ReleaseAgeGate.exclude` ``. Note the asymmetry with the
-   inherited-member case above — there the *declaration* does not own the
-   member; here the class does own it, but only through the factory, which is
-   the same dead end from API Extractor's side.
-4. **A class with a same-named `static` and instance member** — a
-   `Fn.dual` static `Range.filter` beside an instance `filter(versions)`.
-   `{@link Range.filter}` reports *"ambiguous because "filter" has more than
-   one declaration; you need to add a TSDoc member reference selector"*, and
-   then rejects every selector you can write: `{@link Range.(filter:static)}`
-   and `{@link Range.(filter:instance)}` are both *Unsupported system
-   selector*. The advice in the diagnostic is a dead end. The house answer is
-   to **not create the collision**: keep the instance method canonical and
-   drop the static (derive a data-last form from an `Order` or a lambda), or
-   give the static a distinct name. `@effected/semver` dropped its seven
-   comparison statics and `Range.filter` for this reason. Where a collision
-   cannot be avoided, write the name in backticks.
+## Additional resources
 
-## Overloaded exported functions: the index selector, parenthesized
-
-Adding a second overload to an exported function is an ordinary additive
-change, and it breaks every existing `{@link fn}` at once with the same
-*"ambiguous… add a TSDoc member reference selector"* diagnostic the merged-name
-case emits. The selector that fixes it is **not** `:function` — it is the
-**overload index**, 1-based in `.d.ts` declaration order, and the whole
-reference must be parenthesized:
-
-```ts
-/** The recipe form of {@link (descend:1)}; under `"record"` see {@link (descend:2)}. */
-```
-
-Probed at the `@effected/walker` prod build (`descend` carries two
-overload signatures plus an implementation signature), every form in one
-comment so the controls and the answer share a run:
-
-| Form | Result |
-| --- | --- |
-| `{@link (descend:1)}`, `{@link (descend:2)}` | resolve, no warning |
-| `{@link descend}` | *ambiguous… add a TSDoc member reference selector* |
-| `{@link (descend:function)}` | *More than one declaration "descend" matches the TSDoc selector "function"* |
-| `{@link descend:1}` | *Syntax error… the member selector must be enclosed in parentheses* |
-| `{@link (descend:3)}` | *An overload for "descend" was not found that matches the TSDoc selector ":3"* |
-
-Three consequences worth holding onto:
-
-- **The system selector cannot disambiguate overloads.** Every overload is a
-  `FunctionDeclaration`, so `:function` matches all of them and fails on the
-  count — reach for the number, not the kind.
-- **The implementation signature does not count.** `:3` fails on a function
-  with two overloads and an implementation, because the index walks the
-  rolled-up `.d.ts`, where only the overload signatures survive
-  (`AstReferenceResolver.#selectUsingIndexSelector` →
-  `Collector.getOverloadIndex`, which numbers same-kind declarations of the
-  symbol in order, from 1).
-- **Reordering overloads renumbers links.** `:1` names *position*, not
-  signature, so a refactor that swaps two overloads silently repoints every
-  link without a warning — the build stays green either way. Prefer citing the
-  overload whose position is stable, and re-read the links when you reorder.
-
-Backticks still work here. Where the link would carry the reader to the right overload, use the
-selector; where any overload will do and the position is likely to move, a
-backtick is the honest form.
-
-## `{@link X.member}` where the member name IS a TSDoc selector keyword
-
-A member whose name collides with a TSDoc **system selector** (`variable`,
-`function`, `class`, `interface`, `namespace`, `enum`, `constructor`,
-`static`, `instance`, …) makes `{@link ActionInput.variable}` ambiguous to
-the parser, and the bundler warns *"identifier must be quoted"*. Hit live on a
-static genuinely named `variable`. The fix is the same as
-every other unresolvable-link case in this skill: **backticks**
-(`` `ActionInput.variable` ``) — do not try quoted-selector syntax, and do
-not rename the API to appease the doc engine.
-
-## `tsdoc-at-sign-in-word`: never markdown-link a scoped package
-
-A scoped package name in TSDoc must be backticked. That much is known — the trap
-is that **a markdown link hides a second, unbackticked copy inside its URL**, and
-that copy is the one that trips:
-
-```ts
-/** See [@effected/config-file](https://npmjs.com/package/@effected/config-file). */
-//     ^ backticked? no — but even fixing the label leaves the URL's copy
-```
-
-The label being wrapped in `[...]` is not backticking, and the `@effected` inside
-the parenthesized URL is bare text as far as the TSDoc parser is concerned.
-Worse, the diagnostic **reports at the NEXT declaration's line**, so the reported
-position points at an innocent symbol below the comment — the same off-by-a-
-declaration behaviour as the `issues.json` note below, compounded.
-
-**The rule: backticks only. Never markdown-link a scoped package name in TSDoc**
-— not in the label, not in the URL. If the URL genuinely matters, put the bare
-URL on its own (`{@link https://…}` or plain text) and name the package in a
-backtick span beside it.
-
-**A note on reading `issues.json`.** Its `file` names the source, but its `line`
-indexes the **generated `.d.ts`**. Locate a `tsdoc-*` or `ae-unresolved-link`
-defect textually, not by jumping to that line number — the position routinely
-lands on a class declaration thirty lines from the offending comment, which has
-sent more than one agent chasing an innocent symbol.
-
-## `tsdoc-code-span-missing-delimiter`: a code span must not wrap
-
-A backtick code span must open and close on the **same comment line**. Prose
-reflow is how this breaks: a span like
-`` `Unsupported package manager specification` `` wrapped across two comment
-lines reads perfectly balanced in source — each line's fragment looks fine —
-but the parser sees two half-spans and emits **two**
-`tsdoc-code-span-missing-delimiter` warnings in the prod gate. When wrapping
-would split a span, rewrap the sentence, not the span: move the whole span to
-the next line, or shorten the prose around it. (Found live in
-`@effected/package-json`, where an error-message quotation
-wrapped during an ordinary TSDoc edit.)
-
-The warning **cascades and misdirects**: once a span is unterminated, the
-braces inside it go raw, so a single wrapped span like
-`` `PATCH /repos/{owner}/{repo}` `` fans out into `tsdoc-escape-right-brace`
-and `tsdoc-malformed-inline-tag` warnings whose reported lines sit BELOW the
-comment (declaration-relative reporting). Do not chase those by escaping
-braces — a properly closed one-line span protects `{`/`}` fine, and
-brace-bearing spans like `` `{ status: "enabled" }` `` are legal as-is. Find
-the one wrapped span and rejoin it; the whole fan collapses. (Bitten twice — 14 warnings in `@effected/git`, 5 in `@effected/github`, each
-one wrapped argv/route literal; a reader triaging the second incident from
-the brace warnings alone diagnosed brace-escaping, which is exactly the wrong
-fix.)
-
-## A bin-only package has no API model — `emitDts: false`, not a fake entry point
-
-A package whose published surface is a `bin` and nothing else (`exports`
-limited to `"./package.json"`, no `index.ts`) fails the build under the
-default config with `Cannot merge zero API models`. Nothing is wrong
-with the package: the declaration pass ran over zero entry points and the
-prod meta pass then had nothing to extract. The fix is **not** an `index.ts`
-that exports nothing, and not a `meta: false` (which still runs the dts
-pass). It is `emitDts = false` in the package's `effected.toml`:
-
-```toml
-# Bin-only: no declarations to bundle, no API model to extract.
-[package.build]
-emitDts = false
-```
-
-`BuildConfigInput.emitDts` is documented as the switch for *"JS-only artifacts
-that never consume declarations (e2e fixtures, bins, internal tools)"* — it
-skips the dts pass (dev and prod) and therefore the meta pass, while still
-emitting JS, the byte-variant targets and the transformed `package.json`.
-Such a package therefore carries **no `_base` suppression, no `tsdoc.json`, no
-api-extractor model and no website page** — all of that machinery reads a
-`.d.ts` that does not exist. It is also the one package shape a
-doc-model-driven enumerator (a construct index, a docs site) must exclude by
-its `exports` map (every key `"./package.json"`), or it reports the bin as a
-perpetually missing build. The `effect-v4-cli` skill covers the package shape
-itself.
-
-## A second published entrypoint models its own surface
-
-A `package.json` `exports` map can publish more than one subpath — `.` and
-`./testing`, say — and api-extractor builds and gates **each entrypoint
-independently**, as its own closed surface. A type that one entrypoint's
-public signature reaches is not automatically visible through another
-entrypoint just because both ship from the same package: every kit type an
-entrypoint's own exported signatures name must be re-exported from **that**
-entrypoint too, or that entrypoint alone reports `ae-forgotten-export` —
-"already exported from `.`" is never the fix for a second entrypoint's own
-gate.
-
-Worked example: `@effected/workspaces/testing`
-(`packages/workspaces/src/testing.ts`). `WorkspaceLayering.checkWorkspace`'s
-requirement and error channel reach the `WorkspaceDiscovery` service — its
-shape, options and failures. `WorkspaceDiscovery` is not part of the
-package's main `.` surface at all; `./testing` re-exports it anyway, because
-`./testing`'s own signatures are the ones naming it. The module's own header
-comment states the rule: "This module is an ENTRY POINT: api-extractor
-models it as its own surface, so every kit type its signatures name is
-re-exported here."
-
-```ts
-import type { WorkspaceDiscovery, WorkspaceLayering } from "@effected/workspaces/testing"
-
-// Both resolve from the SAME subpath: WorkspaceLayering's own signatures
-// reach WorkspaceDiscovery (edgesOf's parameter, checkWorkspace's
-// requirement and error channel), so this entrypoint re-exports
-// WorkspaceDiscovery too rather than relying on the package's main entry
-// to already have done so.
-declare const service: WorkspaceDiscovery
-declare const layering: typeof WorkspaceLayering
-```
-
-A second entrypoint that re-exports types whose TSDoc `{@link}`s a class only
-the main entry exports fails `ae-unresolved-link` on the second entry's own
-report: the link has nothing to resolve against there. Spell those references
-in backticks instead of `{@link}`. `packages/commands/CLAUDE.md` and
-`packages/memfs` both do this.
-
-### A subpath that names the root's types: the self-import pattern
-
-A second entrypoint whose signatures name types the root already exports —
-`@effected/npm/node` names `NpmConfig`, `@effected/pnpm/settings` names
-`PnpmSettings`, `PeerDependencyRules` and `VersioningConfig` — should import
-them from the package's own name rather than carry a copy. Three parts, all
-required:
-
-1. **Keep the self-import external in the declarations**, in the package's
-   `effected.toml`: `[package.build] dtsExternals = ["@effected/npm"]`. The
-   subpath's `.d.ts` then refers to the root's type instead of inlining it.
-2. **Scope a suppression to that entry point only.** The second API Extractor
-   pass resolves the self-import to the built root declarations but still
-   reports the root types it reaches as forgotten, so add
-   `{ messageId = "ae-forgotten-export", pattern = 'entry point node\.d\.ts$' }`
-   (the subpath's own file name) to `[package.build.meta.tsdoc]
-   suppressWarnings`. A bare pattern would hide a real leak in the root.
-3. **Pin what the suppression could hide with a built-declaration test.** The
-   suppression is never unpinned: a declaration local to the subpath and left
-   unexported would be silenced, so a test reads the built `<entry>.d.ts` and
-   asserts that every top-level declaration is exported and the import
-   specifiers are the expected ones (`__test__/node-declarations.test.ts` in
-   `@effected/npm`, `__test__/settings/declarations.test.ts` in
-   `@effected/pnpm`). Build before the test reads it.
-
-## Reading the gate without fooling yourself
-
-`issues.json` is a **false-green oracle**. Four rules, each learned by being burned:
-
-1. **Build through Turbo.** `pnpm build --filter <pkg>` from the repo root runs
-   `types:check` first and caches. A direct `effected package build` in the
-   package directory is allowed but skips that gate and the cache, so a type
-   error the typecheck would have caught surfaces as an API Extractor failure
-   instead.
-
-2. **A crashed build can leave every bucket empty** — byte-shaped exactly like
-   a perfectly clean gate. **Read `buildOk` first**: `false` (with `failure`
-   saying why) or a missing stamp means the buckets are not evidence. An
-   unexpected `suppressed` count is a second tell: counting only
-   `source: "api-extractor"` entries (tsdown advisory noise such as
-   `TSGO_EXPERIMENTAL` lands there too), a package with class factories has at
-   least one `_base` entry per factory. Never conclude "clean"
-   from empty buckets alone; `building-a-package`'s reading-issues reference
-   has the full read order.
-
-3. **An incremental build can hide warnings.** A stale `dist/.tsbuildinfo.lib`
-   feeds API Extractor an old `.d.ts`, so a warning present in a cold build is
-   absent from the incremental one. Read the gate from a cold build (`rm -rf`
-   the package's `dist` first) whenever the answer matters.
-
-4. **Concurrent agents corrupt each other's gates.** `dist/` has no lock:
-   two sessions building the same package (or one running `rm -rf dist &&
-   build` while another reads) produce torn artifacts that read as rule 2's
-   clean-shaped truncation — what looks like a nondeterministic bundler flake
-   is usually contention. Treat any `issues.json` read as suspect unless it
-   immediately follows YOUR serial, cold, exit-0 build of that package. And
-   **never `pkill -f` a shared build-tool pattern** (`pkill -f "effected package build"`
-   killed other sessions' legitimate builds — the actual root cause of one
-   "flake" storm); kill your own child process by PID or not at all.
-
-`dist/` is gitignored and shared. It carries no commit, no cleanliness, and no
-exit-code provenance, so it is only evidence when *your* build exited 0 against
-a clean tree with nothing else building. If you mutate source to prove a fix is
-load-bearing, **rebuild afterward** — otherwise you leave an artifact that
-describes a tree no commit ever contained.
-
-One cosmetic non-defect while reading built declarations: core's dollar-alias
-export names surface verbatim — a `Schema.Array` field emits as
-`Schema.$Array<…>`, `Schema.Record` as `Schema.$Record<…>`. Correct output,
-observed across multiple package builds; do not "fix" it, and do
-not read it as a wrong import in the source.
+- [references/class-factory-bases.md](references/class-factory-bases.md) — why the `_base` suppression is principled (the emitted `.d.ts`), the factory kinds it is proven on, the retired `@public X_base` idiom and the grep for packages that override the default, the internal-type-on-a-signature leak, third-party generics, and the type-argument leak with its diagnostic. Load when: a forgotten-export names a type that is not `X_base`, a reviewer challenges the suppression, a recursive class or `Context.Service` seems to need an annotation, or you find a `@public X_base` const.
+- [references/link-resolution.md](references/link-resolution.md) — every way a name fails the export rule, member-reference selectors for merged names, const-only namespace members, the four backtick-only cases, the overload index selector and its probe table, selector-keyword member names, `tsdoc-at-sign-in-word` and `tsdoc-code-span-missing-delimiter`. Load when: the build reports `ae-unresolved-link` or a `tsdoc-*` code, you add an overload to an exported function, or you write a `{@link}` to a field, an inherited member or another package's type.
+- [references/entry-points.md](references/entry-points.md) — a second entry point's own surface with a worked example, the three-part self-import pattern, and the bin-only `emitDts = false` shape. Load when: adding or reviewing a subpath export, a subpath's gate reports a forgotten export the root already exports, or a build fails with `Cannot merge zero API models`.
+- [references/reading-the-gate.md](references/reading-the-gate.md) — the four rules for trusting `issues.json`, the `.d.ts`-relative line numbers and the dollar-alias names in built declarations. Load when: deciding whether a package build passed, a build looks flaky, or you are about to report a gate result.
 
 ## Related skills
 
 `authoring-tsdoc` owns the general policy this skill assumes: the binary
 release-tag rule, the supported-tag allow-list, custom tags, when a
 suppression is legitimate, the `typeof local` forgotten export, and every
-other `ae-*`/`tsdoc-*` fix. `building-a-package` owns `effected.toml` and the
-build itself. The `tsdoc-fixer` agent carries all three and runs the fix loop
-end to end.
-
-## Rejected alternatives
-
-Two other idioms are not used: the `@internal`-tagged base (it leaves a
-residual non-fatal `ae-incompatible-release-tags`) and the `@public X_base`
-const-with-explicit-annotation idiom (the inline form + scoped `_base`
-suppression covers the recursive and `Context.Service` cases it existed for).
-
-The inline factory + scoped `_base` suppression is the **single policy**, and
-the transitional backlog is **drained**: no package in the kit carries a
-`@public X_base` const. `grep -rln "_base" packages/*/src/` returns a single
-hit — a *comment* in `runtimes/src/NodeResolver.ts` explaining why the
-suppression is scoped. The suppression is the build's default, so no package needs to carry the line unless it overrides
-`meta.tsdoc.suppressWarnings`. Find the packages that override it live:
-
-```bash
-grep -l "suppressWarnings" packages/*/effected.toml
-```
-
-Every package that grep prints must still list the `_base` rule. If you find a
-`@public X_base` const anywhere, it is new code written against the retired
-idiom, not residue: inline the factory into the heritage clause and delete
-the const.
+other `ae-*`/`tsdoc-*` fix. Load it when the diagnostic is not about a class
+factory, a link or an entry point. `building-a-package` owns `effected.toml`
+and the build itself; load it before you change a build key. The `tsdoc-fixer`
+agent carries all three and runs the fix loop end to end.

@@ -8,36 +8,11 @@
 	"scope": ["."],
 	"anchors": [
 		{
-			"file": "effect-v4-testing/SKILL.md",
-			"anchor": "packages/vitest/src/internal/internal.ts:68",
-			"source": "vitest:internal/internal.ts",
-			"symbols": {
-				"68": "const TestEnv = Layer.mergeAll(TestConsole.layer, TestClock.layer())"
-			}
-		},
-		{
-			"file": "effect-v4-testing/SKILL.md",
-			"anchor": "internal.ts:490",
-			"source": "vitest:internal/internal.ts",
-			"symbols": {
-				"490": "effect: makeTester<Scope.Scope, ExtraContext>(flow(Effect.scoped, Effect.provide(TestEnv))"
-			}
-		},
-		{
 			"file": "effect-v4-testing/references/false-greens.md",
 			"anchor": "internal/internal.ts:490",
 			"source": "vitest:internal/internal.ts",
 			"symbols": {
 				"490": "effect: makeTester<Scope.Scope, ExtraContext>(flow(Effect.scoped"
-			}
-		},
-		{
-			"file": "effect-v4-testing/SKILL.md",
-			"anchor": "packages/vitest/src/index.ts:82-83",
-			"source": "vitest:index.ts",
-			"symbols": {
-				"82": "skipIf:",
-				"83": "runIf:"
 			}
 		},
 		{
@@ -1061,7 +1036,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-source-lookup/SKILL.md",
+			"file": "effect-v4-source-lookup/references/when-rungs-lie.md",
 			"anchor": "Schema.ts:4708",
 			"source": "effect:Schema.ts",
 			"symbols": {
@@ -1069,7 +1044,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-source-lookup/SKILL.md",
+			"file": "effect-v4-source-lookup/references/when-rungs-lie.md",
 			"anchor": "Schema.ts:4711",
 			"source": "effect:Schema.ts",
 			"symbols": {
@@ -1077,7 +1052,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-source-lookup/SKILL.md",
+			"file": "effect-v4-source-lookup/references/when-rungs-lie.md",
 			"anchor": "Schema.ts:4729",
 			"source": "effect:Schema.ts",
 			"symbols": {
@@ -1086,7 +1061,7 @@
 			"occurrences": 2
 		},
 		{
-			"file": "effect-v4-source-lookup/SKILL.md",
+			"file": "effect-v4-source-lookup/references/when-rungs-lie.md",
 			"anchor": "Equivalence.ts:638",
 			"source": "effect:Equivalence.ts",
 			"symbols": {
@@ -1094,7 +1069,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-source-lookup/SKILL.md",
+			"file": "effect-v4-source-lookup/references/when-rungs-lie.md",
 			"anchor": "Order.ts:597",
 			"source": "effect:Order.ts",
 			"symbols": {
@@ -1102,7 +1077,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-source-lookup/SKILL.md",
+			"file": "effect-v4-source-lookup/references/when-rungs-lie.md",
 			"anchor": "Schema.ts:4044",
 			"source": "effect:Schema.ts",
 			"symbols": {
@@ -1110,7 +1085,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-source-lookup/SKILL.md",
+			"file": "effect-v4-source-lookup/references/when-rungs-lie.md",
 			"anchor": "Config.ts:1178",
 			"source": "effect:Config.ts",
 			"symbols": {
@@ -1119,7 +1094,7 @@
 			"after": "const config = Config.Array(Schema.String, \"EXPORTERS\")"
 		},
 		{
-			"file": "effect-v4-source-lookup/SKILL.md",
+			"file": "effect-v4-source-lookup/references/when-rungs-lie.md",
 			"anchor": "Context.ts:68",
 			"source": "effect:Context.ts",
 			"symbols": {
@@ -1127,7 +1102,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-source-lookup/SKILL.md",
+			"file": "effect-v4-source-lookup/references/when-rungs-lie.md",
 			"anchor": "$SRC/packages/effect/src/Context.ts:68",
 			"source": "effect:Context.ts",
 			"symbols": {
@@ -1135,7 +1110,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-source-lookup/SKILL.md",
+			"file": "effect-v4-source-lookup/references/when-rungs-lie.md",
 			"anchor": "$EFFECT_SRC/Context.ts:68",
 			"source": "effect:Context.ts",
 			"symbols": {
@@ -1153,162 +1128,10 @@
 		},
 		{
 			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "index.ts:507",
-			"source": "effect:index.ts",
-			"symbols": {
-				"507": "export * as PlatformError from \"./PlatformError.ts\""
-			}
-		},
-		{
-			"file": "effect-v4-idioms/SKILL.md",
 			"anchor": "PlatformError.ts:163",
 			"source": "effect:PlatformError.ts",
 			"symbols": {
 				"163": "export class PlatformError extends"
-			}
-		},
-		{
-			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "FileSystem.ts:169",
-			"source": "effect:FileSystem.ts",
-			"symbols": {
-				"169": "readonly exists: ("
-			}
-		},
-		{
-			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "PlatformError.ts:39,114,163",
-			"source": "effect:PlatformError.ts",
-			"symbols": {
-				"39": "export class BadArgument extends",
-				"114": "export class SystemError extends",
-				"163": "export class PlatformError extends"
-			}
-		},
-		{
-			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "FileSystem.ts:574",
-			"source": "effect:FileSystem.ts",
-			"symbols": {
-				"574": "exists: (path) =>"
-			},
-			"after": "export const make = ("
-		},
-		{
-			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "Config.ts:113",
-			"source": "effect:Config.ts",
-			"symbols": {
-				"113": "export interface Config<out T> extends Effect.Effect<T, ConfigError>"
-			},
-			"occurrences": 2
-		},
-		{
-			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "internal/effect.ts:727",
-			"source": "effect:internal/effect.ts",
-			"symbols": {
-				"727": "if (!hasProperty(current, evaluate))"
-			}
-		},
-		{
-			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "Effect.ts:1997",
-			"source": "effect:Effect.ts",
-			"symbols": {
-				"1997": "export const fromOption: <"
-			}
-		},
-		{
-			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "Effect.ts:1955",
-			"source": "effect:Effect.ts",
-			"symbols": {
-				"1955": "export const fromResult: <A, E>"
-			}
-		},
-		{
-			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "Result.ts:166,102",
-			"source": "effect:Result.ts",
-			"symbols": {
-				"102": "readonly failure: E",
-				"166": "readonly success: A"
-			}
-		},
-		{
-			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "Config.ts:867",
-			"source": "effect:Config.ts",
-			"symbols": {
-				"867": "export function schema<T>("
-			}
-		},
-		{
-			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "Config.ts:506",
-			"source": "effect:Config.ts",
-			"symbols": {
-				"506": "Result.isFailure(resolution) ? Result.succeed(defaultValue) : resolution"
-			}
-		},
-		{
-			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "ConfigProvider.ts:798",
-			"source": "effect:ConfigProvider.ts",
-			"symbols": {
-				"798": "readonly preserveEmptyStrings?: boolean"
-			},
-			"after": "export function fromUnknown(root: unknown"
-		},
-		{
-			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "Effect.ts:8313",
-			"source": "effect:Effect.ts",
-			"symbols": {
-				"8313": "export const repeat: {"
-			}
-		},
-		{
-			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "internal/schedule.ts:210",
-			"source": "effect:internal/schedule.ts",
-			"symbols": {
-				"210": "export const buildFromOptions = <Input>("
-			}
-		},
-		{
-			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "Effect.ts:8158",
-			"source": "effect:Effect.ts",
-			"symbols": {
-				"8158": "export type Return<R, E, A, O extends Options<A>>"
-			},
-			"after": "export declare namespace Repeat {"
-		},
-		{
-			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "Differ.ts:29",
-			"source": "effect:Differ.ts",
-			"symbols": {
-				"29": "export interface Differ<in out T, in out Patch>"
-			}
-		},
-		{
-			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "References.ts:4",
-			"source": "effect:References.ts",
-			"symbols": {
-				"4": "These references cover concurrency"
-			},
-			"comment": true
-		},
-		{
-			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "ConfigProvider.ts:351",
-			"source": "effect:ConfigProvider.ts",
-			"symbols": {
-				"351": "export const ConfigProvider: Context.Reference<ConfigProvider>"
 			}
 		},
 		{
@@ -1374,8 +1197,16 @@
 			"symbols": {
 				"4": "shares an in-progress"
 			},
-			"comment": true,
-			"occurrences": 2
+			"comment": true
+		},
+		{
+			"file": "effect-v4-module-index/references/sharp-corners.md",
+			"anchor": "Cache.ts:4",
+			"source": "effect:Cache.ts",
+			"symbols": {
+				"4": "shares an in-progress"
+			},
+			"comment": true
 		},
 		{
 			"file": "effect-v4-module-index/SKILL.md",
@@ -1383,8 +1214,15 @@
 			"source": "effect:Cache.ts",
 			"symbols": {
 				"118": "readonly timeToLive: (exit: Exit.Exit<A, E>, key: Key) => Duration.Duration"
-			},
-			"occurrences": 2
+			}
+		},
+		{
+			"file": "effect-v4-module-index/references/sharp-corners.md",
+			"anchor": "Cache.ts:118",
+			"source": "effect:Cache.ts",
+			"symbols": {
+				"118": "readonly timeToLive: (exit: Exit.Exit<A, E>, key: Key) => Duration.Duration"
+			}
 		},
 		{
 			"file": "effect-v4-module-index/SKILL.md",
@@ -1395,7 +1233,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-module-index/SKILL.md",
+			"file": "effect-v4-module-index/references/core-modules.md",
 			"anchor": "ByteSize.ts:32",
 			"source": "effect:ByteSize.ts",
 			"symbols": {
@@ -1403,7 +1241,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-module-index/SKILL.md",
+			"file": "effect-v4-module-index/references/core-modules.md",
 			"anchor": "FileSystem.ts:1103-1104",
 			"source": "effect:FileSystem.ts",
 			"symbols": {
@@ -1412,7 +1250,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-module-index/SKILL.md",
+			"file": "effect-v4-module-index/references/core-modules.md",
 			"anchor": "`:378-380`",
 			"source": "effect:FileSystem.ts",
 			"symbols": {
@@ -1421,7 +1259,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-module-index/SKILL.md",
+			"file": "effect-v4-module-index/references/core-modules.md",
 			"anchor": "`:958`",
 			"source": "effect:FileSystem.ts",
 			"symbols": {
@@ -1429,7 +1267,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-module-index/SKILL.md",
+			"file": "effect-v4-module-index/references/core-modules.md",
 			"anchor": "`:964`",
 			"source": "effect:FileSystem.ts",
 			"symbols": {
@@ -1437,7 +1275,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-module-index/SKILL.md",
+			"file": "effect-v4-module-index/references/core-modules.md",
 			"anchor": "`:975`",
 			"source": "effect:FileSystem.ts",
 			"symbols": {
@@ -1445,7 +1283,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-module-index/SKILL.md",
+			"file": "effect-v4-module-index/references/core-modules.md",
 			"anchor": "`:970-974`",
 			"source": "effect:FileSystem.ts",
 			"symbols": {
@@ -1454,7 +1292,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-module-index/SKILL.md",
+			"file": "effect-v4-module-index/references/core-modules.md",
 			"anchor": "FileSystem.ts:956-958",
 			"source": "effect:FileSystem.ts",
 			"symbols": {
@@ -1464,7 +1302,7 @@
 			"comment": true
 		},
 		{
-			"file": "effect-v4-module-index/SKILL.md",
+			"file": "effect-v4-module-index/references/core-modules.md",
 			"anchor": "Schema.ts:1220",
 			"source": "effect:Schema.ts",
 			"symbols": {
@@ -1472,7 +1310,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-module-index/SKILL.md",
+			"file": "effect-v4-module-index/references/sharp-corners.md",
 			"anchor": "Cache.ts:332",
 			"source": "effect:Cache.ts",
 			"symbols": {
@@ -1480,7 +1318,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-module-index/SKILL.md",
+			"file": "effect-v4-module-index/references/sharp-corners.md",
 			"anchor": "Cache.ts:206",
 			"source": "effect:Cache.ts",
 			"symbols": {
@@ -1488,7 +1326,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-module-index/SKILL.md",
+			"file": "effect-v4-module-index/references/sharp-corners.md",
 			"anchor": "Cache.ts:307",
 			"source": "effect:Cache.ts",
 			"symbols": {
@@ -1496,7 +1334,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-module-index/SKILL.md",
+			"file": "effect-v4-module-index/references/sharp-corners.md",
 			"anchor": "http/HttpClientRequest.ts:468",
 			"source": "effect:http/HttpClientRequest.ts",
 			"symbols": {
@@ -1504,7 +1342,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-module-index/SKILL.md",
+			"file": "effect-v4-module-index/references/sharp-corners.md",
 			"anchor": "http/HttpClientError.ts:435,444,453",
 			"source": "effect:http/HttpClientError.ts",
 			"symbols": {
@@ -1514,7 +1352,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-module-index/SKILL.md",
+			"file": "effect-v4-module-index/references/sharp-corners.md",
 			"anchor": "http/HttpServerError.ts:210",
 			"source": "effect:http/HttpServerError.ts",
 			"symbols": {
@@ -1522,7 +1360,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-observability/SKILL.md",
+			"file": "effect-v4-observability/references/custom-loggers.md",
 			"anchor": "Logger.ts:71",
 			"source": "effect:Logger.ts",
 			"symbols": {
@@ -1530,7 +1368,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-observability/SKILL.md",
+			"file": "effect-v4-observability/references/custom-loggers.md",
 			"anchor": "Logger.ts:286,331",
 			"source": "effect:Logger.ts",
 			"symbols": {
@@ -1539,7 +1377,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-observability/SKILL.md",
+			"file": "effect-v4-observability/references/custom-loggers.md",
 			"anchor": "Logger.ts:968-1018",
 			"source": "effect:Logger.ts",
 			"symbols": {
@@ -1604,8 +1442,16 @@
 			"symbols": {
 				"2449": "Equivalent to `optionalKey(UndefinedOr(S))`."
 			},
-			"comment": true,
-			"occurrences": 2
+			"comment": true
+		},
+		{
+			"file": "effect-v4-schema/references/exact-optional-fields.md",
+			"anchor": "Schema.ts:2449",
+			"source": "effect:Schema.ts",
+			"symbols": {
+				"2449": "Equivalent to `optionalKey(UndefinedOr(S))`."
+			},
+			"comment": true
 		},
 		{
 			"file": "effect-v4-schema/SKILL.md",
@@ -1613,8 +1459,7 @@
 			"source": "effect:SchemaTransformation.ts",
 			"symbols": {
 				"390": "export function transformEffect<T, E, RD = never, RE = never>("
-			},
-			"occurrences": 2
+			}
 		},
 		{
 			"file": "effect-v4-schema/SKILL.md",
@@ -1663,8 +1508,15 @@
 			"source": "effect:Schema.ts",
 			"symbols": {
 				"2349": "export function isSchema(u: unknown): u is Top"
-			},
-			"occurrences": 2
+			}
+		},
+		{
+			"file": "effect-v4-schema/references/schema-identity-at-runtime.md",
+			"anchor": "Schema.ts:2349",
+			"source": "effect:Schema.ts",
+			"symbols": {
+				"2349": "export function isSchema(u: unknown): u is Top"
+			}
 		},
 		{
 			"file": "effect-v4-schema/SKILL.md",
@@ -1684,79 +1536,6 @@
 				"770": "- {@link ConstraintDecoder}`<T, RD>` — for decode-only APIs"
 			},
 			"comment": true
-		},
-		{
-			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "Schema.ts:2472",
-			"source": "effect:Schema.ts",
-			"symbols": {
-				"2472": "export const optional: optionalLambda"
-			}
-		},
-		{
-			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "SchemaIssue.ts:147",
-			"source": "effect:SchemaIssue.ts",
-			"symbols": {
-				"147": "export type Issue ="
-			}
-		},
-		{
-			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "SchemaIssue.ts:768",
-			"source": "effect:SchemaIssue.ts",
-			"symbols": {
-				"768": "export const InvalidValue: new("
-			}
-		},
-		{
-			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "SchemaIssue.ts:172-173",
-			"source": "effect:SchemaIssue.ts",
-			"symbols": {
-				"172": "constructor(input?: unknown, options?: SchemaAST.ParseOptions)",
-				"173": "if (options?.reportInput === true && input !== InternalParser.missing)"
-			}
-		},
-		{
-			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "SchemaIssue.ts:687",
-			"source": "effect:SchemaIssue.ts",
-			"symbols": {
-				"687": "export const InvalidType: new("
-			}
-		},
-		{
-			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "Schema.ts:6325",
-			"source": "effect:Schema.ts",
-			"symbols": {
-				"6325": "export type TaggedStruct<Tag extends SchemaAST.LiteralValue"
-			}
-		},
-		{
-			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "Schema.ts:17577",
-			"source": "effect:Schema.ts",
-			"symbols": {
-				"17577": "export const Class: {"
-			}
-		},
-		{
-			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "Schema.ts:6000",
-			"source": "effect:Schema.ts",
-			"symbols": {
-				"6000": "export function withConstructorDefault<"
-			}
-		},
-		{
-			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "internal/schema/make.ts:46",
-			"source": "effect:internal/schema/make.ts",
-			"symbols": {
-				"46": "export function make<S extends Schema.Constraint>("
-			}
 		},
 		{
 			"file": "effect-v4-schema/references/09-classes-and-opaque-types.md",
@@ -2081,6 +1860,14 @@
 			}
 		},
 		{
+			"file": "effect-v4-schema/references/codecs-and-wire-fidelity.md",
+			"anchor": "SchemaTransformation.ts:390",
+			"source": "effect:SchemaTransformation.ts",
+			"symbols": {
+				"390": "export function transformEffect<T, E, RD = never, RE = never>("
+			}
+		},
+		{
 			"file": "effect-v4-schema/references/house-style.md",
 			"anchor": "SchemaGetter.ts:763",
 			"source": "effect:SchemaGetter.ts",
@@ -2098,6 +1885,14 @@
 		},
 		{
 			"file": "effect-v4-schema/references/house-style.md",
+			"anchor": "SchemaIssue.ts:768",
+			"source": "effect:SchemaIssue.ts",
+			"symbols": {
+				"768": "export const InvalidValue: new("
+			}
+		},
+		{
+			"file": "effect-v4-schema/references/codecs-and-wire-fidelity.md",
 			"anchor": "SchemaIssue.ts:768",
 			"source": "effect:SchemaIssue.ts",
 			"symbols": {
@@ -2139,86 +1934,6 @@
 			"source": "effect:Context.ts",
 			"symbols": {
 				"68": "export interface Key<out Identifier, out Shape> extends Effect<Shape, never, Identifier>"
-			}
-		},
-		{
-			"file": "effect-v4-services-layers/SKILL.md",
-			"anchor": "Context.ts:420",
-			"source": "effect:Context.ts",
-			"symbols": {
-				"420": "export type Shape<T> = T extends Key<infer _I, infer S> ? S : never"
-			}
-		},
-		{
-			"file": "effect-v4-services-layers/SKILL.md",
-			"anchor": "Context.ts:70",
-			"source": "effect:Context.ts",
-			"symbols": {
-				"70": "readonly Service: Shape"
-			}
-		},
-		{
-			"file": "effect-v4-services-layers/SKILL.md",
-			"anchor": "Context.ts:151",
-			"source": "effect:Context.ts",
-			"symbols": {
-				"151": "export interface Shape<Identifier extends string, Service>"
-			}
-		},
-		{
-			"file": "effect-v4-services-layers/SKILL.md",
-			"anchor": "Layer.ts:189",
-			"source": "effect:Layer.ts",
-			"symbols": {
-				"189": "export type Success<T extends Any> ="
-			}
-		},
-		{
-			"file": "effect-v4-services-layers/SKILL.md",
-			"anchor": "`:173`",
-			"source": "effect:Layer.ts",
-			"symbols": {
-				"173": "export type Error<T extends Any> ="
-			}
-		},
-		{
-			"file": "effect-v4-services-layers/SKILL.md",
-			"anchor": "Layer.ts:678",
-			"source": "effect:Layer.ts",
-			"symbols": {
-				"678": "Context.add(CurrentMemoMap, memoMap)"
-			}
-		},
-		{
-			"file": "effect-v4-services-layers/SKILL.md",
-			"anchor": "Layer.ts:601",
-			"source": "effect:Layer.ts",
-			"symbols": {
-				"601": "static forkOrCreate<Services>(self: Context.Context<Services>): MemoMap"
-			}
-		},
-		{
-			"file": "effect-v4-services-layers/SKILL.md",
-			"anchor": "Layer.ts:2354",
-			"source": "effect:Layer.ts",
-			"symbols": {
-				"2354": "export const mock: {"
-			}
-		},
-		{
-			"file": "effect-v4-services-layers/SKILL.md",
-			"anchor": "Layer.ts:2279",
-			"source": "effect:Layer.ts",
-			"symbols": {
-				"2279": "export type PartialEffectful<A extends object>"
-			}
-		},
-		{
-			"file": "effect-v4-services-layers/SKILL.md",
-			"anchor": "Layer.ts:2288",
-			"source": "effect:Layer.ts",
-			"symbols": {
-				"2288": "type AnyEffectOrStream ="
 			}
 		},
 		{
@@ -2313,22 +2028,6 @@
 		},
 		{
 			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "`:17637`",
-			"source": "effect:Schema.ts",
-			"symbols": {
-				"17637": "export const TaggedClass: {"
-			}
-		},
-		{
-			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "Effect.ts:9289",
-			"source": "effect:Effect.ts",
-			"symbols": {
-				"9289": "export const forkChild: <"
-			}
-		},
-		{
-			"file": "effect-v4-schema/SKILL.md",
 			"anchor": "Schema.ts:3566",
 			"source": "effect:Schema.ts",
 			"symbols": {
@@ -2352,7 +2051,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-module-index/SKILL.md",
+			"file": "effect-v4-module-index/references/sharp-corners.md",
 			"anchor": "crypto/Digest.ts:135-144",
 			"source": "effect:crypto/Digest.ts",
 			"symbols": {
@@ -2361,7 +2060,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-module-index/SKILL.md",
+			"file": "effect-v4-module-index/references/sharp-corners.md",
 			"anchor": "crypto/Digest.ts:151-153",
 			"source": "effect:crypto/Digest.ts",
 			"symbols": {
@@ -2371,7 +2070,7 @@
 			"comment": true
 		},
 		{
-			"file": "effect-v4-module-index/SKILL.md",
+			"file": "effect-v4-module-index/references/core-modules.md",
 			"anchor": "FileSystem.ts:154-156",
 			"source": "effect:FileSystem.ts",
 			"symbols": {
@@ -2387,6 +2086,344 @@
 			"symbols": {
 				"60": "export type Word = string | Redacted.Redacted<string>"
 			}
+		},
+		{
+			"file": "effect-v4-idioms/references/config-inputs.md",
+			"anchor": "Config.ts:867",
+			"source": "effect:Config.ts",
+			"symbols": {
+				"867": "export function schema<T>("
+			}
+		},
+		{
+			"file": "effect-v4-idioms/references/config-inputs.md",
+			"anchor": "Config.ts:506",
+			"source": "effect:Config.ts",
+			"symbols": {
+				"506": "Result.isFailure(resolution) ? Result.succeed(defaultValue) : resolution"
+			}
+		},
+		{
+			"file": "effect-v4-idioms/references/config-inputs.md",
+			"anchor": "ConfigProvider.ts:798",
+			"source": "effect:ConfigProvider.ts",
+			"symbols": {
+				"798": "readonly preserveEmptyStrings?: boolean"
+			},
+			"after": "export function fromUnknown(root: unknown"
+		},
+		{
+			"file": "effect-v4-idioms/references/config-inputs.md",
+			"anchor": "ConfigProvider.ts:351",
+			"source": "effect:ConfigProvider.ts",
+			"symbols": {
+				"351": "export const ConfigProvider: Context.Reference<ConfigProvider>"
+			}
+		},
+		{
+			"file": "effect-v4-idioms/references/fiber-local-state.md",
+			"anchor": "Differ.ts:29",
+			"source": "effect:Differ.ts",
+			"symbols": {
+				"29": "export interface Differ<in out T, in out Patch>"
+			}
+		},
+		{
+			"file": "effect-v4-idioms/references/fiber-local-state.md",
+			"anchor": "References.ts:4",
+			"source": "effect:References.ts",
+			"symbols": {
+				"4": "These references cover concurrency"
+			},
+			"comment": true
+		},
+		{
+			"file": "effect-v4-idioms/references/platform-error.md",
+			"anchor": "index.ts:507",
+			"source": "effect:index.ts",
+			"symbols": {
+				"507": "export * as PlatformError from \"./PlatformError.ts\""
+			}
+		},
+		{
+			"file": "effect-v4-idioms/references/platform-error.md",
+			"anchor": "FileSystem.ts:169",
+			"source": "effect:FileSystem.ts",
+			"symbols": {
+				"169": "readonly exists: ("
+			}
+		},
+		{
+			"file": "effect-v4-idioms/references/platform-error.md",
+			"anchor": "PlatformError.ts:39,114,163",
+			"source": "effect:PlatformError.ts",
+			"symbols": {
+				"39": "export class BadArgument extends",
+				"114": "export class SystemError extends",
+				"163": "export class PlatformError extends"
+			}
+		},
+		{
+			"file": "effect-v4-idioms/references/platform-error.md",
+			"anchor": "FileSystem.ts:574",
+			"source": "effect:FileSystem.ts",
+			"symbols": {
+				"574": "exists: (path) =>"
+			},
+			"after": "export const make = ("
+		},
+		{
+			"file": "effect-v4-idioms/references/polling-and-retry.md",
+			"anchor": "Effect.ts:8313",
+			"source": "effect:Effect.ts",
+			"symbols": {
+				"8313": "export const repeat: {"
+			}
+		},
+		{
+			"file": "effect-v4-idioms/references/polling-and-retry.md",
+			"anchor": "internal/schedule.ts:210",
+			"source": "effect:internal/schedule.ts",
+			"symbols": {
+				"210": "export const buildFromOptions = <Input>("
+			}
+		},
+		{
+			"file": "effect-v4-idioms/references/polling-and-retry.md",
+			"anchor": "Effect.ts:8158",
+			"source": "effect:Effect.ts",
+			"symbols": {
+				"8158": "export type Return<R, E, A, O extends Options<A>>"
+			},
+			"after": "export declare namespace Repeat {"
+		},
+		{
+			"file": "effect-v4-idioms/references/scopes-and-fibers.md",
+			"anchor": "Effect.ts:9289",
+			"source": "effect:Effect.ts",
+			"symbols": {
+				"9289": "export const forkChild: <"
+			}
+		},
+		{
+			"file": "effect-v4-idioms/references/yieldable-and-bridges.md",
+			"anchor": "Config.ts:113",
+			"source": "effect:Config.ts",
+			"symbols": {
+				"113": "export interface Config<out T> extends Effect.Effect<T, ConfigError>"
+			},
+			"occurrences": 2
+		},
+		{
+			"file": "effect-v4-idioms/references/yieldable-and-bridges.md",
+			"anchor": "internal/effect.ts:727",
+			"source": "effect:internal/effect.ts",
+			"symbols": {
+				"727": "if (!hasProperty(current, evaluate))"
+			}
+		},
+		{
+			"file": "effect-v4-idioms/references/yieldable-and-bridges.md",
+			"anchor": "Effect.ts:1997",
+			"source": "effect:Effect.ts",
+			"symbols": {
+				"1997": "export const fromOption: <"
+			}
+		},
+		{
+			"file": "effect-v4-idioms/references/yieldable-and-bridges.md",
+			"anchor": "Effect.ts:1955",
+			"source": "effect:Effect.ts",
+			"symbols": {
+				"1955": "export const fromResult: <A, E>"
+			}
+		},
+		{
+			"file": "effect-v4-idioms/references/yieldable-and-bridges.md",
+			"anchor": "Result.ts:166,102",
+			"source": "effect:Result.ts",
+			"symbols": {
+				"102": "readonly failure: E",
+				"166": "readonly success: A"
+			}
+		},
+		{
+			"file": "effect-v4-schema/references/classes-and-construction.md",
+			"anchor": "Schema.ts:6325",
+			"source": "effect:Schema.ts",
+			"symbols": {
+				"6325": "export type TaggedStruct<Tag extends SchemaAST.LiteralValue"
+			}
+		},
+		{
+			"file": "effect-v4-schema/references/classes-and-construction.md",
+			"anchor": "Schema.ts:17577",
+			"source": "effect:Schema.ts",
+			"symbols": {
+				"17577": "export const Class: {"
+			}
+		},
+		{
+			"file": "effect-v4-schema/references/classes-and-construction.md",
+			"anchor": "`:17637`",
+			"source": "effect:Schema.ts",
+			"symbols": {
+				"17637": "export const TaggedClass: {"
+			}
+		},
+		{
+			"file": "effect-v4-schema/references/classes-and-construction.md",
+			"anchor": "Schema.ts:6000",
+			"source": "effect:Schema.ts",
+			"symbols": {
+				"6000": "export function withConstructorDefault<"
+			}
+		},
+		{
+			"file": "effect-v4-schema/references/codecs-and-wire-fidelity.md",
+			"anchor": "SchemaIssue.ts:172-173",
+			"source": "effect:SchemaIssue.ts",
+			"symbols": {
+				"172": "constructor(input?: unknown, options?: SchemaAST.ParseOptions)",
+				"173": "if (options?.reportInput === true && input !== InternalParser.missing)"
+			}
+		},
+		{
+			"file": "effect-v4-schema/references/codecs-and-wire-fidelity.md",
+			"anchor": "SchemaIssue.ts:687",
+			"source": "effect:SchemaIssue.ts",
+			"symbols": {
+				"687": "export const InvalidType: new("
+			}
+		},
+		{
+			"file": "effect-v4-schema/references/exact-optional-fields.md",
+			"anchor": "Schema.ts:2472",
+			"source": "effect:Schema.ts",
+			"symbols": {
+				"2472": "export const optional: optionalLambda"
+			}
+		},
+		{
+			"file": "effect-v4-schema/references/issue-diagnostics.md",
+			"anchor": "SchemaIssue.ts:147",
+			"source": "effect:SchemaIssue.ts",
+			"symbols": {
+				"147": "export type Issue ="
+			}
+		},
+		{
+			"file": "effect-v4-schema/references/schema-identity-at-runtime.md",
+			"anchor": "internal/schema/make.ts:46",
+			"source": "effect:internal/schema/make.ts",
+			"symbols": {
+				"46": "export function make<S extends Schema.Constraint>("
+			}
+		},
+		{
+			"file": "effect-v4-services-layers/references/layer-statics-and-construction.md",
+			"anchor": "Layer.ts:189",
+			"source": "effect:Layer.ts",
+			"symbols": {
+				"189": "export type Success<T extends Any> ="
+			}
+		},
+		{
+			"file": "effect-v4-services-layers/references/layer-statics-and-construction.md",
+			"anchor": "`:173`",
+			"source": "effect:Layer.ts",
+			"symbols": {
+				"173": "export type Error<T extends Any> ="
+			}
+		},
+		{
+			"file": "effect-v4-services-layers/references/memoization.md",
+			"anchor": "Layer.ts:678",
+			"source": "effect:Layer.ts",
+			"symbols": {
+				"678": "Context.add(CurrentMemoMap, memoMap)"
+			}
+		},
+		{
+			"file": "effect-v4-services-layers/references/memoization.md",
+			"anchor": "Layer.ts:601",
+			"source": "effect:Layer.ts",
+			"symbols": {
+				"601": "static forkOrCreate<Services>(self: Context.Context<Services>): MemoMap"
+			}
+		},
+		{
+			"file": "effect-v4-services-layers/references/service-design.md",
+			"anchor": "Layer.ts:2354",
+			"source": "effect:Layer.ts",
+			"symbols": {
+				"2354": "export const mock: {"
+			}
+		},
+		{
+			"file": "effect-v4-services-layers/references/service-design.md",
+			"anchor": "Layer.ts:2279",
+			"source": "effect:Layer.ts",
+			"symbols": {
+				"2279": "export type PartialEffectful<A extends object>"
+			}
+		},
+		{
+			"file": "effect-v4-services-layers/references/service-design.md",
+			"anchor": "Layer.ts:2288",
+			"source": "effect:Layer.ts",
+			"symbols": {
+				"2288": "type AnyEffectOrStream ="
+			}
+		},
+		{
+			"file": "effect-v4-services-layers/references/service-shape-types.md",
+			"anchor": "Context.ts:420",
+			"source": "effect:Context.ts",
+			"symbols": {
+				"420": "export type Shape<T> = T extends Key<infer _I, infer S> ? S : never"
+			}
+		},
+		{
+			"file": "effect-v4-services-layers/references/service-shape-types.md",
+			"anchor": "Context.ts:70",
+			"source": "effect:Context.ts",
+			"symbols": {
+				"70": "readonly Service: Shape"
+			}
+		},
+		{
+			"file": "effect-v4-services-layers/references/service-shape-types.md",
+			"anchor": "Context.ts:151",
+			"source": "effect:Context.ts",
+			"symbols": {
+				"151": "export interface Shape<Identifier extends string, Service>"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/the-default-runner.md",
+			"anchor": "packages/vitest/src/internal/internal.ts:68",
+			"source": "vitest:internal/internal.ts",
+			"symbols": {
+				"68": "const TestEnv = Layer.mergeAll(TestConsole.layer, TestClock.layer())"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/the-default-runner.md",
+			"anchor": "internal.ts:490",
+			"source": "vitest:internal/internal.ts",
+			"symbols": {
+				"490": "effect: makeTester<Scope.Scope, ExtraContext>(flow(Effect.scoped, Effect.provide(TestEnv))"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/the-default-runner.md",
+			"anchor": "packages/vitest/src/index.ts:82-83",
+			"source": "vitest:index.ts",
+			"symbols": {
+				"82": "skipIf:",
+				"83": "runIf:"
+			}
 		}
 	],
 	"ignore": [
@@ -2396,12 +2433,12 @@
 			"reason": "example scanner output (`index.ts:1:14 process process`), not a source citation"
 		},
 		{
-			"file": "effect-api-extractor-bases/SKILL.md",
+			"file": "effect-api-extractor-bases/references/link-resolution.md",
 			"anchor": "`:3`",
 			"reason": "TSDoc overload selector (`{@link fn:3}`), not a source citation"
 		},
 		{
-			"file": "effect-api-extractor-bases/SKILL.md",
+			"file": "effect-api-extractor-bases/references/link-resolution.md",
 			"anchor": "`:1`",
 			"reason": "TSDoc overload selector (`{@link fn:1}`), not a source citation"
 		}

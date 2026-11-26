@@ -27,7 +27,7 @@ release pipeline.
 | `VersioningStrategy`, `ReleaseTag` | `import { VersioningStrategy } from "@effected/workspaces"` | Classifying a workspace's release shape and formatting its tags |
 | `TrackingTag` | `@effected/workspaces` | Deriving the floating `v1`/`v1.2` GitHub Actions distribution aliases |
 | `PublishabilityDetector` | `@effected/workspaces` | Wiring or overriding which packages publish, and to where |
-| `GitTag`, `GitHubRelease` | `import { GitTag, GitHubRelease } from "@effected/github"` | Cutting the actual git tag and GitHub release — see `github-api` |
+| `GitTag`, `GitHubRelease` | `import { GitTag, GitHubRelease } from "@effected/github"` | Cutting the actual git tag and GitHub release — load `github-api` before you call either |
 
 ## Standards
 
@@ -63,7 +63,8 @@ release pipeline.
   named policies (`.layerNpm`, `.layerNone`) rather than letting a merge
   silently pick a default no type error would catch.
 - **Prefer `GitTag.upsert`/`GitHubRelease.create` over a hand-rolled
-  exists-then-create sequence** when cutting a release — see `github-api`.
+  exists-then-create sequence** when cutting a release; load `github-api`
+  before you write the call, since a hand-rolled sequence races a concurrent run.
 
 ## Footguns
 

@@ -20,6 +20,11 @@ The consumer upgrade skill is renamed from `effected-renovate` to `upgrade`, so 
 
 `effect-developer` and `action-engineer` run a simplifier pass over their diff once it is green and re-run the gates; `effect-reviewer` runs it as a standard review step and reports a behaviour-changing simplification as a defect. On Claude Code the pass is the built-in `simplify` skill; on Copilot it is an inline checklist.
 
+### Large skills load in layers
+
+Twelve skills that ran from 300 to 784 lines are split: each `SKILL.md` keeps what every task needs and moves deep material into named reference files, and every reference is offered at the moment it matters, naming the situation and what skipping it costs. Every other skill's reference pointers are rewritten the same way. `effected-packages` drops its internal dogfood section.
+
 ## Bug Fixes
 
+* `effect-v4-planning` routed one pillar to a skill that does not exist, and `effect-v4-module-index` contradicted itself on what `References` holds; both are corrected
 * Examples that hand-rolled file reads, UUIDs and clock reads now use `@effected/memfs`, `SecureRandom` and `DateTime`

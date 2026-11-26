@@ -4,9 +4,39 @@ Loaded from `effect-v4-testing`. The parts of failure-channel testing beyond
 `Effect.flip` / `Effect.result` / `Effect.exit`: proving a defect is NOT
 laundered into the typed channel, and the assert-helper typing traps.
 
+## Asserting a defect: `Effect.exit`, with an explicit else
+
+`Effect.flip` swaps only the *typed* channel, so a defect escapes it and the
+test errors instead of asserting. Defects go through `Effect.exit`, **with an
+explicit throw/fail on the non-failure branch**:
+
+```ts
+import { assert, it } from "@effect/vitest";
+import { Cause, Effect, Exit } from "effect";
+
+const subject = Effect.die(new Error("the expected message"))
+
+it.effect("the subject dies with the expected message", () =>
+  Effect.gen(function* () {
+    const exit = yield* Effect.exit(subject);
+    if (Exit.isFailure(exit)) {
+      assert.include(Cause.pretty(exit.cause), "the expected message");
+    } else {
+      assert.fail("expected a defect, but the effect succeeded");
+    }
+  }),
+);
+```
+
+**A narrowing `if` with no `else` asserts nothing on the other path.** A bare
+`if (Exit.isFailure(exit)) { …assert… }` passes silently on success, and the
+shape recurs across a suite once it is in one test. It is its own
+anti-pattern, not an Exit-specific one.
+
+## Proving a defect is not laundered into the typed channel
+
 Genuine defects must NOT be swallowed into the typed channel — that is
-what a flip-based test cannot prove (working example:
-`packages/toml/__test__/hostile.test.ts` "defect passthrough"):
+what a flip-based test cannot prove:
 
 ```ts
 import { assert, it } from "@effect/vitest";
@@ -32,8 +62,9 @@ it.effect("a defect stays a defect — never laundered into the typed channel", 
 
 The no-Fail-reason line is the discriminating assertion — without it, an
 implementation that wraps the defect in a typed error still passes. For the
-coarse verdict, `Cause.hasDies` / `Cause.hasFails` are the one-line spellings
-(`@effected/git`'s `available` test uses them).
+coarse verdict, `Cause.hasDies` / `Cause.hasFails` are the one-line spellings.
+
+## Assert-helper typing traps
 
 **Assert helpers are never type predicates — narrow with a real `if`.**
 `assert.isTrue(guard(x))` leaves `x` at the full union for ANY guard: the

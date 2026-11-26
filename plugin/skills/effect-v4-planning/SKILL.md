@@ -10,11 +10,10 @@ one thing well; this one runs *before* them and decides *what to write*. It walk
 four design pillars, then makes you emit a compact **design summary** and get
 buy-in **before** any implementation code exists.
 
-Why this skill exists: strong, skill-equipped agents — ones that already know the
-api-extractor-bases idiom, the layer-memoization discipline, `Clock` for testability — still
-dive straight to code, rationalize the decisions afterward, and **silently drop
-whole pillars** (observability is the usual casualty). The mechanism that stops
-that is not willpower; it is the required-slot summary below. You cannot leave the
+Why this skill exists: strong, skill-equipped agents still dive straight to code,
+rationalize the decisions afterward, and **silently drop whole pillars**
+(observability is the usual casualty). The mechanism that stops that is not
+willpower; it is the required-slot summary below. You cannot leave the
 Observability row blank.
 
 ## The recipe (do these in order — do not skip to code)
@@ -26,191 +25,107 @@ Observability row blank.
      dependencies — semver/jsonc/yaml kind) or *service-tier* (real services,
      layers, I/O, lifecycle)?
    - **Placement — does the target package's tier *admit* this capability?**
-     Confirm it before designing, not after. IO or a service dropped into a
-     pure-tier package (semver/jsonc/yaml/glob kind) is a **stop**, not a detail
-     to sort out later. And check the dependency direction against the peer
-     graph: a capability that must import a sibling which already peers on the
-     target closes a cycle. Adding `compileAndExpand` to pure-tier `glob` was
-     both — `walker` peers on `glob`, so it would have closed a `glob → walker →
-     glob` cycle, *and* it does filesystem IO in a pure package; it belonged in
-     `walker`. The repo's `CLAUDE.md` tier tags and the `effected-packages`
-     index are the authority on which package admits what — this was caught by
-     the tier tags, not by any skill, which is the gap this line closes.
+     IO or a service in a pure-tier package is a **stop**, and so is an import
+     of a sibling that already peers on the target, which closes a cycle. The
+     tier tags in the [effected-packages](../effected-packages/SKILL.md) index
+     decide what a package admits.
 2. **Walk the four pillars** (below), routing into the detailed skill each owns.
    Brownfield: read the existing code through each pillar as an *audit lens*.
 3. **Emit the design summary** — the required-slot block. Greenfield fills the
    design template; brownfield fills the gap table.
 4. **Get buy-in, then build.** Present the summary and wait for the user before
    writing implementation code. The summary is cheap to correct; code is not.
-   Two carve-outs, both below: a **delegated subagent** has no user to wait on, and a
+   Two carve-outs, below: a **delegated subagent** has no user to wait on, and a
    **small pure-tier bugfix** collapses the summary to one line. Neither waives step 3.
 
 > Step 3 is not optional and not a formality. If you find yourself writing
 > `Schema.Struct`, `Context.Service`, or a `Layer` and no summary has been
 > emitted this turn, you skipped the recipe — stop and emit it.
 
+When placement is not obvious (a capability that does IO near a pure package, or
+one that would import a sibling), load
+[pillar-rulings.md](references/pillar-rulings.md) before you choose the package:
+its worked case shows a misplaced function closing a peer cycle, which no
+type-check reports until the install.
+
 ## The four pillars
 
-Each pillar: the decisions to make, the idiomatic ruling, and the skill that owns
-the mechanics. Consult the linked skill; do not re-derive it here.
+Each pillar: the decisions to make and the skill that owns the mechanics.
+Consult the linked skill; do not re-derive it here. **Before you fill a pillar's
+summary row and are unsure of its ruling, load
+[pillar-rulings.md](references/pillar-rulings.md)**: it holds the schema
+decisions, the error-attribute table, the input-vs-wiring ruling, the inventory
+gate's full procedure and the service-tier observability rulings. A row filled
+from instinct is the drift this skill exists to stop.
 
 ### Pillar 0 — Pure core, effectful edge (runs before all four)
 
-Not a fifth pillar competing for a summary row — a cut you make **first**, that
-changes what the other four are even about. Every feature that touches IO also
+Not a fifth pillar — a cut you make **first**. Every feature that touches IO also
 contains something that does not: a parse, a merge, a reconciliation, a decision
-about what to write. Split them. Put the algorithm in a **pure surface** — a
-`Schema.Class` with statics, or a plain module of functions — and reduce the
-service to a thin IO shell that reads, calls the pure thing, and writes.
+about what to write. Put the algorithm in a **pure surface** (a `Schema.Class`
+with statics, or a module of functions) and reduce the service to a thin IO shell
+that reads, calls the pure thing, and writes.
 
 > Ask literally, before designing any service: **"is any of this pure, and can it
 > be tested without a layer?"** Whatever answers yes does not belong inside the
 > service.
 
-The cautionary tale is one program old. A 90-line reconciliation algorithm was
-written *inside* a `Layer.effect` closure. Nothing about it needed the
-filesystem — it took a desired state and an observed state and computed a diff —
-but sealed in the layer, the only way to exercise it was to write real files,
-provide a platform layer, run the effect, and read the files back. Every edge
-case cost a fixture directory, so the edge cases did not get tested. Lifted out,
-it is a pure function with a table-driven unit test and no layer at all, and the
-service shrinks to read → reconcile → write.
-
-Two consequences the other pillars inherit:
-
-- **Pillar 2:** if the pure part is genuinely pure, the service is small enough
-  that "no service at all" is often the honest answer for it.
-- **Pillar 4:** a pure core is testable by construction. A test that needs a
-  temp directory to check an algorithm is a design smell, not a fixture problem.
-- Related but distinct — a pure helper left on a service *shape* also breaks
-  `Layer.mock`'s partiality (`effect-v4-services-layers`). Pure things belong on
-  pure surfaces for testing reasons and for wiring reasons; they are the same
-  reason.
-
-State the cut in the summary's Services/Layers row: "pure `X` + `Y` service as IO
-shell", or "no pure core — all of this is IO" if you genuinely looked and found
-none.
+An algorithm sealed in a `Layer.effect` closure can only be tested through real
+files, so its edge cases go untested. State the cut in the summary's
+Services/Layers row: "pure `X` + `Y` service as IO shell", or "no pure core —
+all of this is IO" if you genuinely looked and found none.
 
 ### Pillar 1 — Data types & errors → `effect-v4-schema`, `effect-v4-idioms`, `hardening-a-parser-port`
 
-**Schemas.** Struct-vs-Class (Struct is the default; Class for behavior,
-equality, or a nominal domain type); optionality (`optionalKey` vs `optional` vs
-`NullOr` — pick deliberately per field); derive-over-rebuild (`Struct.pick/omit`,
-spread `.fields`) instead of parallel schemas; brand/`Opaque` at boundaries where
-two same-shaped types must not mix (`UserId` vs `AccountId`); transformations as
-reusable codecs at the edges (`decodeTo`, with a fallible
-`SchemaGetter.transformEffect(...)` where the conversion can fail — there is no
-top-level `Schema.transformEffect` in v4), domain model stays
-clean; validate late (shape first, business-rule `.check(...)` after).
-
-**Errors — name every fallible operation's error, and pin three attributes:**
-
-| Attribute | The decision |
-| ----------- | -------------- |
-| **Kind** | One aggregate error vs. several granular tagged errors? Recoverable typed error vs. a genuine defect? (Malformed *input* is always a typed error, never a defect — the `hardening-a-parser-port` invariant.) |
-| **Shape** | `Schema.TaggedError` with which structured fields? What does a caller need to *recover* — a `retryAfter`, a source position, a field path? |
-| **Audience** | Who consumes it? *End user* (a human-readable `message`), *calling code* (a stable `_tag` + structured fields to branch on), or *operator* (surfaced via a log/span). Most errors serve two of these; state which. |
-
-**Input vs. wiring — the ruling.** Malformed *runtime input* is always a
-recoverable typed error (the hardening invariant). A *developer wiring/config*
-error — bad options passed to `static layer(opts)`, an invalid limit, a
-nonsensical duration — is a programming mistake: **strongly prefer a defect
-surfaced at construction** (`Effect.die` / a thrown validation) so the runtime
-error channel stays exactly the domain errors a caller branches on. Override only
-for a compelling reason — e.g. the config genuinely arrives from an untrusted or
-external source at runtime, or a caller must recover from a bad config — in which
-case make it typed and say why in the summary.
-
-The baseline failure this fixes: agents produce a good error by instinct but never
-*decide* its audience, so the shape drifts. Make it a decision, not an accident.
+- **Schemas:** Struct by default, Class for behaviour, equality or a nominal type;
+  optionality chosen per field; derive (`pick`/`omit`, `.fields`) rather than
+  rebuild; brand where two same-shaped types must not mix; codecs at the edges.
+- **Errors:** name every fallible operation's error and pin its **kind**
+  (typed or defect; one aggregate or several), **shape** (what a caller needs to
+  recover) and **audience** (end user, calling code, operator).
+- **Input vs. wiring:** malformed runtime input is always a typed error; a bad
+  option passed to `static layer(opts)` is a programming mistake, so prefer a
+  defect at construction.
 
 ### Pillar 2 — Services & Layers → `effect-v4-services-layers`
 
-**Contract inventory — the gate that runs before any service is modeled.**
-Before designing any service, seam, or vocabulary, grep the vendored core
-(the tree's `packages/effect/src` — **including the `@stability unstable`
-namespace modules**, which import exactly like any other core module and are
-not partitioned into a separate directory; resolve the root via
-`effect-v4-source-lookup`)
-for an existing contract. If core declares it, **require it in `R`** — do not
-re-declare it, re-implement it, or wrap it in a parallel vocabulary; the app
-provides the platform layer at the edge. Evidence for why this is a hard gate:
-the `@effected/commands` package survived four review gates before a source
-check found `effect/process` already declared its entire surface —
-it was deleted the same day it was built. State the inventory result in the
-design summary ("core declares X → required in R" or "no core contract found
-for X"). When a question survives the source read — semantics, not existence —
-settle it with a probe per `effect-v4-source-lookup`; in a repo with a
-`scratchpad/` workspace, write the probe there
-(`pnpm scratchpad:probe probes/<name>.ts`).
-
-**Inventory core *and* the `@effected` kit, not core alone.** The likelier
-duplication is often not a core primitive but a *kit package that already owns
-the concept*: `WorkspaceRoot.find`'s `stopAt` ceiling was about to be
-re-invented locally until a read of `Walker.ascend` found the concept already
-there with correct inclusive semantics. Run both checks, one per capability the
-feature needs:
+**Contract inventory — the gate that runs before any service is modeled.** For
+every capability the feature needs, check core *and* the kit before you design a
+service, seam or vocabulary:
 
 1. Core: the *Routing by task* table and module tables in
    [effect-v4-module-index](../effect-v4-module-index/SKILL.md), then the
-   signature in `$EFFECT_SRC`.
+   signature in `$EFFECT_SRC` (the `@stability unstable` namespaces included).
 2. Kit: `grep -ri "<intent words>" "{{skill_dir effected-packages}}/references/constructs/"`,
    then the package's reference in
    [effected-packages](../effected-packages/SKILL.md).
 
-Write the result in the summary's **Inventory** row: what each check found, or
-the query that found nothing.
+If core declares the contract, **require it in `R`**; never re-declare it or wrap
+it in a parallel vocabulary. Write the result in the summary's **Inventory** row:
+what each check found, or the query that found nothing.
 
-The same grep doubles as a **style consult**: the vendored source is the
-paradigm reference, not just the API authority. Read how core writes the
-analogous module — one concept per module, `Context.Service` contracts with a
-`make` that derives the surface from one primitive, branded scalars, `dual`
-combinators, compiling doc examples — and match those paradigms in the design.
-Divergence is allowed but is a recorded decision with a reason, never a habit.
+Then: the dependency closure, the v4 `Context.Service<Self, Shape>()("id")` form,
+the **Live/Test layer split designed now**, the composition posture, and
+build-once memoization (bind a parameterized `static layer(opts)` to a `const`).
+**Pure-tier default: no service at all.**
 
-What is the dependency closure? Model services with the v4 `Context.Service<Self,
-Shape>()("id")` form. **Design the Live/Test layer split now** — it is pillar 4's
-raw material, not an afterthought. Composition posture (`mergeAll` vs `provide` vs
-`provideMerge`), provide-once-at-the-boundary, and build-once memoization (a
-parameterized `static layer(opts)` mints fresh state per call — bind it to a
-`const`). **Pure-tier default: no service at all** — a module of functions is
-usually right; do not manufacture a `Context.Service` for stateless pure code.
-
-### Pillar 3 — Observability → `effect-v4-observability` (and `effect-resource` for PubSub)
+### Pillar 3 — Observability → `effect-v4-observability`
 
 **This is the pillar agents silently drop. It is a required row in the summary —
 fill it even if the answer is "none."**
 
-- **Pure-tier:** defer to the house rule — named `Effect.fn` spans on public
-  fallible boundaries, *uniform* across a service's fallible methods, no metrics,
-  telemetry-agnostic. Often the whole answer is one line.
-- **Service-tier:** four rulings —
-  - **Inject a logger? No.** Do not parameterize a service with a logger.
-    Logging flows through the fiber via the `Effect.log*` family; `Logger` is
-    configured once at the app edge. A `logger` constructor parameter is the
-    anti-pattern.
-  - **Log format:** structured values (`Effect.logInfo("msg", { key })`), never
-    concatenated strings, and only at boundaries.
-  - **OTel:** at the app edge only (core's `Otlp` layers from
-    `effect/observability`, or the optional `@effect/opentelemetry` SDK bridge,
-    in one top-level layer). The service stays agnostic; libraries never import
-    an exporter.
-  - **PubSub / events:** only when the feature is genuinely event-driven or
-    fan-out. Default is **no**. If yes, it is a `PubSub`/`Queue` design decision —
-    see `effect-resource`.
+- **Pure-tier:** named `Effect.fn` spans on public fallible boundaries, uniform
+  across a service's fallible methods, no metrics. Often one line.
+- **Service-tier:** never inject a logger; structured `Effect.log*` values at
+  boundaries only; OTel at the app edge only; PubSub only when the feature is
+  genuinely event-driven (default **no**).
 
 ### Pillar 4 — Testability → `effect-v4-testing`
 
-Design *for* the test now, so it is not retrofitted:
-
-- Dependencies are **injectable layers** (pillar 2's Test split) so collaborators
-  are mockable at the suite boundary via `layer(...)`.
-- Functions **return Effects** — never pre-run them; an `Effect.runSync`/
-  `runPromise` in the API surface or a fixture is unmockable and untestable.
-- `it.effect` is the default runner; property-test over the pillar-1 schemas.
-- **Time / schedules / retries → `TestClock`.** If the feature reads the clock,
-  it must read it via `Clock`, and the test drives `TestClock.adjust`. A feature
-  that can only be tested against the wall clock is a design bug.
+Design *for* the test now: dependencies are injectable layers, functions return
+Effects (never pre-run), `it.effect` is the runner with property tests over the
+pillar-1 schemas, and anything that reads time reads `Clock` so the test drives
+`TestClock`.
 
 ## The design summary (REQUIRED — emit before coding)
 
@@ -229,13 +144,11 @@ Design *for* the test now, so it is not retrofitted:
 ```
 
 **A pure, total module may answer "none" on every service row — and that is a
-COMPLETE design, not an evaded one.** For a module that is pure and total (no
-IO, no fallible operations, no services), a planning pass concluding "no
-error channel, no services, no observability" is a legitimate complete answer
-(accepted as exactly that in review, 2026-08-14). The gate exists to force
-the QUESTION, not to force machinery — manufacturing an error type or a
-decorative span to avoid writing "none" is the same failure as leaving the
-row blank.
+COMPLETE design, not an evaded one.** For a module that is pure and total (no IO,
+no fallible operations, no services), "no error channel, no services, no
+observability" is a legitimate complete answer. The gate exists to force the
+QUESTION, not to force machinery — manufacturing an error type or a decorative
+span to avoid writing "none" is the same failure as leaving the row blank.
 
 ### Brownfield
 
@@ -273,70 +186,22 @@ the change focused; do not scope-creep a refactor the user did not ask for.
 
 ## Two carve-outs from step 4 (buy-in)
 
-The summary in step 3 is **never** waived. What bends is step 4 — *who* you wait for,
-and how heavy the summary has to be.
+The summary in step 3 is **never** waived. What bends is *who* you wait for, and
+how heavy the summary has to be.
 
-### You are a delegated subagent — emit the summary, then proceed
+- **You are a delegated subagent:** emit the summary, treat the parent's
+  instructions as the buy-in, and proceed. A decision that **contradicts** the
+  instructions is a stop; one that **exceeds** them without contradicting them is
+  proceed-and-flag; evidence of a **concurrent writer** in your files is a stop.
+- **A small pure-tier bugfix** collapses the summary to one line, naming the test
+  that now fails, when all four hold: pure-tier, behaviour-preserving apart from
+  the bug, no public API change, no new error case.
 
-If you are running as a headless subagent, **you have no user to wait on.** A
-delegating parent dispatched you with instructions and is not watching the channel;
-"present the summary and wait for buy-in" would deadlock, and the usual failure is an
-agent that resolves the deadlock by quietly skipping step 3 altogether — losing the
-audit *and* the buy-in.
-
-So: **emit the design summary, treat the parent's instructions as the buy-in, and
-proceed.** The summary is not wasted — it goes in your report, where it is exactly
-what lets the parent (and the reviewer on the PR) check the pillars were walked. What
-you still owe splits by the *kind* of surprise the summary turns up:
-
-- A decision that **contradicts** the instructions — a scope change, a design you were
-  steered away from, a risk you cannot resolve — is a **stop**: do not proceed on your
-  own authority; report back and ask.
-- A decision that **exceeds** the instructions **without contradicting** them — the
-  instructed thing, done correctly, carries a consequence nobody named — is **proceed
-  AND flag**, not stop. Making an instructed `workspaceRoot` field *required* is the
-  correct design and *also* breaks decode for previously serialized values: you were
-  told to add the field, not to avoid the break, so proceeding is right — but the break
-  MUST land prominently in your report, never silently. Do the correct thing and surface
-  what it cost.
-
-- Evidence of a **concurrent writer in your assigned files** is a **stop**, and it is
-  neither of the two above — a *state* problem, not a design one. The signatures: an
-  edit you did not make appears between your read and your write; a declaration you
-  did not author (caught as `noRedeclare`); an Edit answered "file changed since read"
-  with your intended change *already applied*. That last one reads like a harness
-  quirk and is not — it is the collision signature. Stop writing immediately and
-  report to your coordinator, because the reconcile cost grows with every further
-  edit, and `git status` will NOT show you the other writer (uncommitted trees look
-  identical whoever wrote them). Two agents hit this unrouted in one session,
-  2026-07-28; the one that stopped early reconciled cleanly, the one that kept
-  writing spent the difference by hand.
-
-Put any genuinely unresolved item in the Open risks row rather than deciding it silently.
-
-An interactive session has a real user: wait for them, as step 4 says.
-
-### Small pure-tier bugfix — a one-line summary is the whole recipe
-
-A bounded fix to an **existing pure-tier engine** (a perf fix, an off-by-one, a bad
-span offset) does not need the brownfield gap table. It has no service, no layer, no
-observability posture, and its testability is already settled by the existing suite;
-the table's rows would all read "n/a — unchanged".
-
-Qualifying is narrow. **All four** must hold: pure-tier; the fix is behaviour-
-preserving except for the bug itself; **no public API change**; and no new error case.
-Miss any one and you run the full brownfield audit — a bugfix that changes a signature
-or adds an error *is* a design change wearing a bugfix's clothes.
-
-When it qualifies, the summary collapses to one line, and you still emit it:
-
-```text
-## Fix: <bug> — pure-tier, no API change, no new error. Test: <the test that now fails>.
-```
-
-That last clause is the load-bearing one. The test that reproduces the bug *is* the
-design review for a fix this size: if you cannot name it, you do not understand the
-bug yet, and the fast path is not available to you.
+Before you proceed as a subagent, or take the one-line fix path, load
+[carve-outs.md](references/carve-outs.md): it says how to tell a contradiction
+from a consequence you must flag, the three signatures of another writer in your
+files (one of them looks like a harness quirk), and the one-line template.
+Proceeding past a collision multiplies the reconcile cost with every edit.
 
 ## Red flags — you skipped the recipe
 
@@ -350,3 +215,8 @@ bug yet, and the fast path is not available to you.
   pillars.
 
 **Any of these: stop, run the recipe, emit the summary, get buy-in.**
+
+## Additional resources
+
+- [references/pillar-rulings.md](references/pillar-rulings.md) — the placement check with its peer-cycle case, pillar 0's cost of a sealed algorithm, the schema decisions, the error-attribute table and input-vs-wiring ruling, the contract-inventory gate and style consult, the service-tier observability rulings and the testability rules. Load when: choosing which package a capability goes in, filling a summary row you are unsure of, deciding whether a bad option is a typed error or a defect, or running the inventory for a new service.
+- [references/carve-outs.md](references/carve-outs.md) — the subagent carve-out with its stop, proceed-and-flag and concurrent-writer cases, and the small-bugfix fast path with its four conditions and template. Load when: you are running as a delegated subagent, an edit you did not make appears in your files, or you are fixing a bug in a pure-tier engine.

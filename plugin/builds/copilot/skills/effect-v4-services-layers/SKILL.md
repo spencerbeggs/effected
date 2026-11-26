@@ -5,17 +5,16 @@ description: Use when defining Effect v4 services or wiring Layers — the `Cont
 
 # Services & Layers (Effect v4)
 
-**API surface** — existence, signatures and the source line citations below —
+**API surface** — existence, signatures and the source line citations —
 verified by reading `packages/effect/src`. The **behavioural** claims (the
-memoize-by-reference resource-count result, the two temporal-dead-zone
-results, the sync-facade and requirement-union notes) were probed once and
-not re-probed on every catalog advance; treat them as behavior to spot-check
-against a control before leaning on them for something load-bearing.
+memoize-by-reference resource counts, the temporal-dead-zone results, the
+sync-facade and requirement-union notes) were probed once; spot-check one
+against a control before leaning on it for something load-bearing.
 
 A service is a typed key into the runtime's context; a layer is the recipe that
 builds it. Get three things right — the one service form, provide-once
-composition, and memoization by
-reference — and the wiring stays honest and cheap.
+composition, and memoization by reference — and the wiring stays honest and
+cheap.
 
 **Look it up first.** Before you declare a service, check that core does not
 already declare the contract (`FileSystem`, `Path`, `HttpClient`,
@@ -30,8 +29,8 @@ a name exists with
 ## One service form: `Context.Service`
 
 `Context.Tag`, `Context.GenericTag`, `Effect.Tag`, and `Effect.Service` are
-**all gone** — every service collapses to `Context.Service`. The class form
-is preferred; the id and shape live in one place:
+**all gone** — every service is `Context.Service`, type params first, then the
+id string (there is no `ServiceMap.ts`; the module is `Context.ts`):
 
 ```ts
 import { Context, Effect, Layer } from "effect"
@@ -41,28 +40,12 @@ class Database extends Context.Service<Database, {
 }>()("Database") {}
 ```
 
-Argument order is **type params first** via `Context.Service<Self, Shape>()`,
-**then** the id string via `("Database")` — the id comes last, and there is no
-`Context.Tag`.
-
-**Tags are Effects.** A service key is a
-first-class Effect — `Context.Key<Identifier, Shape> extends
-Effect<Shape, never, Identifier>` (`Context.ts:68`) — so
-`yield* Database` works, and combinator-style consumer code like
-`Effect.flatMap(Database, (db) => …)` composes directly with no `.asEffect()`
-or unwrap step. Related gotcha when hunting the source: the module is
-`Context.ts`; there is no `ServiceMap.ts`.
-
-The `Database` form above — `Context.Service<Self, Shape>()("id")` with **no
-`make` option** — is the **contract-only** service: it declares a shape but
-bakes in no default impl. There is no `.layer` to inherit; wire it with a
-separate `Layer.succeed(Database, { query: … })` bound to a named `const` (first
-boundary port). Reach for it when the implementation is supplied at the edge (or
-differs per environment) rather than owned by the service.
-
-**Shape-inferred `make` form** — implementation and API stay together, TS
-derives the shape. Prefer it when the impl is small; prefer the explicit
-generic shape when you want the contract stated before the code:
+That form, with **no `make` option**, is the **contract-only** service: it
+bakes in no default impl and has no `.layer` to inherit, so wire it with a
+separate `Layer.succeed(Database, { query: … })` bound to a named `const`. Reach
+for it when the implementation is supplied at the edge or differs per
+environment, or when you want the contract stated before the code. When the
+impl is small and owned by the service, use the **shape-inferred `make` form**:
 
 ```ts
 class UserRepo extends Context.Service<UserRepo>()("UserRepo", {
@@ -75,72 +58,28 @@ class UserRepo extends Context.Service<UserRepo>()("UserRepo", {
 }
 ```
 
-Two traps:
+- **`make` does NOT auto-generate a layer** — there is no `.Default`; build the
+  layer yourself, as above.
+- **There is no `dependencies` option** — wire a service's needs with
+  `Layer.provide`.
+- **Tags are Effects.** `Context.Key<Identifier, Shape> extends
+  Effect<Shape, never, Identifier>` (`Context.ts:68`), so `yield* Database` and
+  `Effect.flatMap(Database, (db) => …)` work, and there is no `.asEffect()` on a
+  service — calling it is a type error.
+- **The class's instance type is not the shape.** Name the shape a factory
+  returns with `Context.Service.Shape<typeof Svc>` (or `(typeof Svc)["Service"]`);
+  annotating with the class name fails with TS2353.
+- **A parameter typed `Context.Key<I, Shape>` accepts a key over a wider
+  shape**, so the consumer's `yield*` reads members the layer never supplied.
 
-- `make` stores the constructor effect but does **NOT** auto-generate a
-  layer — there is no `.Default`. Build the layer yourself (above).
-- There is **no `dependencies` option**. A service's needs are wired with
-  `Layer.provide`, not declared on the service.
-
-## Typing a value that implements a service's interface
-
-When a **factory returns an implementation** — a second `Layer` satisfying an
-existing contract, a test double, a per-directory resolver — you need a name for
-the service's *shape*, not for the service key. Two spellings resolve to the
-same type, and one of them is the documented helper:
-
-```ts
-// Preferred: the named helper in the Service namespace.
-function makeWorkspaceResolver(
- rootDir: string,
-): Context.Service.Shape<typeof RegistryResolver> {
- return { resolve: (name) => Effect.succeed(`${rootDir}/${name}`) };
-}
-
-// Equivalent: indexed access through the key's witness property.
-function makeOther(dir: string): (typeof RegistryResolver)["Service"] { ... }
-```
-
-`Context.Service.Shape<T>` is `T extends Key<infer _I, infer S> ? S : never`
-(`Context.ts:420`), and it sits in a namespace whose own doc example is titled
-"Extracting service types" — core states this as the way to name a service's
-shape, so **prefer it**. The indexed form works for the same reason it reads
-well: `Context.Key<Identifier, Shape>` carries `readonly Service: Shape` as a
-real property (`Context.ts:70`), so `(typeof Tag)["Service"]` is an ordinary
-lookup rather than a trick. The sibling `Context.Service.Identifier<T>` extracts
-the `R`-channel identifier the same way.
-
-**The trap this replaces: the class instance type is not the shape.** Reaching
-for the obvious annotation — the class's own name — does not compile:
-
-```ts
-// WRONG. RegistryResolver (the instance type) is not { resolve: ... }.
-function makeWorkspaceResolver(dir: string): RegistryResolver { ... }
-// error TS2353: Object literal may only specify known properties,
-// and 'resolve' does not exist in type 'RegistryResolver'.
-```
-
-A class-form key's instance type is `ServiceClass.Shape<Identifier, Shape>`
-(`Context.ts:151`), a three-member wrapper — the `ServiceTypeId` brand, `key`,
-and a `Service` member holding the real shape. The interface you want is nested
-one level inside it, which is exactly what both spellings above unwrap.
-
-**Taking a consumer's key over your shape?** Pin the shape. A
-parameter typed `Context.Key<I, Shape>` or `Context.Service<I, Shape>`
-accepts a key over a **wider** shape, because class keys compare structurally
-and method bivariance makes that covariant. The fix is
-`Context.Key<I, S> & ([Shape] extends [S] ? unknown : never)` with
-`S extends Shape`; a key that adds members then errors as "not assignable to
-parameter of type 'never'". It cannot see through method-syntax parameter
-bivariance (a member redeclared as a method with a wider parameter still
-passes). If the shape is generic (`Shape<A>`), also intersect
-`Context.Key<I, Shape<A>>`, or `A` is no longer inferred from the key. See
-[references/edge-cases.md](./references/edge-cases.md).
+Before you write a function that returns a service implementation or takes a
+consumer's key, load [service-shape-types.md](./references/service-shape-types.md):
+it has the shape helper, the pin that refuses a wider key, and the accessor
+rules.
 
 ## Access a service: prefer `yield*`
 
-`yield*` on the class pulls the implementation and leaves the dependency
-**explicit in the effect's `R`**, where the type system tracks it:
+`yield*` on the class keeps the dependency **explicit in the effect's `R`**:
 
 ```ts
 const program = Effect.gen(function* () {
@@ -149,179 +88,59 @@ const program = Effect.gen(function* () {
 });
 ```
 
-`use` / `useSync` are static accessors — the only ones; there is no generated
-proxy accessor per method. Reach for them sparingly — they hide *which* dependency you
-pulled at the call site, making it easy to leak a service dep into a return
-value:
-
-```ts
-Database.use((db) => db.query("SELECT 1")); // Effect<string, never, Database>
-Config.useSync((c) => c.url);               // pure callback ⇒ Effect<string, never, Config>
-```
-
-`use` takes an effectful callback and returns `Effect<A, E, R | Self>`;
-`useSync` takes a **pure** callback and returns `Effect<A, never, Self>` (it just
-lets the accessor body be synchronous — both still return an `Effect`). There is
-no mapped-type proxy that mints an accessor per method: such a proxy **erases
-generics** — a `get<T>(key): Effect<T>` collapses to `Effect<unknown>` and
-overloads are lost — which is why `use`/`useSync`, or plain `yield*`, are the
-whole accessor story and preserve the real method signatures.
-
-**The class IS the Effect — there is no `.asEffect()`.** `class Database
-extends Context.Service<...>()("Database")` is itself an
-`Effect<Shape, never, Database>`, so pass the class wherever an Effect goes:
-`Effect.flatMap(Database, (db) => ...)`, `Database.pipe(Effect.map(...))`, or
-as a value typed `Effect.Effect<Database["Service"], never, Database>`.
-`.asEffect()` is `Effectable.Class`'s abstract method, not a service's;
-calling it on a service class is a type error, not a conversion you forgot.
-
-For a config knob / feature flag with a default (not a full API), use
-`Context.Reference<T>(id, { defaultValue: () => ... })` instead of a
-service.
+`Database.use(fn)` / `Database.useSync(fn)` are the only accessors — there is no
+per-method proxy, because one would erase generics. Use them sparingly: they
+hide which dependency a call site pulled. For a config knob or feature flag
+with a default, use `Context.Reference<T>(id, { defaultValue: () => ... })`
+instead of a service.
 
 ## Layers: build, compose, provide once
 
-`Layer<ROut, E, RIn>` — `ROut` services produced, `E` construction
-failures, `RIn` dependencies required to build.
+`Layer<ROut, E, RIn>` — `ROut` services produced, `E` construction failures,
+`RIn` dependencies required to build.
 
-- **`Layer.succeed(Service)(impl)`** — a pure, already-built value; no deps,
-  no scope.
-- **`Layer.effect(Service)(effect)`** — effectful construction that may
-  depend on other services **and/or own a scoped resource** (db pool,
-  socket, worker). Its return type is `Layer<I, E, Exclude<R, Scope>>`: it
-  strips `Scope` from `R`. That is exactly why there is **no `Layer.scoped`** —
-  `Layer.effect` over an `Effect.acquireRelease` effect *is* the scoped
-  constructor:
+- **`Layer.succeed(Service)(impl)`** — a pure, already-built value.
+- **`Layer.effect(Service)(effect)`** — effectful construction that may depend
+  on other services **and/or own a scoped resource**. It strips `Scope` from
+  `R`, which is why there is **no `Layer.scoped`**: `Layer.effect` over
+  `Effect.acquireRelease` *is* the scoped constructor. Both are dual
+  (`Layer.effect(this, this.make)` works).
 
 ```ts
 const DatabaseLayer = Layer.effect(Database)(
  Effect.gen(function* () {
   const config = yield* Config;
-  const pool = yield* Effect.acquireRelease(
-   openPool(config.url),
-   (p) => p.close(),
-  );
+  const pool = yield* Effect.acquireRelease(openPool(config.url), (p) => p.close());
   return { query: (sql) => pool.run(sql) };
  }),
 );
 ```
 
-`Layer.succeed` and `Layer.effect` are **dual**: the curried
-`Layer.effect(Service)(effect)` is primary, but the data-first
-`Layer.effect(Service, effect)` overload also works (handy for
-`Layer.effect(this, this.make)`). Both compile.
+- **In a layer static, refer to the service as `this`, and read a module-local
+  `make` through an arrow** (`Effect.map(Dep, (dep) => make(dep))`). Naming the
+  class from a `const`-bound class expression, or passing a `make` declared
+  below the class, **throws at import time while typechecking clean**, and the
+  only signal is vitest reporting `0 tests passed`.
+- **Resolve a dependency in `make` only when it is stable.** A dependency the
+  caller is meant to vary is read per call, or `Effect.provideService` around
+  the call silently changes nothing.
+- **Name the primary layer `layer`**, never `Default` or `Live`; variants take
+  suffixes (`layerTest`). `Default` is right only for the `index.ts` composite
+  that merges two concept modules, which lives there to avoid an import cycle.
 
-### In a layer static, refer to the service as `this`
+Before you write a layer static, a `make` that yields a dependency, or a
+composite layer, load
+[layer-statics-and-construction.md](./references/layer-statics-and-construction.md):
+the import-time throw it prevents is a false green, not a red test.
 
-A `layer` static that names its own class is fine **when the service is a class
-declaration** — `export class Db extends Context.Service...()` initializes the
-class's inner binding before static initializers run, so `Layer.succeed(Db, …)`
-inside `Db`'s own body resolves.
-
-It is a **temporal dead zone** when the service is a class **expression bound to
-a `const`**, because then there is no inner binding and the name resolves to the
-outer `const`, which is still uninitialized while the class body evaluates:
-
-```ts
-// THROWS at import time: "Cannot access 'BunResolver' before initialization"
-export const BunResolver = class extends Context.Service()("BunResolver", {}) {
- static layer = mk(BunResolver, …);   // ← outer const, still in TDZ
-};
-
-// Fine — `this` is the class, always:
-export const BunResolver = class extends Context.Service()("BunResolver", {}) {
- static layer = mk(this, …);
-};
-```
-
-Probed: the class-expression form throws, the `this` form does not,
-and the class-*declaration* form does not either.
-
-**Write `this` unconditionally.** It is correct in both forms, so it costs
-nothing and removes the whole question — and the failure it prevents is a
-false green:
-
-> The module throws **at import time** while **typechecking completely clean**.
-> The only signal is vitest reporting **`0 tests passed` with exit 0** for every
-> file that imports it. A suite that collects zero tests is not a passing suite.
-> See `effect-v4-testing`.
-
-**A second trigger, which fires on a class *declaration* too: a static that reads
-a module-local `make` declared further down the file.** The rule above covers the
-class's own name; this one covers anything the static initializer touches
-eagerly:
-
-```ts
-// THROWS at import: "Cannot access 'make' before initialization" — and typechecks clean
-export class Repo extends Context.Service<Repo, Shape>()("Repo") {
- static readonly layer = Layer.effect(this, Effect.map(Dep, make));
-}
-const make = (dep: Dep): Shape => ({ … });   // ← evaluated AFTER the class body
-
-// Fine — the arrow defers the read to layer-BUILD time:
- static readonly layer = Layer.effect(this, Effect.map(Dep, (dep) => make(dep)));
-```
-
-`Effect.map(Dep, make)` reads `make` while the static initializer runs — import
-time; `(dep) => make(dep)` reads it when the layer is built. Same false green.
-The arrow is correct in both declaration orders, so write it unconditionally.
-
-### Resolve a dependency once at construction — only when it is stable
-
-A service built with `Effect.gen` resolves whatever it `yield*`s **when the layer
-is built**. Right for a pool, a client, a decoded config; wrong for anything a
-caller is meant to vary. **Stable ⇒ resolve in `make`** and every call shares the
-instance. **Varying it is the point ⇒ read it per call**, keeping it in the
-method's `R`, so a caller's `Effect.provideService(op, Dep, other)` reaches the
-code that uses it.
-
-Getting this backwards is **silent**. A `Repo` resolved at construction made
-`Repo.provide(…)` decorative: the wrapper compiled, ran, and changed nothing,
-because the service had already captured the ambient instance. Nothing in the
-types distinguishes the two — only a test that provides a *different* instance
-and asserts the difference does. (Caught that way in the github work.)
-
-Name the primary layer **`layer`** (e.g. `Database.layer`), never `Default` or
-`Live`. Use suffixes for variants (`layerTest`). The one exception
-is the `index.ts` composite convenience export that merges two concept modules'
-primary layers — `Default` is the idiomatic name there (see **Cycle-avoidance**
-below); it is not a service's own primary layer, so it does not violate this
-rule.
-
-### A layer static belongs to the module owning the dependency, not the service
-
-**Statics on one class share one module**, and a module is the unit of
-reachability — so a layer variant needing something the service's own module must
-not reach moves out:
-
-> A layer-family static belongs to the module that **owns the dependency it
-> needs**, not to the module that **declares the service**.
-
-Three uses in the kit: `GitHubApp.clientLayer` (confines the JWT signer),
-`Workspaces.localExecLayer` (builds `@effected/commands`' service, so `commands`
-keeps zero `@effected/*` edges), `GitHubCacheBlobStore.layer` (confines
-the Twirp cache protocol and blob transport). Such a static is named for its **variant**, not `layer`.
-Test: *would putting this static on the service class make a dependency reachable
-from a consumer that does not use it?*
-
-### Swappable contracts: no ambient default, and ship values too
-
-When the implementation is a **policy choice** the consumer must make, two rules:
-
-1. **No ambient default in the composite layer.** `Layer.mergeAll` is
-   **last-wins**, so `Layer.mergeAll(myDetector, Pkg.layer())` — the natural
-   spelling of an override — silently loses to a merged-in default. Leave the
-   requirement in `R`: wiring that forgets to choose does not compile, and
-   consumers who never call the operation never supply a policy.
-2. **Ship every implementation as a VALUE as well as a layer** (`static readonly
-   npm: Shape` beside `static readonly layerNpm = Layer.succeed(this, this.npm)`).
-   A consumer composing *around* the default cannot use a layer without
-   re-entering the tag it is replacing; given the value, the wrapper is one
-   delegating `Layer.succeed`.
-
-Reasoning and the `PublishabilityDetector` precedent:
-[references/service-design.md](./references/service-design.md), which also
-carries the layer-static and value-only-service rules in full.
+**A layer-family static belongs to the module that owns the dependency it
+needs**, not the module that declares the service, and is named for its variant
+(`clientLayer`). **A swappable contract** — an implementation that is a policy
+choice — gets **no ambient default** in the composite (`Layer.mergeAll` is
+last-wins, so a merged default silently beats the consumer's override), and
+ships every implementation **as a value as well as a layer**. Before you place
+a layer static or design a contract with several implementations, load
+[service-design.md](./references/service-design.md).
 
 ### Composition operators
 
@@ -335,9 +154,8 @@ carries the layer-static and value-only-service rules in full.
 > `DatabaseLayer`'s need for `Config` — merge only places them side by side.
 > Use `provide` / `provideMerge` to actually feed a dependency.
 
-**Compose subsystems locally, assemble one app layer, `Effect.provide`
-once at the boundary.** Keep subsystem wiring named and local; the app
-layer should read as a high-level map:
+**Compose subsystems locally, assemble one app layer, `Effect.provide` once at
+the boundary:**
 
 ```ts
 const DbSubsystem = Layer.provide(DatabaseLayer, ConfigLayer);
@@ -346,106 +164,57 @@ const AppLayer = Layer.mergeAll(DbSubsystem, HttpLayer).pipe(Layer.provide(Telem
 Effect.runPromise(program.pipe(Effect.provide(AppLayer))); // provide at the OUTERMOST edge
 ```
 
-> **Cycle-avoidance (first boundary port):** put a composite layer that merges
-> two concept modules — e.g. `Default = Layer.mergeAll(A.noop, B.noop)` — in
-> `index.ts`, not in one of the concept modules. If it lived in module `A`, and
-> `B` imports `A`, the merge would pull `A → B → A` into a cycle
-> (`noImportCycles` is an error here). The entrypoint already depends on both
-> concept modules, so hanging the composite there keeps the concept modules
-> import-cycle-free.
+Business logic *requires* services; composition happens in layers;
+`Effect.provide` happens at the app / test entry point. `Effect.provide` deep
+inside business logic hides wiring, blocks test substitution and spawns many
+small runtimes. Several entry points (HTTP handlers, consumers, cron) share one
+`ManagedRuntime.make(AppLayer)`. `Layer.Success<typeof L>` and
+`Layer.Error<typeof L>` are top-level type helpers.
 
-Business logic *requires* services (they stay in `R`); composition happens
-in layers; `Effect.provide` happens at the app / test entry point.
-`Effect.provide` deep inside business logic is an anti-pattern — it hides
-wiring, blocks test substitution, and spawns many small runtimes. For
-several entry points (HTTP handlers, consumers, cron), build one
-`ManagedRuntime.make(AppLayer)` and run each entry against it.
-
-**Heterogeneous requirement unions need an up-front annotation.** Collecting
-several values generic in a requirements union (an array of resolvers, a list of
-layers feeding one generic parameter) pins the type parameter from the **first**
-element; the later, wider elements are rejected rather than widening the union.
-Annotate the collection where it is built —
-[references/edge-cases.md](./references/edge-cases.md).
-
-> **Type helpers are top-level.** `Layer.Success<typeof L>` and
-> `Layer.Error<typeof L>` are module-level type exports (v4 source
-> `Layer.ts:189` / `:173` — resolve the tree via `effect-v4-source-lookup`).
-> There is no nested `Layer.Layer.Success` spelling to reach for.
+**Collecting values generic in a requirements union pins the type from the
+first element** and rejects the wider ones. Before you build an array of
+resolvers or layers feeding one generic parameter, load
+[edge-cases.md](./references/edge-cases.md) and annotate the collection where it
+is built.
 
 ## Platform capabilities: require in R, never own a backend
 
-Effect v4's consolidated core **declares** the platform service contracts —
-`FileSystem`, `Path`, `Terminal`, `Stdio` as top-level `effect/*` modules, and
-`ChildProcessSpawner` (subprocesses) under `effect/process` — while the
-**implementations** live in `@effect/platform-*` (Node's `NodeServices.layer`
-provides `ChildProcessSpawner | FileSystem | Path | Stdio | Terminal`
-in one layer; crypto is not in it — the `effect/crypto` services such as
-`Digest` come from `NodeCrypto.layer` or a family layer like
-`NodeCrypto.layerDigest`, or core's `Digest.layerWebCrypto`; a consumer's own doc
-comment saying `NodeServices.layer` provides crypto is stale, so fix it). All of these contracts are tagged `@stability unstable` — a
-minor `effect` release may change their shape — which does not change the
-rule below; it means a library re-verifies its usage when the installed
-`effect` moves. That split fixes the house default:
+Core **declares** `FileSystem`, `Path`, `Terminal`, `Stdio` and
+`ChildProcessSpawner`; `@effect/platform-*` **implements** them
+(`NodeServices.layer` provides all five, and crypto comes from `NodeCrypto`
+layers or `Digest.layerWebCrypto`, not from `NodeServices.layer`).
 
-- **A library that needs a platform capability requires the core-declared
-  service in its `R` channel** and the application provides the platform layer
-  once at the edge. Requiring-in-R is free — it adds no dependency edge and no
-  tier cost. This is how `walker`, `xdg` and `config-file` consume
-  `FileSystem`, and how anything subprocess-shaped consumes
-  `ChildProcessSpawner`.
-- **Taking `@effect/platform-*` as a dependency edge is categorically
-  different** — it drags the platform package into every consumer's tree
-  (integrated tier). Do not conflate the two: "platform-node is tier 3" is a
-  statement about dependency edges, never about `R`.
-- Platform packages are legitimate **devDependencies for integration tests**,
-  and legitimate **dependencies only in applications and app-edge packages**
-  (a CLI binary, a server entrypoint).
-- **A direct `node:` import in library code is a code smell**, most of the
-  time. The sanctioned exceptions are documented Node-only overlays — a
-  default layer or a sync escape hatch — never a contract or a
-  business-logic path.
+- **A library requires the core-declared service in its `R`**; the application
+  provides the platform layer once at the edge. Requiring-in-R adds no
+  dependency edge.
+- **A `@effect/platform-*` dependency edge is different** — it drags the
+  platform into every consumer's tree. Platform packages belong in
+  devDependencies for integration tests, and in dependencies only for
+  applications and app-edge packages.
+- **A direct `node:` import in library code is a code smell**, outside a
+  documented Node-only overlay.
 
-Before designing any service or seam, grep the core source — the
-`@stability unstable` namespace modules included, since they import exactly
-like any other core module rather than living under a separate path — for an
-existing contract (`effect-v4-source-lookup` resolves the tree). A parallel subprocess vocabulary (`Command`/`CommandRunner` plus a
-hand-rolled `node:child_process` layer) survived four review gates in this repo
-before a source check found `effect/process` already declared all of it.
+Before you design a service or seam over IO, a subprocess or crypto, load
+[platform-capabilities.md](./references/platform-capabilities.md) and grep core
+for the contract: a hand-rolled parallel vocabulary is the failure this
+prevents.
 
 ## Sync facades: per-call service values, not layers
 
 A synchronous escape hatch over consumer-supplied ops (build-tool plugin hooks,
 config-time contexts) takes service **values** provided per call with
 `Effect.provideService` — never a Layer, so consecutive calls carrying different
-ops cannot hit the memoize-by-reference trap below. The `FileSystem.makeNoop` /
-hand-rolled-`Path` recipe and the honest `runSyncExit` unwrap:
-[references/edge-cases.md](./references/edge-cases.md).
+ops cannot hit the memoization trap below. Before you write one, load
+[edge-cases.md](./references/edge-cases.md) for the `FileSystem.makeNoop` /
+hand-rolled-`Path` recipe and the honest `runSyncExit` unwrap.
 
 ## Memoization: layers build once, by reference
 
-Within one provided layer graph, the same layer *value* is built exactly
-once, however many composites reference it. Across `Effect.provide` calls
-the rule depends on nesting: a provide's build adds its `MemoMap` to the
-context (`Layer.ts:678`), and a provide running **inside** it forks that
-map (`CurrentMemoMap.forkOrCreate`, `Layer.ts:601`), so a nested provide
-reuses what the enclosing one built:
-
-```ts
-const main = program.pipe(Effect.provide(DbSubsystem), Effect.provide(DbSubsystem));
-// Built ONCE — the inner provide forks the outer provide's MemoMap.
-```
-
-Provides that are **not** nested — one after another, or siblings under a
-common parent — each start their own map and build again (probed: nested
-1 build, sequential 2, siblings under one outer provide 2). A warm-up
-`Effect.scoped(Layer.build(L))` followed by `program.pipe(Effect.provide(L))`
-is two sequential builds.
-
-Identity is **by reference**, and that is the footgun. A function that
-*returns* a layer mints a **fresh reference every call**, defeating
-memoization and building the underlying resource (pool, HTTP client,
-telemetry) more than once:
+Within one provided graph, the same layer *value* is built exactly once; a
+provide **nested** inside another reuses what the outer one built, while
+sequential or sibling provides each build again. Identity is **by reference**:
+a function that *returns* a layer mints a fresh reference every call and builds
+the resource again.
 
 ```ts
 // BAD — two distinct references, resource built twice:
@@ -456,160 +225,56 @@ const DatabaseLayer = makeDatabaseLayer();
 const AppLayer = Layer.mergeAll(DatabaseLayer, OtherLayer);
 ```
 
-Probed, counting resource opens: an inline factory call at two
-provide sites opened the resource **twice**; the same factory called once and
-bound to a `const` opened it **once**. The two-provide dedup is real, but it can
-only dedup a reference it can recognize.
+- **A parameterized layer static (`Svc.layer(opts)`) is a factory**, so every
+  call site is a fresh reference.
+- **The symptoms are silent:** two connections to one file, two caches each
+  holding half the writes, a `PubSub` whose subscriber sees half the events.
+  "State mysteriously split in two" is this bug until proven otherwise.
+- **Bind layers to named constants**, and leave a parameterized dependency
+  unprovided inside subsystem wiring so the edge supplies it once.
+- **Opt out deliberately** with `Layer.fresh(layer)` (wrap the composed layer,
+  not its dependency) or `Effect.provide(layer, { local: true })`.
 
-**A parameterized layer static is exactly this shape.** `static readonly layer =
-(opts) => Layer.effect(...)` is a factory, and every `Svc.layer(opts)` at a
-provide site is a fresh reference — the "it's a static, so it must be a
-singleton" intuition is false.
+Before you write a layer-returning function, provide a layer twice, or hold
+per-run state in a layer, load [memoization.md](./references/memoization.md):
+it has the nesting rule, the probes and the `Layer.fresh` worked example.
 
-Learn the **symptoms**, because the type system reports nothing and the tests
-mostly pass:
-
-- two database connections opened against one file;
-- two ledgers / caches / counters, each holding half the writes;
-- **a `PubSub` where each subscriber sees only half the events** — the publisher
-  and the subscriber resolved *different* instances.
-
-Anything that looks like "state mysteriously split in two" is this bug until
-proven otherwise.
-
-**A cousin with a different fingerprint: two resolved copies of one package
-are two DISTINCT tag identities.** When a dependency graph resolves two
-copies of one `@effected` package (a caret range and a newer 0.x minor
-resolving separately), a layer built from one copy does not satisfy a
-requirement expressed by the other — and it surfaces as **"service not
-provided" in a graph that visibly provides it**, never as a version error,
-sending the reader hunting a signature change that never happened (observed
-2026-08-14). Two checks answer different halves of it: `pnpm why
-@effected/<pkg>` says what *resolves*, and grepping a bundle for the
-**fully-qualified tag id** (`@effected/<pkg>/<Service>`, one hit per copy —
-never the bare class name, which also matches methods, logs and re-exports)
-says what got *inlined*. Mechanism, diagnosis and mitigation →
-[references/edge-cases.md](./references/edge-cases.md).
-
-Discipline — **bind layers to named constants**:
-
-- Prefer plain named layer `const`s over layer-returning factories.
-- Write a layer-returning function only when the layer genuinely depends on
-  runtime params — and even then, call it **once** and reuse the result.
-- If a subsystem depends on a parameterized layer, **leave that dependency
-  unprovided** and supply the concrete layer once **at the edge**. Don't
-  call the factory locally inside subsystem wiring — it breaks sharing and
-  hides the dep.
-
-Auto-memoization is a safety net for the multi-provide footgun, not a
-license to skip composition. Compose explicitly, provide once.
-
-**Opt out** when you deliberately want a fresh build (test isolation,
-independent resource pools):
-
-- `Layer.fresh(layer)` — always builds with a fresh memo map, bypassing the
-  shared cache. It isolates only where it wraps: composed layers
-  (`Layer.provide`, `provideMerge`, `mergeAll`) are memoized by identity too,
-  so a composed `const` referenced twice is built once, and a `Layer.fresh`
-  dependency **inside** it is shared with it (probed: 1 build, where
-  `Layer.mergeAll(composed, Layer.fresh(composed))` builds 2). Wrap the
-  composed layer, not its dependency, when each site needs its own copy.
-- `Effect.provide(layer, { local: true })` — builds the layer and its
-  sublayers from a **local** memo map, isolated from other provides.
+**Two resolved copies of one package are two distinct tag identities**, and
+the failure reads as "service not provided" in a graph that visibly provides
+it. When you see that, load [edge-cases.md](./references/edge-cases.md) before
+hunting a signature change: `pnpm why @effected/<pkg>` and a grep for the
+fully-qualified tag id settle it.
 
 ## Test layers
 
-Swap the layer, not the code: business logic requires `Database`; production
-provides `Database.layer`, tests provide a fake at the same boundary.
-
-- `Layer.succeed(Service)({ ... })` — a full hand-written fake.
-- `Layer.mock(Service, { ... })` — a **partial** mock; supply only the
-  members the test exercises. Any omitted effect-returning member fails with
-  an unimplemented defect if called, so the mock fails loudly instead of
-  silently returning `undefined`:
+Swap the layer, not the code: production provides `Database.layer`, tests
+provide a fake at the same boundary. `Layer.succeed(Service)({ ... })` is a full
+fake; `Layer.mock(Service, { ... })` is a **partial** one, where an omitted
+effect-returning member fails loudly with an unimplemented defect:
 
 ```ts
 const DatabaseTest = Layer.mock(Database, {
  query: (sql) => Effect.succeed(`mocked ${sql}`),
 });
-
-Effect.runPromise(program.pipe(Effect.provide(DatabaseTest)));
 ```
 
-Keep test wiring explicit and close to the production composition style —
-the Live/Test difference should be one swapped layer at the edge, nothing
-deeper.
+**`Layer.mock`'s optionality covers only effect-returning members**: one plain
+member (a sync function, a data property) is required in every mock. **So a
+service shape carries no non-effectful members** — move a pure helper to a
+static or a plain function; never wrap it in `Effect.succeed` to comply. The
+one exception is a shape that is *entirely* one immutable value, whose double
+is `Layer.succeed`. Keep test wiring close to the production composition: the
+Live/Test difference is one swapped layer at the edge, nothing deeper.
+**Keep `Function.dual` off service shapes**: every override
+must then satisfy both overloads. Before you add a member to a service shape,
+load [service-design.md](./references/service-design.md): one plain member
+breaks every existing `Layer.mock` call site, far from the cause.
 
-### `Layer.mock`'s optionality is earned, not given — and one plain member revokes it
+## Additional resources
 
-`Layer.mock(Service, impl)` takes `PartialEffectful<S>`, not `Partial<S>`
-(`Layer.ts:2354`). That type is not "everything optional" — it splits the shape
-on one predicate:
-
-```ts
-// Layer.ts:2279 — a member is OPTIONAL iff it matches AnyEffectOrStream; else REQUIRED
-export type PartialEffectful<A extends object> = Types.Simplify<
-  & { [K in keyof A as A[K] extends AnyEffectOrStream ? K : never]?: A[K] }
-  & { [K in keyof A as A[K] extends AnyEffectOrStream ? never : K]: A[K] }
->
-// Layer.ts:2288 — AnyEffectOrStream = Effect | Stream | Channel, or a function returning one
-```
-
-So **any non-effectful member is required in every single mock**: a sync
-function, a plain data property, a generic passthrough whose return type does
-not resolve to `Effect`/`Stream`/`Channel`. Add one and every existing
-`Layer.mock` call site must now spell out that member — the partial mock has
-silently degraded to `Layer.succeed` with extra ceremony. The type system
-reports it as "missing property" errors scattered across the test suite, far
-from the service shape that caused them.
-
-**House rule: no non-effectful members on a service shape.** A service is an IO
-contract. A pure helper belongs on a static, a namespace, or a plain exported
-function next to the pure class that owns the algorithm — never inside the
-`Context.Service` shape. That keeps every member effect-valued, which keeps
-every member optional, which keeps `Layer.mock` doing the one job it exists for.
-
-> **The wrong fix: wrapping the pure helper in `Effect.succeed` to satisfy the
-> rule.** It does buy back optionality — and it is the anti-pattern, not the
-> remedy. It makes every caller pay a `yield*` for a computation that cannot
-> fail, cannot suspend and needs no runtime; it hides a pure function inside an
-> IO contract where nobody will find it; and it makes the thing untestable
-> without a layer, which is exactly the cost the pure-core/effectful-edge split
-> (see `effect-v4-planning`, pillar 1) exists to avoid. **Move the member off
-> the shape. Do not decorate it into compliance.**
-
-**The one bounded exception: a shape that is entirely ONE immutable value.** The
-rule targets **mixed** shapes, where a pure member revokes the *methods'*
-optionality. A service whose whole contract is data — a resolved environment
-record, a set of discovered paths — has no behaviour to mock, so nothing
-degrades: `Layer.succeed` is the correct and complete double, and `Layer.mock`
-was never the tool. Apply the criterion, do not pattern-match it: *the entire
-shape is one immutable value with no mockable behaviour* — not "mostly data",
-not "the methods are trivial". The boundary is sharp: **the moment a method
-appears, it is a service again**, and the rule above reapplies retroactively to
-every field. Say so in the service's TSDoc when you declare one.
-
-### `dual` belongs on pure classes, never on a service shape
-
-`Function.dual` (the kit imports it as `Fn`) gives a combinator both the
-data-first and data-last spelling — `Package.addDependency(pkg, name, spec)`
-*and* `pkg.pipe(Package.addDependency(name, spec))`. That is the right shape on
-a **pure** class: `@effected/package-json`'s `Package` and `@effected/semver`'s
-`Range` / `SemVer` all use it, and they are pure Schema classes with no layer
-anywhere near them.
-
-Putting a dual member on a `Context.Service` shape costs more than it looks:
-
-- A dual member's declared type is an **overload pair**. Any override — in a
-  `Layer.mock` implementation, in a `Partial<Shape>` test-stub argument, in a
-  hand-written fake — must satisfy **both** overloads, not just the one the test
-  calls. The one-line stub that works for every other member
-  (`layerTest({ read: () => Effect.succeed(x) })`) stops compiling, and the fix
-  is to hand-write the full overloaded signature in the test.
-- It is also a non-effectful member by the rule above whenever the data-last
-  branch returns a function rather than an `Effect`, so it is `Layer.mock`-
-  required on top of being overload-shaped.
-
-The two rules compose into one design instruction: **service shapes carry plain,
-single-signature, effect-returning methods. Everything cleverer lives on the
-pure class.**
+- [service-shape-types.md](./references/service-shape-types.md) — `Context.Service.Shape`, the indexed `["Service"]` form, why the class instance type is not the shape, pinning a consumer's key, `use`/`useSync`, and the class as an Effect. Load when: a factory returns a service implementation, a parameter takes a consumer's key, or TS2353 names a service class.
+- [layer-statics-and-construction.md](./references/layer-statics-and-construction.md) — the `this` rule and the two import-time TDZ throws, resolving a dependency once versus per call, layer naming, where a composite lives, and the top-level type helpers. Load when: writing a `layer` static or a `make`, or a suite reports `0 tests passed` after a layer change.
+- [service-design.md](./references/service-design.md) — `Layer.mock`'s `PartialEffectful` split and the no-plain-members rule, `dual` on pure classes, the value-only service, layer statics in the dependency's module, and swappable contracts. Load when: designing a service shape, adding a member to one, or a contract has several implementations.
+- [memoization.md](./references/memoization.md) — the `MemoMap` nesting rule, the resource-count probes, the symptoms, the discipline, and `Layer.fresh` with a per-run cell worked through. Load when: a resource is built twice, state splits in two, or a layer holds per-run state.
+- [platform-capabilities.md](./references/platform-capabilities.md) — which contracts core declares, what `NodeServices.layer` provides, the `@stability unstable` note, and the require-in-R rules. Load when: a library needs IO, a subprocess, a terminal or crypto.
+- [edge-cases.md](./references/edge-cases.md) — split graphs and counting copies in a bundle, sync facades, heterogeneous requirement unions, and a key over a wider shape with the `NoInfer` form. Load when: "service not provided" in a graph that provides it, a sync facade, a collection of generic values, or a factory that takes a consumer's key.

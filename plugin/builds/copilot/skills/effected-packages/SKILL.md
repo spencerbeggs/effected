@@ -114,8 +114,8 @@ backend/runtime dependency that propagates to consumers. **Companion** and **too
 | `@effected/mcp` | the `effected-mcp` stdio server with the `identity` tool and the `schema_check`, `schema_validate`, `schema_build`, `package_build`, `action_build` and `action_init` tools, on `effect/ai` and `@effected/mcp-kit`; `main` runs it, a carrier passes its `distribution` | embedding or testing the `effected-mcp` server; do not install it directly, install `@effected/plugin` — not the MCP boundary library, which is `@effected/mcp-kit` | tool (no tier) | [mcp.md](./references/mcp.md) |
 | `@effected/engine` | the `effected` tool's shared logic: `Identity.report` builds an `IdentityReport` for both front ends; `@effected/engine/schema` holds the schema run (`SchemaRun`, `SchemaValidate`, `ConfigLoader`, reports) and the ajv engines `AjvValidator` and `AjvInstanceValidator` | adding logic both the `effected` command and `effected-mcp` must share — not the cross-front-end primitives library, which is `@effected/kit` | tool (no tier) | [engine.md](./references/engine.md) |
 
-**Every row has a `references/` file.** Each package's own `CLAUDE.md` remains the
-authority when the two disagree; the reference is the routing layer over it.
+**Every row has a `references/` file.** The installed package's `.d.ts` remains
+the authority when the two disagree; the reference is the routing layer over it.
 For `github`, `github-actions` and `commands` specifically, depth also lives
 one level up: [building-a-github-action](../building-a-github-action/SKILL.md) routes a 14-skill suite (capability
 references plus `designing-an-action`'s build sequence) covering these three
@@ -124,6 +124,7 @@ there when you are actually building an action.
 
 ## Facts that change how you depend on the kit
 
+- **Every published kit package is `0.x`, so a minor is a breaking line.** Whether a package has published at all is a check, not something to remember: `npm view @effected/<name> version`.
 - **`@effected/markdown` peers on `@effected/yaml` / `@effected/toml` /
   `@effected/jsonc` *optionally*** (`peerDependenciesMeta`), consumed only by the
   three frontmatter codec modules. Parsing markdown pulls in none of them. Note
@@ -180,33 +181,6 @@ there when you are actually building an action.
   shipped policy is also reachable as a **value** (`PublishabilityDetector.npm`),
   so a policy that wraps npm semantics does not have to re-enter the tag it is
   replacing.
-
-## Local-build dogfood state
-
-**Whether a given package has published is a check, not a roster to
-memorize** — `npm view @effected/<name> version` answers it directly, and a
-package that has not yet published is consumed from the local checkout during
-a dogfood loop instead of from the registry.
-
-Releases are changeset-driven: CI builds the appropriate changesets and
-releases the packages they name. That may be the whole kit on an Effect advance
-or a single package on a patch — a package can be released on its own, and
-solo patches like `workspaces@0.11.1` are ordinary. A downstream repo
-mid-dogfood-loop may still consume unreleased branch work from the local
-`effected` checkout via `file:` overrides. Everything published is `0.x` and
-unstable.
-
-Three standing directives for a downstream repo rebuilding against this kit:
-
-- **The dogfood main agent runs Fable and orchestrates** — it delegates rather
-  than implements: reasoning-heavy work to opus, mechanical work to sonnet.
-- **No branching and no changesets in downstream repos during the rebuild.**
-  Work lands on the working branch; release bookkeeping comes later, once the
-  rebuild settles.
-- **Mid-loop branch work resolves from the local checkout.** While a dogfood
-  loop is linked, a downstream manifest points at it (a workspace link or a
-  `file:`/`overrides:` entry) rather than a registry range, until the next
-  release wave carries the work.
 
 ## The two warnings every consumer inherits
 
@@ -272,16 +246,19 @@ Three standing directives for a downstream repo rebuilding against this kit:
 ## Related skills
 
 - [effect-v4-module-index](../effect-v4-module-index/SKILL.md) routes Effect
-  core; check it first. The kit requires core contracts (`FileSystem`,
-  `ChildProcessSpawner`) in `R` rather than re-declaring them.
+  core; load it first, before you look for a kit package. The kit requires
+  core contracts (`FileSystem`, `ChildProcessSpawner`) in `R` rather than
+  re-declaring them.
 - [effect-v4-cli](../effect-v4-cli/SKILL.md) and
   [effect-v4-mcp](../effect-v4-mcp/SKILL.md) teach the CLI and MCP boundaries
   in depth; [design-patterns](../design-patterns/SKILL.md) teaches the carrier
-  pattern a CLI and an MCP front end share through `@effected/kit`.
+  pattern a CLI and an MCP front end share through `@effected/kit`. Load them
+  before you build a front end on `@effected/cli-kit` or `@effected/mcp-kit`.
 - [building-a-package](../building-a-package/SKILL.md) teaches
   `effected package build` and `effected.toml`, and
   [authoring-tsdoc](../authoring-tsdoc/SKILL.md) the TSDoc and API Extractor
-  rules that build enforces.
+  rules that build enforces. Load them before you build or document a package
+  on the kit.
 
 The construct index is generated from every package's API model, so it lists
 every export the kit ships. When the tables and this file's prose disagree, the

@@ -8,7 +8,7 @@ when_to_use: ACTIONS_RESULTS_URL, ACTIONS_RUNTIME_TOKEN, tool cache, blob store,
 
 The storage tier of `@effected/github-actions`: caches, artifacts, blobs, and installed tools. `@actions/cache` and `@actions/artifact` are both re-implemented directly against their own HTTP protocols rather than taken as dependencies — either one alone drags a tree larger than this whole package.
 
-For the general Effect v4 service/layer rules this package follows — `Context.Service`, `provideMerge` vs `mergeAll`, memoization by reference — see `effect-v4-services-layers`; this skill carries only the storage-specific instance of each.
+For the general Effect v4 service/layer rules this package follows — `Context.Service`, `provideMerge` vs `mergeAll`, memoization by reference — load `effect-v4-services-layers` before you compose a storage layer; this skill carries only the storage-specific instance of each.
 
 ## What you have
 
@@ -22,7 +22,7 @@ For the general Effect v4 service/layer rules this package follows — `Context.
 | Download, extract and cache a toolchain | `ToolInstaller` | `ToolInstaller.layer` | `ActionEnvironment \| FileSystem \| Path \| HttpClient \| ChildProcessSpawner` | `ToolInstallerError` |
 | Pin and install an exact npm/pnpm/bun on the runner | `PackageManagerInstaller` | `PackageManagerInstaller.layer` | `ActionEnvironment \| FileSystem \| Path \| ChildProcessSpawner \| ToolInstaller` | `PackageManagerInstallerError` |
 
-`ActionRuntime.layer` provides none of the six services above by default — see `actions-runtime` for why, and for the one-line cost of taking one (`Action.run(program, { layer: ActionCache.layer })`).
+`ActionRuntime.layer` provides none of the six services above by default — load `actions-runtime` before you add one, for why and for the one-line cost of taking one (`Action.run(program, { layer: ActionCache.layer })`).
 
 ## Standards
 
@@ -36,11 +36,11 @@ For the general Effect v4 service/layer rules this package follows — `Context.
 
 ## Footguns
 
-- `PackageManagerInstaller.install` can answer an ambient package manager with **no `binDir`** — a consumer that always reads `binDir` breaks on that branch. See `references/installers.md`.
-- A hex-fed hash accumulator in `CacheKey.hashFiles` produces a plausible-looking digest that never matches any cache entry written by `@actions/glob`'s `hashFiles` — the per-file digest must feed the accumulator as binary. See `references/cache-and-keys.md`.
-- Resolved cache paths reaching `tar` via argv instead of a manifest file blow past the OS argv limit on a large glob resolution. See `references/cache-and-keys.md`.
-- A legacy, unframed blob decodes as a typed clean miss against `BlobEnvelope`, on purpose — treat it as "not cached yet," never as a corrupt read. See `references/blob-stores.md`.
-- The Actions-cache Twirp protocol hands back a blob URL for the payload, so the transfer-module count is three, not the two a casual read of the cache/artifact split suggests. See `references/blob-stores.md`.
+- `PackageManagerInstaller.install` can answer an ambient package manager with **no `binDir`** — a consumer that always reads `binDir` breaks on that branch. Before you read an install result's `binDir` or add a tool to `PATH`, load [installers.md](references/installers.md).
+- A hex-fed hash accumulator in `CacheKey.hashFiles` produces a plausible-looking digest that never matches any cache entry written by `@actions/glob`'s `hashFiles` — the per-file digest must feed the accumulator as binary. Before you derive a cache key from file hashes, load [cache-and-keys.md](references/cache-and-keys.md).
+- Resolved cache paths reaching `tar` via argv instead of a manifest file blow past the OS argv limit on a large glob resolution. Before you hand cache paths to `tar`, load [cache-and-keys.md](references/cache-and-keys.md).
+- A legacy, unframed blob decodes as a typed clean miss against `BlobEnvelope`, on purpose — treat it as "not cached yet," never as a corrupt read. Before you handle a blob decode result as an error, load [blob-stores.md](references/blob-stores.md).
+- The Actions-cache Twirp protocol hands back a blob URL for the payload, so the transfer-module count is three, not the two a casual read of the cache/artifact split suggests. Before you add or audit a module that moves blob bytes, load [blob-stores.md](references/blob-stores.md).
 
 ## Additional resources
 

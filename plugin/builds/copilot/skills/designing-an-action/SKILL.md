@@ -21,13 +21,13 @@ Use this for a new action from its metadata file up, a wholesale rebuild replaci
 4. Present 2–4 real decisions with recommended defaults: where legacy code goes, the dependency posture, how strict the parity contract is, and — when the action needs GitHub App auth — token scope verification and lifecycle placement, decided now rather than discovered while wiring the entry point (`github-app-tokens` carries the complete recipe). Everything else is not a decision; don't pad the list.
 5. A checked-absent kit surface is a decision point, not a workaround license. When recon turns up a capability the installed kit genuinely doesn't ship, ask whether to contribute the fix upstream now or write a local, tracked shim — never decide silently either way — and record the gap as an issue against the kit regardless of which path is chosen.
 
-**Phase 0: Spec with a frozen parity contract.** Freeze the interface inventory numerically, and track every uncertainty as a known unknown with a verification obligation. See [references/porting.md](references/porting.md) for both in full.
+**Phase 0: Spec with a frozen parity contract.** Freeze the interface inventory numerically, and track every uncertainty as a known unknown with a verification obligation. Before you write the spec, load [references/porting.md](references/porting.md): it has the parity contract and the ledger in full, and an unfrozen inventory drifts with every phase.
 
-**Phase 0.5: The API dossier.** Persist a signature-level dossier of the packages this build depends on before writing a skeleton against them. See [references/porting.md](references/porting.md).
+**Phase 0.5: The API dossier.** Persist a signature-level dossier of the packages this build depends on before writing a skeleton against them. Before you write a skeleton against another package's API, load [references/porting.md](references/porting.md).
 
-**Phase A: The contracts-first walking skeleton.** Build seven pieces in order, each an inert stub that succeeds: domain schema, inputs module, outputs module, cross-phase state, step contracts, program/entries/layers, and only then the TDD fill. See [references/walking-skeleton.md](references/walking-skeleton.md) for each step in full, and [references/design-checkpoints.md](references/design-checkpoints.md) for the correctness rules that make each one non-negotiable.
+**Phase A: The contracts-first walking skeleton.** Build seven pieces in order, each an inert stub that succeeds: domain schema, inputs module, outputs module, cross-phase state, step contracts, program/entries/layers, and only then the TDD fill. Before you build the skeleton, load [references/walking-skeleton.md](references/walking-skeleton.md) for each piece in order, and before you write or review state, failure posture, logging, layers or errors, load [references/design-checkpoints.md](references/design-checkpoints.md) for the correctness rules that make each one non-negotiable.
 
-**Phase B: Fill.** Fill each step's business logic in red/green/refactor cycles against the now-frozen contract, one step at a time. See [references/porting.md](references/porting.md) for treating a legacy implementation as the test oracle, and for the doubles-before-runner-conversion ordering when this phase also migrates test infrastructure.
+**Phase B: Fill.** Fill each step's business logic in red/green/refactor cycles against the now-frozen contract, one step at a time. When a legacy implementation exists, or this phase also migrates test infrastructure, load [references/porting.md](references/porting.md) first: it treats the legacy code as the test oracle and orders the doubles before the runner conversion.
 
 ## Standards
 
@@ -35,15 +35,15 @@ Use this for a new action from its metadata file up, a wholesale rebuild replaci
 - **One fresh subagent per task, with a task-scoped reviewer carrying an explicit constraint lens** ("cross-check every name against the frozen inventory yourself"), and a ledger file that survives context loss across the whole build.
 - **A reviewer verifies against the primary source, not the implementer's report.** Re-read the source line by line; a reviewer who reads only the summary reviews the summary, not the work.
 - **A convention decision made mid-build supersedes whatever the plan already says.** Record it once, ledger it as a ruling, and restate it in every later dispatch — a task brief was extracted from the plan before the decision existed, so nothing else carries it forward.
-- **Gate every task and every milestone.** Per-task: its own tests, then the full suite, then typecheck, then lint, then a properly formatted commit. Per milestone: an end-to-end run after the skeleton lands and after each designated fill step. Refresh the package's own documentation in the same gate — see [references/design-checkpoints.md](references/design-checkpoints.md).
+- **Gate every task and every milestone.** Per-task: its own tests, then the full suite, then typecheck, then lint, then a properly formatted commit. Per milestone: an end-to-end run after the skeleton lands and after each designated fill step. Refresh the package's own documentation in the same gate — load [references/design-checkpoints.md](references/design-checkpoints.md) before you close a milestone.
 
 ## Footguns
 
-- Business logic appearing before every step contract exists means the skeleton discipline is being skipped. See [references/walking-skeleton.md](references/walking-skeleton.md).
-- A stub that fails, or a skeleton that isn't green, is a wiring bug — stubs always succeed; red belongs only to the fill phase's TDD cycle. See [references/walking-skeleton.md](references/walking-skeleton.md).
-- An upstream ask or a design commitment resting on an unverified known unknown, or two implementers independently re-deriving the same API surface, both mean the dossier wasn't persisted or wasn't handed down. See [references/porting.md](references/porting.md).
-- A requirement channel declared from a guess rather than from a reference implementation's actual usage is a contract that will need reopening. See [references/walking-skeleton.md](references/walking-skeleton.md).
-- An error class with no test that constructs it is a documented lie; the mirror form — a step failure reported through a bare, untagged error — is the same defect from the other side. See [references/design-checkpoints.md](references/design-checkpoints.md).
+- Business logic appearing before every step contract exists means the skeleton discipline is being skipped. Before you write any step's logic, load [references/walking-skeleton.md](references/walking-skeleton.md).
+- A stub that fails, or a skeleton that isn't green, is a wiring bug — stubs always succeed; red belongs only to the fill phase's TDD cycle. Before you fix a red skeleton, load [references/walking-skeleton.md](references/walking-skeleton.md).
+- An upstream ask or a design commitment resting on an unverified known unknown, or two implementers independently re-deriving the same API surface, both mean the dossier wasn't persisted or wasn't handed down. Before you file an upstream ask or hand work to an implementer, load [references/porting.md](references/porting.md).
+- A requirement channel declared from a guess rather than from a reference implementation's actual usage is a contract that will need reopening. Before you declare a step's requirement channel, load [references/walking-skeleton.md](references/walking-skeleton.md).
+- An error class with no test that constructs it is a documented lie; the mirror form — a step failure reported through a bare, untagged error — is the same defect from the other side. Before you add an error class or report a step failure, load [references/design-checkpoints.md](references/design-checkpoints.md).
 
 ## Additional resources
 

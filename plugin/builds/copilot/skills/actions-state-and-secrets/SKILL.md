@@ -7,7 +7,7 @@ description: "Use when persisting values across a GitHub Action's pre/main/post 
 
 Everything in `@effected/github-actions` that crosses a phase boundary, or that must not leak. Each phase (`pre`/`main`/`post`) is a **separate process**; GitHub's own mechanism for carrying a value between them is a write-only file (`GITHUB_STATE`) whose entries the runner republishes to the next phase as `STATE_<key>` environment variables. That asymmetry — write through a file, read through the environment — is why `ActionState` is a service rather than a pair of helper functions.
 
-For general Effect v4 service/layer shape, typed errors, `Cause`, and `Scope`, see `effect-v4-services-layers`, `effect-v4-idioms`, `effect-v4-schema`. This skill carries only the Actions-specific instance of those rules.
+Load `effect-v4-services-layers` before you shape a service or layer, `effect-v4-idioms` before you handle a typed error, a `Cause` or a `Scope`, and `effect-v4-schema` before you encode state. This skill carries only the Actions-specific instance of those rules.
 
 ## What you have
 
@@ -33,9 +33,9 @@ For general Effect v4 service/layer shape, typed errors, `Cause`, and `Scope`, s
 
 ## Footguns
 
-- An `Option` field encoded with `Schema.Option` instead of `Schema.OptionFromNullOr` reports success in `main` and fails to decode in `post` — the mistake and its failure land in different phases. See `references/cross-phase-state.md`.
-- `DetachedProcess.reap` takes a plain `number`: an absent state key, a truncated file, or a bad parse all decode to `0`, and `process.kill(0, …)` signals the caller's entire process group. See `references/detached-processes.md`.
-- `env` passed to a spawn call without `extendEnv: true` replaces the child's whole environment, including the `PATH` a caller meant to extend. See `references/detached-processes.md`.
+- An `Option` field encoded with `Schema.Option` instead of `Schema.OptionFromNullOr` reports success in `main` and fails to decode in `post` — the mistake and its failure land in different phases. Before you add a field to a cross-phase state bundle, load [cross-phase-state.md](references/cross-phase-state.md).
+- `DetachedProcess.reap` takes a plain `number`: an absent state key, a truncated file, or a bad parse all decode to `0`, and `process.kill(0, …)` signals the caller's entire process group. Before you reap a process from saved state, load [detached-processes.md](references/detached-processes.md).
+- `env` passed to a spawn call without `extendEnv: true` replaces the child's whole environment, including the `PATH` a caller meant to extend. Before you pass `env` to a spawn or extend a child's `PATH`, load [detached-processes.md](references/detached-processes.md).
 - `BlobEnvelope`'s wire format, five-reason error union, and why a legacy raw blob decodes as a clean miss rather than garbage live in `actions-cache-and-artifacts`, not here — don't re-derive the frame shape from this skill's description alone.
 - **A `Schema.Redacted` field persisted as JSON round-trips to the literal string `<redacted>`.** This is core Effect behavior, not a kit choice, and it is silent — the write succeeds, the read succeeds, and the value is garbage. Probed (`Schema.Redacted` encode → an object whose `JSON.stringify` is `"<redacted>"`; `Schema.RedactedFromValue` encode → `"s3cret"`):
 
