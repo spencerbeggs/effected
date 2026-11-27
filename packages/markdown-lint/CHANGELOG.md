@@ -1,5 +1,14 @@
 # @effected/markdown-lint
 
+## 0.3.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/markdown | dependency | updated | 0.30.0 | 0.31.0 |
+| @effected/yaml | dependency | updated | 0.30.0 | 0.31.0 |
+
 ## 0.3.0
 
 ### Breaking Changes
