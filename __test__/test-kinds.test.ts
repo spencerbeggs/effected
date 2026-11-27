@@ -35,8 +35,6 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ALLOWED_CLOCKS: Readonly<Record<string, string>> = {
 	"packages/bundler/__test__/e2e/action-spike.e2e.test.ts":
 		"times each bundle for a row in the report it prints; nothing is asserted on it",
-	"packages/cli-kit/__test__/ui/CliUi.live.exit.test.ts":
-		"compares the moment a child process exited with the timestamp that child printed when its scope closed: a deadline across two processes",
 	"packages/cli-kit/__test__/ui/CliUi.live.modes.test.ts": "a poll deadline while waiting on a child's output",
 	"packages/cli-kit/__test__/ui/CliUi.run.test.ts":
 		"a lower bound: Ink flushes a lone escape after 20 ms, so the key must not arrive sooner",

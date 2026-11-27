@@ -9,6 +9,7 @@
 
 import { Option, Schema } from "effect";
 import type { YamlPath } from "./YamlEdit.js";
+import { YamlRange } from "./YamlEdit.js";
 
 /**
  * YAML scalar presentation styles.
@@ -109,6 +110,12 @@ export type ScalarChomp = typeof ScalarChomp.Type;
  * - `style` — the scalar presentation style in the source document.
  * - `tag` — optional explicit YAML tag (e.g. `!!str`, `!!int`).
  * - `anchor` — optional anchor name for aliasing.
+ * - `tagRange` — the source span of the tag token as written (`!!str`,
+ *   `!local`, a verbatim `!<tag:example.com,2000:x>` whole), when the node
+ *   came from source with a tag; absent on synthetic nodes.
+ * - `anchorRange` — the source span of the anchor token as written (`&name`,
+ *   including the `&`), when the node came from source with an anchor;
+ *   absent on synthetic nodes.
  * - `commentBefore` — own-line comment text directly above the node
  *   (multiple consecutive comment lines join with `\n`).
  * - `comment` — trailing comment text on the node's line (strictly trailing;
@@ -124,7 +131,11 @@ export type ScalarChomp = typeof ScalarChomp.Type;
  *   value in a way stringification needs to know about.
  * - `sourceMultiline` — `true` when the source span covers two or more lines;
  *   absent on synthetic nodes.
- * - `offset` / `length` — the node's span in the source.
+ * - `offset` / `length` — the node's span in the source. The span covers
+ *   the scalar's content only, never its tag or anchor (those are
+ *   `tagRange` / `anchorRange`). A scalar with properties but no content
+ *   (`a: !!null`, `- &x`) is zero-length, positioned immediately after its
+ *   last property token.
  *
  * @public
  */
@@ -133,6 +144,8 @@ export class YamlScalar extends Schema.TaggedClass<YamlScalar>()("YamlScalar", {
 	tag: Schema.optionalKey(Schema.String),
 	style: ScalarStyle,
 	anchor: Schema.optionalKey(Schema.String),
+	tagRange: Schema.optionalKey(YamlRange),
+	anchorRange: Schema.optionalKey(YamlRange),
 	commentBefore: Schema.optionalKey(Schema.String),
 	comment: Schema.optionalKey(Schema.String),
 	spaceBefore: Schema.optionalKey(Schema.Boolean),
@@ -167,6 +180,27 @@ export class YamlScalar extends Schema.TaggedClass<YamlScalar>()("YamlScalar", {
 	 */
 	pathOf(node: YamlNode): Option.Option<YamlPath> {
 		return pathToNode(this, node);
+	}
+
+	/**
+	 * The scalar's text as written in the source, before resolution: an
+	 * unquoted `0.10` reads `"0.10"` here while `value` is `0.1`.
+	 *
+	 * @remarks
+	 * Returns `text.slice(offset, offset + length)`. `text` must be the same
+	 * string the document was parsed from — the span's offsets are relative
+	 * to it, and a different string yields an unrelated slice. The span is
+	 * the scalar's content only: quotes are included for a quoted scalar
+	 * (`'q'`, `"q"`), and a block scalar includes its `|` / `>` header line;
+	 * a tag or anchor is never included (see `tagRange` / `anchorRange`). A
+	 * zero-length span — a synthetic node, or a scalar with properties but
+	 * no content such as `a: !!null` — returns `""`.
+	 *
+	 * @param text - The source the document was parsed from.
+	 * @returns The scalar's source text.
+	 */
+	sourceText(text: string): string {
+		return text.slice(this.offset, this.offset + this.length);
 	}
 
 	/**
@@ -301,6 +335,11 @@ export class YamlPair extends Schema.TaggedClass<YamlPair>()("YamlPair", {
  * entries.
  *
  * - `style` — the presentation style: `"block"` or `"flow"`.
+ * - `tag` / `anchor` — optional explicit tag and anchor name.
+ * - `tagRange` / `anchorRange` — the source spans of the tag and anchor
+ *   tokens as written (sigils included), when the mapping came from source
+ *   with that property; absent on synthetic nodes. The mapping's own
+ *   `offset` / `length` exclude them.
  * - `commentBefore` — own-line comment text directly above the mapping.
  * - `comment` — trailing comment text: own-line comment lines after the
  *   mapping's last entry (still at the mapping's item indent), or a same-line
@@ -315,6 +354,8 @@ export class YamlMap extends Schema.TaggedClass<YamlMap>()("YamlMap", {
 	items: Schema.Array(Schema.suspend((): typeof YamlPair => YamlPair)),
 	tag: Schema.optionalKey(Schema.String),
 	anchor: Schema.optionalKey(Schema.String),
+	tagRange: Schema.optionalKey(YamlRange),
+	anchorRange: Schema.optionalKey(YamlRange),
 	style: CollectionStyle,
 	commentBefore: Schema.optionalKey(Schema.String),
 	comment: Schema.optionalKey(Schema.String),
@@ -348,6 +389,12 @@ export class YamlMap extends Schema.TaggedClass<YamlMap>()("YamlMap", {
  * A YAML sequence AST node, representing an ordered list of
  * {@link (YamlNode:type)} values.
  *
+ * - `style` — the presentation style: `"block"` or `"flow"`.
+ * - `tag` / `anchor` — optional explicit tag and anchor name.
+ * - `tagRange` / `anchorRange` — the source spans of the tag and anchor
+ *   tokens as written (sigils included), when the sequence came from source
+ *   with that property; absent on synthetic nodes. The sequence's own
+ *   `offset` / `length` exclude them.
  * - `commentBefore` — own-line comment text directly above the sequence.
  * - `comment` — trailing comment text: own-line comment lines after the
  *   sequence's last item (still at the sequence's item indent), or a
@@ -360,6 +407,8 @@ export class YamlSeq extends Schema.TaggedClass<YamlSeq>()("YamlSeq", {
 	items: Schema.Array(Schema.suspend((): typeof YamlNode => YamlNode)),
 	tag: Schema.optionalKey(Schema.String),
 	anchor: Schema.optionalKey(Schema.String),
+	tagRange: Schema.optionalKey(YamlRange),
+	anchorRange: Schema.optionalKey(YamlRange),
 	style: CollectionStyle,
 	commentBefore: Schema.optionalKey(Schema.String),
 	comment: Schema.optionalKey(Schema.String),

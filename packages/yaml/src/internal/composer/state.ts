@@ -2,6 +2,7 @@
 // across the composer seams. Imports nothing from the other composer modules
 // so every seam can depend on it without cycles.
 
+import { YamlRange } from "../../YamlEdit.js";
 import type { YamlMap, YamlNode, YamlSeq } from "../../YamlNode.js";
 import type { CstNode } from "../cst.js";
 import type { RawDiagnostic } from "../diagnostics.js";
@@ -95,9 +96,17 @@ export function lineIndentColumn(text: string, offset: number): number {
 // Metadata for anchors/tags/comments attached to nodes
 // ---------------------------------------------------------------------------
 
+/**
+ * Pending node properties. `tagRange` / `anchorRange` are the source spans of
+ * the property tokens (`!!str`, `&a` including their sigils) and are set
+ * together with `tag` / `anchor` by `setTag` / `setAnchor`, so a spread or
+ * copy that carries one carries the other.
+ */
 export interface NodeMeta {
 	anchor?: string;
+	anchorRange?: YamlRange;
 	tag?: string;
+	tagRange?: YamlRange;
 	comment?: string;
 }
 
@@ -107,8 +116,67 @@ export function hasMeta(m: NodeMeta): boolean {
 
 export function clearMeta(m: NodeMeta): void {
 	delete m.anchor;
+	delete m.anchorRange;
 	delete m.tag;
+	delete m.tagRange;
 	delete m.comment;
+}
+
+/** Record a tag property token (its source text and span) on `m`. */
+export function setTag(m: NodeMeta, cst: CstNode): void {
+	m.tag = cst.source;
+	m.tagRange = new YamlRange({ offset: cst.offset, length: cst.length });
+}
+
+/** Record an anchor property token (its name and the `&name` span) on `m`. */
+export function setAnchor(m: NodeMeta, name: string, cst: CstNode): void {
+	m.anchor = name;
+	m.anchorRange = new YamlRange({ offset: cst.offset, length: cst.length });
+}
+
+/** Copy the tag and anchor (each with its span) from `from` onto `to`, when present. */
+export function copyProperties(from: NodeMeta, to: NodeMeta): void {
+	if (from.tag !== undefined) {
+		to.tag = from.tag;
+		if (from.tagRange !== undefined) to.tagRange = from.tagRange;
+	}
+	if (from.anchor !== undefined) {
+		to.anchor = from.anchor;
+		if (from.anchorRange !== undefined) to.anchorRange = from.anchorRange;
+	}
+}
+
+/**
+ * The property fields (`tag`, `anchor` and their source spans) of pending
+ * meta or an existing node, as a conditional spread for a node constructor —
+ * never an explicit `undefined` into a v4 `optionalKey` field.
+ */
+export function propertyProps(m: NodeMeta | undefined): {
+	tag?: string;
+	tagRange?: YamlRange;
+	anchor?: string;
+	anchorRange?: YamlRange;
+} {
+	if (m === undefined) return {};
+	return {
+		...(m.tag !== undefined ? { tag: m.tag } : {}),
+		...(m.tagRange !== undefined ? { tagRange: m.tagRange } : {}),
+		...(m.anchor !== undefined ? { anchor: m.anchor } : {}),
+		...(m.anchorRange !== undefined ? { anchorRange: m.anchorRange } : {}),
+	};
+}
+
+/**
+ * Where an empty scalar synthesized from pending properties sits: zero-length,
+ * immediately after its last property token (whichever of the tag and anchor
+ * ends later). `fallback` is used when the meta carries no property span (a
+ * comment-only meta, or a synthetic one).
+ */
+export function emptyScalarOffset(m: NodeMeta, fallback: number): number {
+	const tagEnd = m.tagRange !== undefined ? m.tagRange.offset + m.tagRange.length : -1;
+	const anchorEnd = m.anchorRange !== undefined ? m.anchorRange.offset + m.anchorRange.length : -1;
+	const end = Math.max(tagEnd, anchorEnd);
+	return end >= 0 ? end : fallback;
 }
 
 /**

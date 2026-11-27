@@ -8,10 +8,10 @@ resource: ../../packages/yaml
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-27T23:10:24Z
 x-okfit-integrity:
   generated:
-    body: d5d539a272d148e2
+    body: cfba094a66fc1466
 ---
 
 # @effected/yaml
@@ -230,6 +230,19 @@ and no parent pointers — those would break structural equality,
 serialization and Schema encode/decode. Absence stays `Option`, never a
 `NotFound` error. `pathOf` is reference-identity based, the inverse of `find`
 and composable with `findAtOffset`.
+
+A node's span (`offset`/`length`) is its value alone and never covers its
+properties: `!!float 0.10` and `&a 0.10` both span `0.10`. The properties
+have their own spans, `tagRange` (the tag as written, a verbatim `!<...>`
+whole) and `anchorRange` (`&name`), on `YamlScalar`, `YamlMap` and `YamlSeq`,
+present only on nodes read from source. An empty scalar that carries
+properties (`a: !!null`, `- &x`) is zero-length immediately after its last
+property token, never at the next line's content (#1439); every such scalar is
+built by `makeEmptyScalar` (`src/internal/composer/scalars.ts`), so a new
+composer site must use it. Its value resolves through the tag (`!!str` is `""`),
+at the document root too. `YamlScalar.sourceText(text)` is the span sliced from
+the text the document was parsed from: quotes and a block scalar's header
+included, properties never (#1440).
 
 Two value-extraction rules are load-bearing. Single-document parse resolves
 aliases against the most recently seen anchor at the point of use, while

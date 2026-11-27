@@ -23,11 +23,12 @@ import {
 	collectMultilinePlainScalar,
 	getScalarStyle,
 	hasValueSepThroughPlainScalars,
+	makeEmptyScalar,
 	makeScalar,
 	resolveScalar,
 } from "./scalars.js";
 import type { ComposerState, NodeMeta } from "./state.js";
-import { enterNesting, exitNesting, hasMeta } from "./state.js";
+import { enterNesting, exitNesting, hasMeta, propertyProps, setAnchor, setTag } from "./state.js";
 
 /**
  * Validate that flow collection entries are separated by commas.
@@ -233,8 +234,7 @@ function composeFlowMapInner(cst: CstNode, state: ComposerState, meta?: NodeMeta
 		style: "flow" as CollectionStyle,
 		offset: cst.offset,
 		length: cst.length,
-		...(meta?.tag !== undefined ? { tag: meta.tag } : {}),
-		...(meta?.anchor !== undefined ? { anchor: meta.anchor } : {}),
+		...propertyProps(meta),
 		...(mapComment !== undefined ? { comment: mapComment } : {}),
 	});
 
@@ -257,36 +257,16 @@ export function flattenFlowChildren(children: readonly CstNode[], state: Compose
 			// scalar so it doesn't bleed into the next item.
 			if (child.source === ",") {
 				if (hasMeta(pendingMeta)) {
-					const value = resolveScalar("", "plain", pendingMeta.tag, state);
-					const scalar = new YamlScalar({
-						value,
-						style: "plain" as ScalarStyle,
-						offset: child.offset,
-						length: 0,
-						...(pendingMeta.tag !== undefined ? { tag: pendingMeta.tag } : {}),
-						...(pendingMeta.anchor !== undefined ? { anchor: pendingMeta.anchor } : {}),
-					});
-					if (pendingMeta.anchor) registerAnchor(scalar, pendingMeta.anchor, state, child.offset);
+					items.push({ kind: "node", node: makeEmptyScalar(pendingMeta, child.offset, state) });
 					pendingMeta = {};
-					items.push({ kind: "node", node: scalar });
 				}
 				continue;
 			}
 			if (child.source === ":") {
 				// Flush pending tag/anchor as empty scalar before value-sep
 				if (hasMeta(pendingMeta)) {
-					const value = resolveScalar("", "plain", pendingMeta.tag, state);
-					const scalar = new YamlScalar({
-						value,
-						style: "plain" as ScalarStyle,
-						offset: child.offset,
-						length: 0,
-						...(pendingMeta.tag !== undefined ? { tag: pendingMeta.tag } : {}),
-						...(pendingMeta.anchor !== undefined ? { anchor: pendingMeta.anchor } : {}),
-					});
-					if (pendingMeta.anchor) registerAnchor(scalar, pendingMeta.anchor, state, child.offset);
+					items.push({ kind: "node", node: makeEmptyScalar(pendingMeta, child.offset, state) });
 					pendingMeta = {};
-					items.push({ kind: "node", node: scalar });
 				}
 				items.push({ kind: "value-sep", offset: child.offset });
 			}
@@ -317,11 +297,11 @@ export function flattenFlowChildren(children: readonly CstNode[], state: Compose
 			continue;
 		}
 		if (child.type === "anchor") {
-			pendingMeta.anchor = getAnchorName(child, state.text);
+			setAnchor(pendingMeta, getAnchorName(child, state.text), child);
 			continue;
 		}
 		if (child.type === "tag") {
-			pendingMeta.tag = child.source;
+			setTag(pendingMeta, child);
 			continue;
 		}
 		if (child.type === "flow-scalar" || child.type === "block-scalar") {
@@ -371,8 +351,7 @@ export function flattenFlowChildren(children: readonly CstNode[], state: Compose
 						style: "plain" as ScalarStyle,
 						offset: child.offset,
 						length: child.length,
-						...(pendingMeta.tag !== undefined ? { tag: pendingMeta.tag } : {}),
-						...(pendingMeta.anchor !== undefined ? { anchor: pendingMeta.anchor } : {}),
+						...propertyProps(pendingMeta),
 					});
 					if (pendingMeta.anchor) registerAnchor(scalar, pendingMeta.anchor, state, child.offset);
 					pendingMeta = {};
@@ -396,8 +375,7 @@ export function flattenFlowChildren(children: readonly CstNode[], state: Compose
 					// so findAtOffset covers continuation lines and the
 					// sourceMultiline decoration pass sees the real extent.
 					length: partsCount > 1 ? endOffset - child.offset : child.length,
-					...(pendingMeta.tag !== undefined ? { tag: pendingMeta.tag } : {}),
-					...(pendingMeta.anchor !== undefined ? { anchor: pendingMeta.anchor } : {}),
+					...propertyProps(pendingMeta),
 				});
 				if (pendingMeta.anchor) registerAnchor(scalar, pendingMeta.anchor, state, child.offset);
 				pendingMeta = {};
@@ -431,17 +409,11 @@ export function flattenFlowChildren(children: readonly CstNode[], state: Compose
 	}
 	// Flush trailing pending tag/anchor as empty scalar (e.g., !!str at end of flow)
 	if (hasMeta(pendingMeta)) {
-		const value = resolveScalar("", "plain", pendingMeta.tag, state);
-		const scalar = new YamlScalar({
-			value,
-			style: "plain" as ScalarStyle,
-			offset: 0,
-			length: 0,
-			...(pendingMeta.tag !== undefined ? { tag: pendingMeta.tag } : {}),
-			...(pendingMeta.anchor !== undefined ? { anchor: pendingMeta.anchor } : {}),
+		const last = children.at(-1);
+		items.push({
+			kind: "node",
+			node: makeEmptyScalar(pendingMeta, last !== undefined ? last.offset + last.length : 0, state),
 		});
-		if (pendingMeta.anchor) registerAnchor(scalar, pendingMeta.anchor, state, 0);
-		items.push({ kind: "node", node: scalar });
 	}
 	return items;
 }
@@ -698,8 +670,7 @@ function composeFlowSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMeta
 		style: "flow" as CollectionStyle,
 		offset: cst.offset,
 		length: cst.length,
-		...(meta?.tag !== undefined ? { tag: meta.tag } : {}),
-		...(meta?.anchor !== undefined ? { anchor: meta.anchor } : {}),
+		...propertyProps(meta),
 		...(seqComment !== undefined ? { comment: seqComment } : {}),
 	});
 

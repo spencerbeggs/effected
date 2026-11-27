@@ -96,6 +96,20 @@ errors on stderr and the exit still `usageExitCode`. Return `undefined` and the
 output is exactly what it would be without the option. Do not scan argv for
 `--format` yourself: that also fires for a subcommand that has no such setting.
 
+Two settings cannot share a flag name on one tree, even with scopes that never
+overlap: core collects every global flag into one registry and dies at startup
+with `Duplicate flag name`. A subcommand whose `--format` takes other choices
+declares a local flag instead, and `render` reads it with `flag(f)`, which
+answers as `setting` does for a `Local` or inherited flag of that name on
+`commandPath`:
+
+~~~ts
+render: ({ commandPath, errors, flag, setting }) => {
+  const format = commandPath.at(-1) === "graph" ? flag(GraphFormat) : setting(Format);
+  return Option.contains(format, "json") ? JSON.stringify({ ok: false, usage: errors.map(String) }) : undefined;
+}
+~~~
+
 ~~~ts
 CliRuntime.main(CliAudience.run(root, { version }), {
   platform,
