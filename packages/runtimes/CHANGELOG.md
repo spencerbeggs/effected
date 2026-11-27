@@ -1,5 +1,11 @@
 # @effected/runtimes
 
+## 0.19.4
+
+### Maintenance
+
+- Refreshed the bundled Node.js, Bun and Deno version defaults from the upstream release feeds
+
 ## 0.19.3
 
 ### Maintenance

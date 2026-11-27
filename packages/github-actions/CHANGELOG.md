@@ -1,5 +1,15 @@
 # @effected/github-actions
 
+## 0.38.3
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/markdown | dependency | updated | 0.30.0 | 0.31.0 |
+| @effected/walker | dependency | updated | 0.31.0 | 0.32.0 |
+| @effected/yaml | dependency | updated | 0.30.0 | 0.31.0 |
+
 ## 0.38.2
 
 ### Dependencies

@@ -1,5 +1,15 @@
 # @effected/workspaces
 
+## 0.49.3
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/pnpm | dependency | updated | 0.1.2 | 0.1.3 |
+| @effected/walker | dependency | updated | 0.31.0 | 0.32.0 |
+| @effected/yaml | dependency | updated | 0.30.0 | 0.31.0 |
+
 ## 0.49.2
 
 ### Dependencies

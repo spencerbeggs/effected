@@ -1,5 +1,24 @@
 # @effected/changesets
 
+## 0.8.0
+
+### Breaking Changes
+
+- Requires `@effected/markdown` 0.31.0 (`peerDependencies`: `^0.31.0`), a breaking release from 0.30.0. A consumer still on 0.30.0 cannot install this version beside it, so this release leaves its own version line too.
+
+- To upgrade, move `@effected/markdown` to 0.31.0 in the same install as this release.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/markdown | dependency | updated | 0.30.0 | 0.31.0 |
+| @effected/markdown-lint | dependency | updated | 0.3.0 | 0.3.1 |
+| @effected/npm | dependency | updated | 0.35.1 | 0.35.1 |
+| @effected/pnpm | dependency | updated | 0.1.2 | 0.1.3 |
+| @effected/workspaces | dependency | updated | 0.49.2 | 0.49.3 |
+| @effected/yaml | dependency | updated | 0.30.0 | 0.31.0 |
+
 ## 0.7.0
 
 ### Breaking Changes
