@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/walker/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-27T21:58:19Z
+  at: 2026-11-27T22:22:16Z
 x-okfit-integrity:
   generated:
-    body: 250091acb53192f0
+    body: 70044468d306b089
 ---
 
 # walker
@@ -236,8 +236,9 @@ any link in a directory the walk reads that resolves to neither a regular
 file nor a directory (a device, a FIFO, a socket: `notes.md -> /dev/null`),
 whatever the pattern, so record mode reports every link it neither enters
 nor matches (#1437). It is one kind, not one per file type: the machine's
-stat answer is `File | Directory | Other`, and `target` names what a caller
-can `stat` itself. Only entries of
+stat answer is `File | Directory | Other`. A caller that must name the file
+type stats the link's own path under `cwd`, which follows it, never the raw
+`target` text, which may be relative to the link's directory. Only entries of
 directories the walk reads are seen, so nothing under a pruned directory or
 a boundary, and nothing for a literal pattern, is reported. A link under
 `followSymlinks` whose `realPath` fails stays an `unreadable` entry, not a

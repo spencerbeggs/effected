@@ -9,7 +9,7 @@ detect: ["MemoryFileSystemPortStats|MemoryFileSystemDirent|MemoryFileSystemVolum
 changesets: ["memfs-special-entries", "breaking-floor-effected-app"]
 ---
 
-`MemoryFileSystem.special(type, { mode, mtime })` seeds a `"CharacterDevice"`, `"BlockDevice"`, `"FIFO"` or `"Socket"` entry. `stat`, `lstat`, directory listings, link resolution and the sync and promises ports report it by type with size `0`. Every content operation on it (`open`, `readFile`, `writeFile`, `truncate`, `copyFile`, `copy`) fails typed with errno `ENXIO`.
+`MemoryFileSystem.special(type, { mode, mtime })` seeds a `"CharacterDevice"`, `"BlockDevice"`, `"FIFO"` or `"Socket"` entry. `stat`, `lstat`, directory listings, link resolution and the sync and promises ports report it by type with size `0`. Every content operation on it (`open`, `readFile`, `writeFile`, `truncate`, `copyFile`, `copy`) fails typed with errno `ENXIO`. That differs from a real host on purpose for devices and FIFOs (a host's `/dev/null` reads empty and takes writes; a FIFO open blocks), so do not seed one for code under test that reads or writes it: give that code a regular file, or answer it with an `open` fault.
 
 - **Break.** `MemoryFileSystemPortStats` and `MemoryFileSystemDirent` gain four required predicates: `isCharacterDevice()`, `isBlockDevice()`, `isFIFO()` and `isSocket()`. A hand-built stats or dirent object (a test double returning `{ isFile: () => …, isDirectory: () => …, isSymbolicLink: () => … }`) stops compiling; add the four, or seed the entry for real and drop the double.
 - **Break.** `MemoryFileSystemSeedEntry` gains `MemoryFileSystemSeedSpecial`, and `MemoryFileSystemVolumeStat.kind` gains `"special"`. Handle the new member in any exhaustive `switch` over either.

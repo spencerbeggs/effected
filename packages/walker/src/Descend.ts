@@ -229,7 +229,10 @@ export interface SkippedLink {
 	 * a socket (`notes.md -> /dev/null`). The walk never matches or opens
 	 * it. Reported for every such link in a directory the walk reads,
 	 * whatever the pattern, like `"dangling"`. Which kind of special file
-	 * it is stays the caller's to `stat`; `target` names it.
+	 * it is stays the caller's to learn: `stat` the link's own path (`path`
+	 * joined to `cwd`), which follows the link. Never `stat` the `target`
+	 * text itself — it may be relative to the link's directory, not to the
+	 * process's working directory.
 	 */
 	readonly kind: "directory" | "dangling" | "special";
 }

@@ -618,6 +618,13 @@ export interface MemoryFileSystemSeedSymlink {
  * it, and links resolve to it, but every content operation on it fails with
  * errno `ENXIO` — nothing is ever read from or written to it.
  *
+ * This is a deliberate divergence from a real host for every type but a
+ * socket: a host's `/dev/null` opens, reads empty and accepts writes, and
+ * opening a FIFO blocks until a peer arrives. Only opening a socket answers
+ * `ENXIO`, and only on Linux (macOS answers errno 102). Code under test
+ * that reads or writes a seeded device or FIFO fails here where the host
+ * succeeds; give it a regular file, or answer it with an `open` fault.
+ *
  * @public
  */
 export interface MemoryFileSystemSeedSpecial {
@@ -1453,6 +1460,13 @@ export class MemoryFileSystem {
 	 * throws `ENXIO` with `syscall: "open"`. The volume view's `lstat` reports
 	 * kind `"special"`; `snapshot` and `paths` list regular files only, so they
 	 * omit it.
+	 *
+	 * `ENXIO` is a deliberate divergence from a real host for every type but a
+	 * socket: a host's `/dev/null` opens, reads empty and accepts writes, and
+	 * opening a FIFO blocks until a peer arrives. Only opening a socket answers
+	 * `ENXIO`, and only on Linux (macOS answers errno 102). Code under test that
+	 * reads or writes a seeded device or FIFO fails here where the host
+	 * succeeds; give it a regular file, or answer it with an `open` fault.
 	 *
 	 * @param type - Which special entry to create.
 	 * @param options - `mode`: initial permission bits (default `0o644`);

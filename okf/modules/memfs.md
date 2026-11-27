@@ -20,10 +20,10 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-27T21:58:19Z
+  at: 2026-11-27T22:22:16Z
 x-okfit-integrity:
   generated:
-    body: cb0f8fa1b8e38cd6
+    body: 5af6dee8d5961a3d
 ---
 
 # @effected/memfs
@@ -892,7 +892,13 @@ authoritative list.
       Linux's, as everywhere the two disagree. Kept divergence: `fs.cp` of
       a socket is `ERR_FS_CP_SOCKET` (a FIFO `ERR_FS_CP_FIFO_PIPE`, and a
       device is copied by reading it); memfs answers `ENXIO` for every
-      special entry, consistent with its other content operations. A
+      special entry, consistent with its other content operations. The
+      wider divergence is deliberate too: `ENXIO` is the host's answer only
+      for opening a socket, while a host's `/dev/null` opens, reads empty
+      and takes writes, and a FIFO open blocks. Code under test that does
+      I/O on a seeded device or FIFO fails on memfs and succeeds on the
+      host; the TSDoc says so, and an `open` fault is the escape hatch.
+      Modelling those semantics would fabricate content. A
       FIFO is never opened on the host side — an open for reading blocks
       without a writer — so the differential compares its `stat` only.
     - Not in `ErrnoParityContract.ts`: its cases set up through

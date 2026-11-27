@@ -6,7 +6,7 @@
 
 ### Record mode reports links to devices, FIFOs and sockets
 
-Under `onUnreadable: "record"`, a symbolic link whose target is neither a regular file nor a directory (`notes.md -> /dev/null`, a FIFO, a socket) is now listed in `links` as a `SkippedLink` of kind `"special"`. It is reported for every such link in a directory the walk reads, whatever the pattern, so record mode now reports every link it neither enters nor matches. Such a link is still never matched or opened. `target` names what it points at; `stat` it to learn which kind of special file it is.
+Under `onUnreadable: "record"`, a symbolic link whose target is neither a regular file nor a directory (`notes.md -> /dev/null`, a FIFO, a socket) is now listed in `links` as a `SkippedLink` of kind `"special"`. It is reported for every such link in a directory the walk reads, whatever the pattern, so record mode now reports every link it neither enters nor matches. Such a link is still never matched or opened. To learn which kind of special file it is, `stat` the link's own path under `cwd`, which follows the link; never `stat` the raw `target` text, which may be relative to the link's directory.
 
 ## Breaking Changes
 
