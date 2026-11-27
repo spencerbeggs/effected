@@ -10,7 +10,7 @@ import type { CstNode } from "../cst.js";
 import { registerAnchor } from "./anchors.js";
 import { rawCommentText } from "./comments.js";
 import type { ComposerState, NodeMeta } from "./state.js";
-import { lineCol } from "./state.js";
+import { emptyScalarOffset, lineCol, propertyProps } from "./state.js";
 import { resolveTagHandle } from "./tags.js";
 
 // ---------------------------------------------------------------------------
@@ -1239,14 +1239,39 @@ export function makeScalar(cst: CstNode, state: ComposerState, meta?: NodeMeta):
 		style,
 		offset: cst.offset,
 		length: cst.length,
-		...(meta?.tag !== undefined ? { tag: meta.tag } : {}),
-		...(meta?.anchor !== undefined ? { anchor: meta.anchor } : {}),
+		...propertyProps(meta),
 		...(comment !== undefined ? { comment } : {}),
 		...(chomp !== undefined ? { chomp } : {}),
 		...(blockIndent !== undefined ? { blockIndent } : {}),
 		...(needsRaw ? { raw: rawValue } : {}),
 	});
 	if (meta?.anchor) registerAnchor(scalar, meta.anchor, state, cst.offset);
+	return scalar;
+}
+
+/**
+ * Build the empty scalar that pending properties with no content stand for
+ * (`a: !!null`, `- &x`), and register its anchor. Per the span ruling it is
+ * zero-length and sits immediately after its last property token, so it
+ * stays on the properties' line rather than borrowing the next token's
+ * offset; `fallbackOffset` is used only when the meta carries no property
+ * span. `value` defaults to the tag-resolved empty string (`!!str` → `""`,
+ * untagged → `null`).
+ */
+export function makeEmptyScalar(
+	meta: NodeMeta,
+	fallbackOffset: number,
+	state: ComposerState,
+	value: unknown = resolveScalar("", "plain", meta.tag, state),
+): YamlScalar {
+	const scalar = new YamlScalar({
+		value,
+		style: "plain" as ScalarStyle,
+		offset: emptyScalarOffset(meta, fallbackOffset),
+		length: 0,
+		...propertyProps(meta),
+	});
+	if (meta.anchor) registerAnchor(scalar, meta.anchor, state, meta.anchorRange?.offset ?? scalar.offset);
 	return scalar;
 }
 

@@ -4,7 +4,7 @@ import type { Distribution } from "@effected/kit";
 import { withDistribution, withDistributionVersion } from "@effected/kit";
 import type { FileSystem, Path, Stdio, Terminal } from "effect";
 import { Cause, Effect, Layer, Logger, MutableRef, Option, Runtime } from "effect";
-import type { Command, GlobalFlag } from "effect/cli";
+import type { Command, Flag, GlobalFlag } from "effect/cli";
 import { CliError, CliOutput } from "effect/cli";
 import { Cancelled } from "./Cancelled.js";
 import { CliColor } from "./CliColor.js";
@@ -205,7 +205,8 @@ export interface ReportFailuresOptions {
 }
 
 /**
- * What `renderUsageError`'s `render` is told about a usage error.
+ * What `renderUsageError`'s `render` is told about a usage error: the errors, the command path, and the readers for
+ * a global setting (`setting`) and a local flag (`flag`).
  *
  * @public
  */
@@ -233,6 +234,30 @@ export interface UsageErrorDetails {
 	 * @param setting - the `GlobalFlag.Setting` the program declared with `Command.withGlobalFlags`
 	 */
 	readonly setting: <Id extends string, A>(setting: GlobalFlag.Setting<Id, A>) => Option.Option<A>;
+	/**
+	 * A local flag's value for this invocation, as core would have parsed it for the command on `commandPath`.
+	 *
+	 * @remarks
+	 * For a flag that is not a global setting: one a subcommand declares with `Command.withFlags` (or inherits from a
+	 * parent), such as a `--format` whose choices differ from the shared setting's. Pass the flag the failing command
+	 * declared; check `commandPath` first when several commands declare flags under one name, since the flag is matched
+	 * on the path by name.
+	 *
+	 * `Option.none()` when no `Local` or `Inherited` flag on `commandPath` has the flag's name, or when its own value
+	 * fails to parse. Otherwise `Option.some` of the value given in argv, or of its default (or `Config` fallback) when it
+	 * is absent. Read by the same probe as `setting`: core's own parser over the same argv, synchronously, on the
+	 * usage-error path only, and only for the flags `render` asks for; an asynchronous parse answers `Option.none()`.
+	 *
+	 * ```ts
+	 * render: ({ commandPath, errors, flag, setting }) => {
+	 *   const format = commandPath.at(-1) === "graph" ? flag(graphFormat) : setting(Format);
+	 *   return Option.contains(format, "json") ? JSON.stringify({ ok: false, usage: errors.map(String) }) : undefined;
+	 * }
+	 * ```
+	 *
+	 * @param flag - the flag the command on `commandPath` declared
+	 */
+	readonly flag: <A>(flag: Flag.Flag<A>) => Option.Option<A>;
 }
 
 /**
@@ -256,7 +281,7 @@ export interface RenderUsageErrorOptions {
 	 * for an agent or a CI audience escapes are stripped and under GitHub Actions workflow commands neutralized, as for
 	 * `render`.
 	 *
-	 * @param details - the errors, the command path and the setting lookup
+	 * @param details - the errors, the command path, and the setting and flag lookups
 	 */
 	readonly render: (details: UsageErrorDetails) => string | ReadonlyArray<string> | undefined;
 }

@@ -25,11 +25,22 @@ import {
 	hasBlockMapAfterInList,
 	hasValueSepAfter,
 	indexOfChild,
+	makeEmptyScalar,
 	makeScalar,
 	resolveScalar,
 } from "./scalars.js";
 import type { ComposerState, FlowComposers, NodeMeta } from "./state.js";
-import { clearMeta, commentProps, createState, hasMeta, sameLine } from "./state.js";
+import {
+	clearMeta,
+	commentProps,
+	copyProperties,
+	createState,
+	hasMeta,
+	propertyProps,
+	sameLine,
+	setAnchor,
+	setTag,
+} from "./state.js";
 import { parseDirective, validateTagHandlesInDocument } from "./tags.js";
 
 /** The flow-composer dispatch wired into every state this module creates. */
@@ -263,10 +274,16 @@ export function composeDocument(
 	// later meta would silently overwrite the earlier one.
 	const outerMeta: NodeMeta = {};
 	let sawNewlineSinceMeta = false;
+	// Outer + inner meta in one record, for content both apply to (the inner
+	// tag/anchor win, each with its span).
+	const combineMeta = (): NodeMeta => {
+		const combined: NodeMeta = { ...outerMeta };
+		copyProperties(meta, combined);
+		return combined;
+	};
 	const commitMetaAcrossNewline = () => {
 		if (sawNewlineSinceMeta && hasMeta(meta)) {
-			if (meta.tag !== undefined) outerMeta.tag = meta.tag;
-			if (meta.anchor !== undefined) outerMeta.anchor = meta.anchor;
+			copyProperties(meta, outerMeta);
 			if (meta.comment !== undefined) outerMeta.comment = meta.comment;
 			clearMeta(meta);
 		}
@@ -381,14 +398,14 @@ export function composeDocument(
 			// new block-seq indicator on the same line.
 			validateAnchorTagNotFollowedBySeqDashOnSameLine(child, children, i, state);
 			commitMetaAcrossNewline();
-			meta.anchor = getAnchorName(child, state.text);
+			setAnchor(meta, getAnchorName(child, state.text), child);
 			i++;
 			continue;
 		}
 		if (child.type === "tag") {
 			validateAnchorTagNotFollowedBySeqDashOnSameLine(child, children, i, state);
 			commitMetaAcrossNewline();
-			meta.tag = child.source;
+			setTag(meta, child);
 			i++;
 			continue;
 		}
@@ -465,9 +482,7 @@ export function composeDocument(
 					state.text,
 				);
 				// Combine outer + inner meta — for a scalar root, both apply to it.
-				const combined: NodeMeta = { ...outerMeta };
-				if (meta.tag !== undefined) combined.tag = meta.tag;
-				if (meta.anchor !== undefined) combined.anchor = meta.anchor;
+				const combined = combineMeta();
 				const resolved = resolveScalar(value, "plain", combined.tag, state);
 				// Span the full source range when multi-line plain folding merged
 				// multiple children — `endOffset` is the end of the last consumed
@@ -479,8 +494,7 @@ export function composeDocument(
 					style: "plain",
 					offset: child.offset,
 					length: scalarLength,
-					...(combined.tag !== undefined ? { tag: combined.tag } : {}),
-					...(combined.anchor !== undefined ? { anchor: combined.anchor } : {}),
+					...propertyProps(combined),
 				});
 				if (combined.anchor) registerAnchor(contents, combined.anchor, state, child.offset);
 				clearMeta(meta);
@@ -520,9 +534,7 @@ export function composeDocument(
 				continue;
 			}
 			// Combine outer + inner meta for scalar root.
-			const combined: NodeMeta = { ...outerMeta };
-			if (meta.tag !== undefined) combined.tag = meta.tag;
-			if (meta.anchor !== undefined) combined.anchor = meta.anchor;
+			const combined = combineMeta();
 			contents = makeScalar(child, state, hasMeta(combined) ? combined : undefined);
 			clearMeta(meta);
 			clearMeta(outerMeta);
@@ -534,9 +546,7 @@ export function composeDocument(
 		if (child.type === "block-map") {
 			// Outer meta belongs to the map; remaining `meta` would belong to the
 			// first key inside, but block-map's own children carry that context.
-			const combined: NodeMeta = { ...outerMeta };
-			if (meta.tag !== undefined) combined.tag = meta.tag;
-			if (meta.anchor !== undefined) combined.anchor = meta.anchor;
+			const combined = combineMeta();
 			contents = composeBlockMap(child, state, undefined, hasMeta(combined) ? combined : undefined);
 			clearMeta(meta);
 			clearMeta(outerMeta);
@@ -547,9 +557,7 @@ export function composeDocument(
 
 		if (child.type === "block-seq") {
 			const isRootSeq = contents === null;
-			const combined: NodeMeta = { ...outerMeta };
-			if (meta.tag !== undefined) combined.tag = meta.tag;
-			if (meta.anchor !== undefined) combined.anchor = meta.anchor;
+			const combined = combineMeta();
 			contents = composeBlockSeq(child, state, hasMeta(combined) ? combined : undefined);
 			clearMeta(meta);
 			clearMeta(outerMeta);
@@ -573,9 +581,7 @@ export function composeDocument(
 				mapMeta = { ...outerMeta };
 				flowMeta = hasMeta(meta) ? { ...meta } : undefined;
 			} else {
-				const combined: NodeMeta = { ...outerMeta };
-				if (meta.tag !== undefined) combined.tag = meta.tag;
-				if (meta.anchor !== undefined) combined.anchor = meta.anchor;
+				const combined = combineMeta();
 				flowMeta = hasMeta(combined) ? combined : undefined;
 			}
 			const flowMap = composeFlowMap(child, state, flowMeta);
@@ -604,9 +610,7 @@ export function composeDocument(
 				mapMeta = { ...outerMeta };
 				flowMeta = hasMeta(meta) ? { ...meta } : undefined;
 			} else {
-				const combined: NodeMeta = { ...outerMeta };
-				if (meta.tag !== undefined) combined.tag = meta.tag;
-				if (meta.anchor !== undefined) combined.anchor = meta.anchor;
+				const combined = combineMeta();
 				flowMeta = hasMeta(combined) ? combined : undefined;
 			}
 			const flowSeq = composeFlowSeq(child, state, flowMeta);
@@ -638,6 +642,15 @@ export function composeDocument(
 		}
 
 		i++;
+	}
+
+	// Properties with no content (`!!null`, `--- &a !!str`) are an empty
+	// scalar carrying them, positioned after the last property token.
+	if (contents === null) {
+		const combined = combineMeta();
+		if (combined.tag !== undefined || combined.anchor !== undefined) {
+			contents = makeEmptyScalar(combined, cst.offset + cst.length, state);
+		}
 	}
 
 	// Validate directive rules
@@ -989,8 +1002,7 @@ function decorateSourceMultiline(node: YamlNode | null, text: string): YamlNode 
 		return new YamlScalar({
 			value: node.value,
 			style: node.style,
-			...(node.tag !== undefined ? { tag: node.tag } : {}),
-			...(node.anchor !== undefined ? { anchor: node.anchor } : {}),
+			...propertyProps(node),
 			...commentProps(node),
 			...(node.chomp !== undefined ? { chomp: node.chomp } : {}),
 			...(node.blockIndent !== undefined ? { blockIndent: node.blockIndent } : {}),
@@ -1012,8 +1024,7 @@ function decorateSourceMultiline(node: YamlNode | null, text: string): YamlNode 
 		return new YamlMap({
 			items: newItems,
 			style: node.style,
-			...(node.tag !== undefined ? { tag: node.tag } : {}),
-			...(node.anchor !== undefined ? { anchor: node.anchor } : {}),
+			...propertyProps(node),
 			...commentProps(node),
 			...(multiline ? { sourceMultiline: true } : {}),
 			offset: node.offset,
@@ -1026,8 +1037,7 @@ function decorateSourceMultiline(node: YamlNode | null, text: string): YamlNode 
 		return new YamlSeq({
 			items: newItems,
 			style: node.style,
-			...(node.tag !== undefined ? { tag: node.tag } : {}),
-			...(node.anchor !== undefined ? { anchor: node.anchor } : {}),
+			...propertyProps(node),
 			...commentProps(node),
 			...(multiline ? { sourceMultiline: true } : {}),
 			offset: node.offset,
@@ -1148,8 +1158,7 @@ function attachHeaderToFirstEntry(contents: YamlNode, header: string): YamlNode 
 		return new YamlMap({
 			items,
 			style: contents.style,
-			...(contents.tag !== undefined ? { tag: contents.tag } : {}),
-			...(contents.anchor !== undefined ? { anchor: contents.anchor } : {}),
+			...propertyProps(contents),
 			...(contents.commentBefore !== undefined ? { commentBefore: contents.commentBefore } : {}),
 			...(contents.comment !== undefined ? { comment: contents.comment } : {}),
 			...(contents.spaceBefore !== undefined ? { spaceBefore: contents.spaceBefore } : {}),
@@ -1164,8 +1173,7 @@ function attachHeaderToFirstEntry(contents: YamlNode, header: string): YamlNode 
 		return new YamlSeq({
 			items,
 			style: contents.style,
-			...(contents.tag !== undefined ? { tag: contents.tag } : {}),
-			...(contents.anchor !== undefined ? { anchor: contents.anchor } : {}),
+			...propertyProps(contents),
 			...(contents.commentBefore !== undefined ? { commentBefore: contents.commentBefore } : {}),
 			...(contents.comment !== undefined ? { comment: contents.comment } : {}),
 			...(contents.spaceBefore !== undefined ? { spaceBefore: contents.spaceBefore } : {}),
@@ -1181,8 +1189,7 @@ function attachHeaderToFirstEntry(contents: YamlNode, header: string): YamlNode 
 function stripOwnComment(node: YamlMap | YamlSeq): YamlNode {
 	const shared = {
 		style: node.style,
-		...(node.tag !== undefined ? { tag: node.tag } : {}),
-		...(node.anchor !== undefined ? { anchor: node.anchor } : {}),
+		...propertyProps(node),
 		...(node.commentBefore !== undefined ? { commentBefore: node.commentBefore } : {}),
 		...(node.spaceBefore !== undefined ? { spaceBefore: node.spaceBefore } : {}),
 		...(node.sourceMultiline !== undefined ? { sourceMultiline: node.sourceMultiline } : {}),

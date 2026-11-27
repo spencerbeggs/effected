@@ -186,7 +186,7 @@
 | `UiProviderProps` | Interface | Props of `UiProvider`. | from `@effected/cli-kit/ui` |
 | `UiStreams` | Class | The streams a screen mounts on, the process's own standard streams by default. | from `@effected/cli-kit/ui` — which stdin, stdout and stderr an ink screen binds to |
 | `UiStreamsShape` | Interface | The streams a screen mounts on: Node streams, because Ink's stream contract is Node's. | from `@effected/cli-kit/ui` |
-| `UsageErrorDetails` | Interface | What `renderUsageError`'s `render` is told about a usage error. | |
+| `UsageErrorDetails` | Interface | What `renderUsageError`'s `render` is told about a usage error: the errors, the command path, and the readers for a global setting (`setting`) and a local flag (`flag`). | |
 | `UseKeysOptions` | Interface | Options for `useKeys`. | from `@effected/cli-kit/ui` |
 | `Viewport` | Class | A scrolling list: a pure reducer over a window of items, its key table, and a view that draws the window. | from `@effected/cli-kit/ui` — scroll a window of rows that never overflows the terminal, sticky section headers |
 | `ViewportMove` | TypeAlias | A move through a viewport. | from `@effected/cli-kit/ui` |

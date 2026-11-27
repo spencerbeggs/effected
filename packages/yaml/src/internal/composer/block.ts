@@ -35,6 +35,7 @@ import {
 	hasValueSepAfterInList,
 	hasValueSepBetween,
 	hasValueSepThroughPlainScalars,
+	makeEmptyScalar,
 	makeScalar,
 	resolveScalar,
 	shouldPreserveRaw,
@@ -47,7 +48,10 @@ import {
 	hasNonWhitespaceBeforeOnLine,
 	lineCol,
 	lineIndentColumn,
+	propertyProps,
 	sameLine,
+	setAnchor,
+	setTag,
 } from "./state.js";
 
 // ---------------------------------------------------------------------------
@@ -135,8 +139,7 @@ function composeBlockMapInner(
 		style: "block" as CollectionStyle,
 		offset,
 		length,
-		...(meta?.tag !== undefined ? { tag: meta.tag } : {}),
-		...(meta?.anchor !== undefined ? { anchor: meta.anchor } : {}),
+		...propertyProps(meta),
 		...(mapComment !== undefined ? { comment: mapComment } : {}),
 	});
 
@@ -360,16 +363,7 @@ export function flattenBlockMapChildren(
 				// represented (otherwise outer-context anchors would be lost).
 				const flushMeta = combinedPending();
 				if (hasMeta(flushMeta)) {
-					const value = resolveScalar("", "plain", flushMeta.tag, state);
-					const scalar = new YamlScalar({
-						value,
-						style: "plain" as ScalarStyle,
-						offset: child.offset,
-						length: 0,
-						...(flushMeta.tag !== undefined ? { tag: flushMeta.tag } : {}),
-						...(flushMeta.anchor !== undefined ? { anchor: flushMeta.anchor } : {}),
-					});
-					if (flushMeta.anchor) registerAnchor(scalar, flushMeta.anchor, state, child.offset);
+					const scalar = makeEmptyScalar(flushMeta, child.offset, state);
 					resetAllMeta();
 					pushNode(scalar);
 				}
@@ -430,13 +424,13 @@ export function flattenBlockMapChildren(
 			// same line as the value indicator). Move it to outerMeta so the new
 			// anchor can attach to the inner content as its own pending meta.
 			commitOuterIfNewlineSeen();
-			pendingMeta.anchor = getAnchorName(child, state.text);
+			setAnchor(pendingMeta, getAnchorName(child, state.text), child);
 			continue;
 		}
 		if (child.type === "tag") {
 			validatePropertyContinuationColumn(child, state, afterValueSep, lastValueSepOffset, lastKeyColumn);
 			commitOuterIfNewlineSeen();
-			pendingMeta.tag = child.source;
+			setTag(pendingMeta, child);
 			continue;
 		}
 		if (child.type === "flow-scalar" || child.type === "block-scalar") {
@@ -462,16 +456,7 @@ export function flattenBlockMapChildren(
 			if (afterValueSep && sepOnSameLine) {
 				const flushMeta = combinedPending();
 				if (hasMeta(flushMeta)) {
-					const value = resolveScalar("", "plain", flushMeta.tag, state);
-					const scalar = new YamlScalar({
-						value,
-						style: "plain" as ScalarStyle,
-						offset: child.offset,
-						length: 0,
-						...(flushMeta.tag !== undefined ? { tag: flushMeta.tag } : {}),
-						...(flushMeta.anchor !== undefined ? { anchor: flushMeta.anchor } : {}),
-					});
-					if (flushMeta.anchor) registerAnchor(scalar, flushMeta.anchor, state, child.offset);
+					const scalar = makeEmptyScalar(flushMeta, child.offset, state);
 					resetAllMeta();
 					pushNode(scalar);
 				}
@@ -586,8 +571,7 @@ export function flattenBlockMapChildren(
 						style: "plain" as ScalarStyle,
 						offset: child.offset,
 						length: child.length,
-						...(keyMeta.tag !== undefined ? { tag: keyMeta.tag } : {}),
-						...(keyMeta.anchor !== undefined ? { anchor: keyMeta.anchor } : {}),
+						...propertyProps(keyMeta),
 					});
 					if (keyMeta.anchor) registerAnchor(scalar, keyMeta.anchor, state, child.offset);
 					resetAllMeta();
@@ -669,8 +653,7 @@ export function flattenBlockMapChildren(
 					// so findAtOffset covers continuation lines and the
 					// sourceMultiline decoration pass sees the real extent.
 					length: partsCount > 1 ? endOffset - child.offset : child.length,
-					...(plainMeta.tag !== undefined ? { tag: plainMeta.tag } : {}),
-					...(plainMeta.anchor !== undefined ? { anchor: plainMeta.anchor } : {}),
+					...propertyProps(plainMeta),
 					...(needsRaw ? { raw: value } : {}),
 				});
 				if (plainMeta.anchor) registerAnchor(scalar, plainMeta.anchor, state, child.offset);
@@ -769,15 +752,7 @@ export function flattenBlockMapChildren(
 			// pending meta belongs to that empty key, not to the block map.
 			// Outer meta (from across a newline) still applies to the map.
 			if (hasMeta(pendingMeta) && blockMapStartsWithValueSep(child)) {
-				const emptyKey = new YamlScalar({
-					value: null,
-					style: "plain" as ScalarStyle,
-					offset: child.offset,
-					length: 0,
-					...(pendingMeta.tag !== undefined ? { tag: pendingMeta.tag } : {}),
-					...(pendingMeta.anchor !== undefined ? { anchor: pendingMeta.anchor } : {}),
-				});
-				if (pendingMeta.anchor) registerAnchor(emptyKey, pendingMeta.anchor, state, child.offset);
+				const emptyKey = makeEmptyScalar(pendingMeta, child.offset, state, null);
 				const outerOnlyMeta = hasMeta(outerMeta) ? outerMeta : undefined;
 				const map = composeBlockMap(child, state, emptyKey, outerOnlyMeta);
 				resetAllMeta();
@@ -843,16 +818,8 @@ export function flattenBlockMapChildren(
 	// Flush trailing pending tag/anchor as empty scalar
 	const trailingMeta = combinedPending();
 	if (hasMeta(trailingMeta)) {
-		const value = resolveScalar("", "plain", trailingMeta.tag, state);
-		const scalar = new YamlScalar({
-			value,
-			style: "plain" as ScalarStyle,
-			offset: 0,
-			length: 0,
-			...(trailingMeta.tag !== undefined ? { tag: trailingMeta.tag } : {}),
-			...(trailingMeta.anchor !== undefined ? { anchor: trailingMeta.anchor } : {}),
-		});
-		if (trailingMeta.anchor) registerAnchor(scalar, trailingMeta.anchor, state, 0);
+		const last = children.at(-1);
+		const scalar = makeEmptyScalar(trailingMeta, last !== undefined ? last.offset + last.length : 0, state);
 		items.push({ kind: "node", node: scalar });
 	}
 	return items;
@@ -1808,15 +1775,7 @@ function composeBlockSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMet
 				// pending anchor/tag belongs to that empty scalar (e.g. `- &a\n- b`
 				// anchors the first entry, not the second).
 				if (sawEntry) {
-					const emptyScalar = new YamlScalar({
-						value: null,
-						style: "plain" as ScalarStyle,
-						offset: child.offset,
-						length: 0,
-						...(pendingMeta.tag !== undefined ? { tag: pendingMeta.tag } : {}),
-						...(pendingMeta.anchor !== undefined ? { anchor: pendingMeta.anchor } : {}),
-					});
-					if (pendingMeta.anchor) registerAnchor(emptyScalar, pendingMeta.anchor, state, child.offset);
+					const emptyScalar = makeEmptyScalar(pendingMeta, child.offset, state);
 					pendingMeta = {};
 					items.push(emptyScalar);
 				}
@@ -1834,11 +1793,11 @@ function composeBlockSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMet
 			continue;
 		}
 		if (child.type === "anchor") {
-			pendingMeta.anchor = getAnchorName(child, state.text);
+			setAnchor(pendingMeta, getAnchorName(child, state.text), child);
 			continue;
 		}
 		if (child.type === "tag") {
-			pendingMeta.tag = child.source;
+			setTag(pendingMeta, child);
 			continue;
 		}
 		if (child.type === "flow-scalar" || child.type === "block-scalar") {
@@ -1885,8 +1844,7 @@ function composeBlockSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMet
 						// Span the whole folded scalar — see the value-position
 						// site above.
 						length: endOffset - child.offset,
-						...(pendingMeta.tag !== undefined ? { tag: pendingMeta.tag } : {}),
-						...(pendingMeta.anchor !== undefined ? { anchor: pendingMeta.anchor } : {}),
+						...propertyProps(pendingMeta),
 					});
 					if (pendingMeta.anchor) registerAnchor(scalar, pendingMeta.anchor, state, child.offset);
 					pendingMeta = {};
@@ -1917,15 +1875,7 @@ function composeBlockSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMet
 			// pending anchor/tag, that meta belongs to the empty key (e.g.
 			// `- &a : value` → first key is empty with anchor `a`, not the map).
 			if (hasMeta(pendingMeta) && blockMapStartsWithValueSep(child)) {
-				const emptyKey = new YamlScalar({
-					value: null,
-					style: "plain" as ScalarStyle,
-					offset: child.offset,
-					length: 0,
-					...(pendingMeta.tag !== undefined ? { tag: pendingMeta.tag } : {}),
-					...(pendingMeta.anchor !== undefined ? { anchor: pendingMeta.anchor } : {}),
-				});
-				if (pendingMeta.anchor) registerAnchor(emptyKey, pendingMeta.anchor, state, child.offset);
+				const emptyKey = makeEmptyScalar(pendingMeta, child.offset, state, null);
 				pendingMeta = {};
 				sawNewlineSincePending = false;
 				const map = composeBlockMap(child, state, emptyKey, undefined);
@@ -1979,17 +1929,7 @@ function composeBlockSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMet
 	}
 	// Flush trailing pending tag/anchor as empty scalar (e.g., - !!str)
 	if (hasMeta(pendingMeta)) {
-		const value = resolveScalar("", "plain", pendingMeta.tag, state);
-		const scalar = new YamlScalar({
-			value,
-			style: "plain" as ScalarStyle,
-			offset: 0,
-			length: 0,
-			...(pendingMeta.tag !== undefined ? { tag: pendingMeta.tag } : {}),
-			...(pendingMeta.anchor !== undefined ? { anchor: pendingMeta.anchor } : {}),
-		});
-		if (pendingMeta.anchor) registerAnchor(scalar, pendingMeta.anchor, state, 0);
-		items.push(scalar);
+		items.push(makeEmptyScalar(pendingMeta, cst.offset + cst.length, state));
 	}
 
 	// Own-line comments after the last item: terminal comments at (or beyond)
@@ -2037,8 +1977,7 @@ function composeBlockSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMet
 		style: "block" as CollectionStyle,
 		offset: cst.offset,
 		length: seqEnd - cst.offset,
-		...(meta?.tag !== undefined ? { tag: meta.tag } : {}),
-		...(meta?.anchor !== undefined ? { anchor: meta.anchor } : {}),
+		...propertyProps(meta),
 		...(seqComment !== undefined ? { comment: seqComment } : {}),
 	});
 
@@ -2092,8 +2031,7 @@ export function composeFlatBlockMap(
 		style: "block" as CollectionStyle,
 		offset,
 		length: end - offset,
-		...(meta?.tag !== undefined ? { tag: meta.tag } : {}),
-		...(meta?.anchor !== undefined ? { anchor: meta.anchor } : {}),
+		...propertyProps(meta),
 		...(mapComment !== undefined ? { comment: mapComment } : {}),
 	});
 

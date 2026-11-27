@@ -1,5 +1,6 @@
 // Real-process check of okf/decisions/live-tick-is-a-scoped-schedule.md: a live view's tick is an Effect schedule forked into the run's scope, so closing the
-// scope interrupts it and the process exits at once. A tick left on a ref'd timer would keep the child alive.
+// scope interrupts it and the process exits. A tick left running would keep drawing and keep the child alive: the child
+// reports its frame count at scope close and at exit, and the test's timeout, not a wall-clock ceiling, bounds a hang.
 // Runs the package sources under tsx (fixtures/register-ts.mjs).
 import { join } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -11,7 +12,7 @@ const FIXTURES = join(import.meta.dirname, "..", "fixtures");
 
 describe("CliUi.live in a real process: the tick never holds it open", () => {
 	it.live(
-		"the process exits promptly once the view's scope closes: no ref'd timer is left behind",
+		"the process exits once the view's scope closes, and no frame is drawn after it",
 		() =>
 			Effect.scoped(
 				Effect.gen(function* () {
@@ -29,12 +30,11 @@ describe("CliUi.live in a real process: the tick never holds it open", () => {
 							concurrency: "unbounded",
 						},
 					);
-					const exitedAt = Date.now();
 					assert.strictEqual(Number(exitCode), 0, stderr);
-					const match = /closed (\d+) frames (\d+)/.exec(stdout);
+					const match = /closed frames (\d+) exited frames (\d+)/.exec(stdout);
 					assert.isNotNull(match, `the fixture reported: ${stdout} ${stderr}`);
-					assert.isAbove(Number(match?.[2]), 2, "the tick drew several frames while the scope was open");
-					assert.isBelow(exitedAt - Number(match?.[1]), 1000, "exited within a second of the scope closing");
+					assert.isAbove(Number(match?.[1]), 2, "the tick drew several frames while the scope was open");
+					assert.strictEqual(Number(match?.[2]), Number(match?.[1]), "no frame was drawn after the scope closed");
 				}),
 			).pipe(Effect.timeout("10 seconds"), Effect.provide(NodeServices.layer)),
 		{ timeout: 30_000 },

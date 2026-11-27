@@ -5,6 +5,8 @@
 * Updated @effected/memfs
 * Updated An upgrade-ledger entry is one change, selected by the versions a consumer's upgrade crosses
 * Updated walker
+* Updated @effected/cli-kit
+* Updated @effected/yaml
 
 ## 2026-11-26
 

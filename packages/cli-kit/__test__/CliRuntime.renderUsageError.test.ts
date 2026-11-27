@@ -34,6 +34,23 @@ const shadow = Command.make(
 );
 const shadowed = Command.make("app").pipe(Command.withGlobalFlags([Format]), Command.withSubcommands([shadow]));
 
+// okfit's shape (#1435): `lint` reads the shared `--format` setting, `graph` declares a local `--format` with other
+// choices and another default. Two settings under one flag name cannot coexist on one tree, so `graph`'s is a flag.
+const GraphFormat = Flag.Literals("format", ["mermaid", "dot", "json"]).pipe(Flag.withDefault("mermaid"));
+const graphSeen: Array<string> = [];
+const lint = Command.make("lint", { count: Flag.Int("count").pipe(Flag.withDefault(1)) }, () => Effect.void).pipe(
+	Command.withGlobalFlags([Format]),
+);
+const graph = Command.make(
+	"graph",
+	{ format: GraphFormat, count: Flag.Int("count").pipe(Flag.withDefault(1)) },
+	({ format }) =>
+		Effect.sync(() => {
+			graphSeen.push(format);
+		}),
+);
+const mixed = Command.make("app").pipe(Command.withSubcommands([lint, graph]));
+
 const HELP_MARK = "USAGE";
 
 const capturing = () => {
@@ -228,6 +245,100 @@ describe("CliRuntime.main renderUsageError", () => {
 					yield* run([...argv, "--nope"], { render });
 					assert.deepStrictEqual(calls[0]?.format, Option.some(provided?.format));
 					assert.deepStrictEqual(calls[0]?.verbose, Option.some(provided?.verbose));
+				}),
+			);
+		}
+	});
+
+	describe("flag", () => {
+		/** A render reading `graph`'s local `--format` on `graph` and the shared setting elsewhere, as okfit does. */
+		const formats = () => {
+			const calls: Array<{ readonly commandPath: ReadonlyArray<string>; readonly format: Option.Option<string> }> = [];
+			const render: Render = ({ errors, commandPath, flag, setting }) => {
+				const format: Option.Option<string> = commandPath.at(-1) === "graph" ? flag(GraphFormat) : setting(Format);
+				calls.push({ commandPath, format });
+				return Option.contains(format, "json") ? JSON.stringify({ ok: false, usage: errors.map(String) }) : undefined;
+			};
+			return { calls, render };
+		};
+
+		it.effect("some(value) when the command on the path declares the flag", () =>
+			Effect.gen(function* () {
+				const { calls, render } = formats();
+				const { out, code } = yield* run(["graph", "--format", "json", "--nope"], { root: mixed, render });
+				assert.deepStrictEqual(calls[0]?.commandPath, ["app", "graph"]);
+				assert.deepStrictEqual(calls[0]?.format, Option.some("json"));
+				assert.strictEqual(out.length, 1);
+				assert.isTrue(out[0]?.startsWith('{"ok":false'), out.join("\n"));
+				assert.strictEqual(code, 64);
+			}),
+		);
+
+		it.effect("a choice only the local flag accepts is read, where the setting would reject it", () =>
+			Effect.gen(function* () {
+				const { calls, render } = formats();
+				yield* run(["graph", "--format", "dot", "--nope"], { root: mixed, render });
+				assert.deepStrictEqual(calls[0]?.format, Option.some("dot"));
+			}),
+		);
+
+		it.effect("some(default) when absent from argv", () =>
+			Effect.gen(function* () {
+				const { calls, render } = formats();
+				yield* run(["graph", "--nope"], { root: mixed, render });
+				assert.deepStrictEqual(calls[0]?.format, Option.some("mermaid"));
+			}),
+		);
+
+		it.effect("the shared setting still answers on the other command of the same tree", () =>
+			Effect.gen(function* () {
+				const { calls, render } = formats();
+				const { out } = yield* run(["lint", "--format", "json", "--nope"], { root: mixed, render });
+				assert.deepStrictEqual(calls[0]?.format, Option.some("json"));
+				assert.strictEqual(out.length, 1);
+			}),
+		);
+
+		it.effect("none when no command on the path declares the flag", () =>
+			Effect.gen(function* () {
+				let read: Option.Option<string> | undefined;
+				yield* run(["lint", "--format", "json", "--nope"], {
+					root: mixed,
+					render: ({ flag }) => {
+						read = flag(GraphFormat);
+						return undefined;
+					},
+				});
+				assert.deepStrictEqual(read, Option.none());
+			}),
+		);
+
+		it.effect("none when the flag's own value fails to parse", () =>
+			Effect.gen(function* () {
+				const { calls, render } = formats();
+				const { out } = yield* run(["graph", "--format", "xml"], { root: mixed, render });
+				assert.deepStrictEqual(calls[0]?.format, Option.none());
+				assert.isFalse(out.some((line) => line.startsWith("{")));
+			}),
+		);
+
+		// The probe against core: for argv core runs, the value core gives `graph`'s handler is the value `flag` reads
+		// for the same argv with one unknown flag added.
+		for (const argv of [
+			["graph"],
+			["graph", "--format", "dot"],
+			["graph", "--format=json"],
+			["graph", "--count", "2", "--format", "mermaid"],
+		]) {
+			it.effect(`matches what core parses: ${argv.join(" ")}`, () =>
+				Effect.gen(function* () {
+					graphSeen.length = 0;
+					const ok = yield* run(argv, { root: mixed });
+					assert.strictEqual(ok.code, 0);
+					assert.strictEqual(graphSeen.length, 1);
+					const { calls, render } = formats();
+					yield* run([...argv, "--nope"], { root: mixed, render });
+					assert.deepStrictEqual(calls[0]?.format, Option.some(graphSeen[0]));
 				}),
 			);
 		}
