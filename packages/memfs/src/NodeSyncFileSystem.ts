@@ -305,6 +305,8 @@ export type {
 	MemoryFileSystemSeedDirectory,
 	MemoryFileSystemSeedEntry,
 	MemoryFileSystemSeedFile,
+	MemoryFileSystemSeedSpecial,
 	MemoryFileSystemSeedSymlink,
+	MemoryFileSystemSpecialType,
 } from "./MemoryFileSystem.js";
 export { NodeDirectorySeed, type NodeDirectorySeedOptions } from "./NodeDirectorySeed.js";

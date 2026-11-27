@@ -1,5 +1,11 @@
 # Log
 
+## 2026-11-27
+
+* Updated @effected/memfs
+* Updated An upgrade-ledger entry is one change, selected by the versions a consumer's upgrade crosses
+* Updated walker
+
 ## 2026-11-26
 
 * Updated @effected/lsp

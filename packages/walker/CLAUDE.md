@@ -136,7 +136,9 @@ hands in — never re-derived here.
   `target` the verbatim `readLink` text. `"directory"`: resolves to a
   directory the walk would have entered had it been plain and did not
   (every such link without `followSymlinks`; under it, only a cycle).
-  `"dangling"`: `stat` does not resolve it, whatever the pattern. Never
+  `"dangling"`: `stat` does not resolve it, whatever the pattern.
+  `"special"`: it resolves to neither a file nor a directory (a device,
+  FIFO or socket), whatever the pattern — one kind, `target` names it. Never
   reported: an entered link, one skipped for another reason (prune name,
   hidden under `dot: false`, depth bound, a non-descending pattern),
   anything under a pruned directory or a boundary, a literal pattern's

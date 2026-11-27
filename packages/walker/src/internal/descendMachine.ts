@@ -77,11 +77,14 @@ export interface MachineEntry<S> {
 	readonly info: S;
 }
 
-/** A symbolic link the walk passed over: one to a directory it did not enter, or one that does not resolve. */
+/**
+ * A symbolic link the walk passed over: one to a directory it did not enter, one that does not resolve, or one
+ * that resolves to neither a file nor a directory.
+ */
 export interface MachineLink {
 	readonly path: string;
 	readonly target: string;
-	readonly kind: "directory" | "dangling";
+	readonly kind: "directory" | "dangling" | "special";
 }
 
 /** How the walk ended. The driver builds the typed error / defect from the description. */
@@ -421,6 +424,11 @@ export function* descendMachine<S, C>(
 				if (stat === undefined) {
 					// A link that lstat sees and stat cannot resolve dangles: it is neither file nor directory.
 					if (link && recordLinks) yield* recordLink(absolute, shown(relative), "dangling");
+					continue;
+				}
+				if (stat.kind === "Other") {
+					// A link to a device, FIFO or socket is neither matched nor entered, so it too is passed over.
+					if (link && recordLinks) yield* recordLink(absolute, shown(relative), "special");
 					continue;
 				}
 				if (stat.kind === "File") {

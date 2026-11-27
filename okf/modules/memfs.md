@@ -20,10 +20,10 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-26T05:06:32Z
+  at: 2026-11-27T22:22:16Z
 x-okfit-integrity:
   generated:
-    body: 516a5dde243e8dd0
+    body: 5af6dee8d5961a3d
 ---
 
 # @effected/memfs
@@ -159,9 +159,11 @@ watch events ([ledger entry 16](#adaptation-ledger)); the handle's
 ### Seed entries
 
 A seed value is a `MemoryFileSystemSeedEntry`: plain `string |
-Uint8Array` contents, or one of three tagged entries built by statics —
+Uint8Array` contents, or one of four tagged entries built by statics —
 `file(content, { mode?, mtime? })`, `directory({ mode? })`,
-`symlink(target)`. One literal describes a whole tree: files (mode
+`symlink(target)`, and `special(type, { mode?, mtime? })` for a
+stat-only character device, block device, FIFO or socket whose every
+content operation fails `ENXIO` ([ledger entry 19](#adaptation-ledger)). One literal describes a whole tree: files (mode
 `0o644` default), empty directories (`0o755` default; `directory()` is
 the only way a seed expresses one) and symbolic links whose target is
 stored verbatim and may dangle. A directory's mode is applied by a
@@ -434,7 +436,8 @@ It is synchronous because its caller is a suite building a volume at
 - **Modes, mtimes, size.** Modes are copied only with `modes: true`,
   because a checkout's bits follow the host's umask; mtimes never are.
   `maxFileBytes` (16 MiB by default) throws `EFBIG`. A FIFO, socket or
-  device throws `ERR_SEED_UNSUPPORTED_TYPE`. The walk is an explicit stack,
+  device becomes a stat-only `special` entry, from the walk's `lstat`
+  alone (never opened; ledger entry 19). The walk is an explicit stack,
   not recursion.
 - **The read is one descriptor.** The walk's `lstat` and the read are two
   calls, so a file is opened `O_NOFOLLOW` (where the host defines it; a
@@ -859,6 +862,51 @@ authoritative list.
       it.
     - Kept divergence: Linux `rm -r dir/..` empties the directory holding
       `dir` and answers success; memfs keeps macOS's `EINVAL`.
+19. **Special entries** (#1437) — fenced `KIT EXTENSION (special entries)`
+    sites in `volume.ts`, `view.ts`, `ports.ts` and `seed.ts`. A `Special`
+    inode (character device, block device, FIFO, socket) the upstream
+    engine does not model, created only by the seed: core `FileSystem` has
+    no `mknod`, so the seed reaches the engine's `makeSpecial` directly
+    (errors as `symlink`'s, `syscall: "mknod"` from `makeSync`). It is
+    stat-only:
+    - `stat`/`lstat` report its `File.Type` with size `0` and the kind's
+      `S_IF*` type bits in `mode` (permissions default `0o644`);
+      `readDirectoryEntries` reports the kind; links resolve to it
+      through `stat` and `realPath`; rename, remove, link, chmod and
+      utimes treat it as any non-directory.
+    - Every content operation fails `errnoError(method, path, "ENXIO")`,
+      tag `Unknown` by the node adapter's own mapping (ENXIO has no case
+      there): `open` with any flag (so `writeFile`), `readFile`,
+      `truncate`, `copyFile` from or onto it, and `copy` of it, alone or
+      inside a copied directory (the transition is atomic, nothing
+      commits). Nothing is read or written, so nothing is fabricated.
+    - The view's `lstat` answers kind `"special"` with `special` naming
+      the type; `snapshot`/`paths` stay regular-files-only. The ports'
+      stats and dirents gain `isCharacterDevice`/`isBlockDevice`/
+      `isFIFO`/`isSocket`, and their `readFile` throws `ENXIO`,
+      `syscall: "open"`.
+    - Host-probed (`integration/special.int.test.ts`, a real unix socket):
+      Linux answers `ENXIO` for every one of those operations; **macOS
+      answers errno 102 (`EOPNOTSUPP`), which libuv leaves unmapped as
+      `"Unknown system error -102"`** — same tag and method. memfs models
+      Linux's, as everywhere the two disagree. Kept divergence: `fs.cp` of
+      a socket is `ERR_FS_CP_SOCKET` (a FIFO `ERR_FS_CP_FIFO_PIPE`, and a
+      device is copied by reading it); memfs answers `ENXIO` for every
+      special entry, consistent with its other content operations. The
+      wider divergence is deliberate too: `ENXIO` is the host's answer only
+      for opening a socket, while a host's `/dev/null` opens, reads empty
+      and takes writes, and a FIFO open blocks. Code under test that does
+      I/O on a seeded device or FIFO fails on memfs and succeeds on the
+      host; the TSDoc says so, and an `open` fault is the escape hatch.
+      Modelling those semantics would fabricate content. A
+      FIFO is never opened on the host side — an open for reading blocks
+      without a writer — so the differential compares its `stat` only.
+    - Not in `ErrnoParityContract.ts`: its cases set up through
+      `FileSystem` alone, and no `FileSystem` member creates a socket on
+      either implementation.
+    - `NodeDirectorySeed.read` maps a host FIFO, socket or device to this
+      entry from the walk's `lstat`, never opening it (it threw
+      `ERR_SEED_UNSUPPORTED_TYPE` before).
 
 ## Superseded: opt-in `Volume`, no type widening
 

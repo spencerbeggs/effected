@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/walker/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-26T05:06:32Z
+  at: 2026-11-27T22:22:16Z
 x-okfit-integrity:
   generated:
-    body: ba18a521b592b18e
+    body: 70044468d306b089
 ---
 
 # walker
@@ -231,7 +231,14 @@ closes a cycle on its branch. A link the walk enters is not reported, nor
 one it would have skipped anyway (pruned by name, hidden under
 `dot: false`, past the pattern's depth bound, under a pattern that never
 descends). `kind: "dangling"` is any link in a directory the walk reads
-that `stat` cannot resolve, whatever the pattern. Only entries of
+that `stat` cannot resolve, whatever the pattern. `kind: "special"` is
+any link in a directory the walk reads that resolves to neither a regular
+file nor a directory (a device, a FIFO, a socket: `notes.md -> /dev/null`),
+whatever the pattern, so record mode reports every link it neither enters
+nor matches (#1437). It is one kind, not one per file type: the machine's
+stat answer is `File | Directory | Other`. A caller that must name the file
+type stats the link's own path under `cwd`, which follows it, never the raw
+`target` text, which may be relative to the link's directory. Only entries of
 directories the walk reads are seen, so nothing under a pruned directory or
 a boundary, and nothing for a literal pattern, is reported. A link under
 `followSymlinks` whose `realPath` fails stays an `unreadable` entry, not a
@@ -243,7 +250,9 @@ links at all, dangling ones included, while matches and unreadable
 directories are unchanged: a success that did nothing, which the TSDoc on
 the member and on `links` states and a test pins. memfs's sync port and
 `nodeWalkerFileSystem` carry it. `__test__/DescendLinks.test.ts` pins every
-case through both drivers over the real memfs port.
+case through both drivers over the real memfs port, the special case over
+a device, FIFO and socket seeded with `MemoryFileSystem.special` (no
+faults), and the node-sync e2e links a real `/dev/null`.
 
 **`descendEntries`** returns each match as `DescendEntry { path, info }`,
 `info` being the `stat` the walk already read (links followed), so a

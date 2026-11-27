@@ -23,10 +23,10 @@ sources:
     resource: applicable.mjs fixture probe of floor membership on 2026-11-05
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-26T06:05:38Z
+  at: 2026-11-27T21:58:19Z
 x-okfit-integrity:
   generated:
-    body: 6081373a4b547941
+    body: 90c6275364e7d5a2
 ---
 
 # An upgrade-ledger entry is one change, selected by the versions a consumer's upgrade crosses
@@ -94,13 +94,15 @@ plugin's no-versions rule; see
 [consumer-text-states-current-effect-behaviour](../conventions/consumer-text-states-current-effect-behaviour.md).
 
 `detect` patterns run through `git grep -nIE`, which is POSIX extended
-regex. `--check`, however, only proves that each pattern compiles as a
-JavaScript `RegExp`. A JavaScript-only escape therefore passes the check
-and silently matches nothing. `\d` is the common case: `4\.0\.[0-9]`
-matched 77 lines of `okf/` while `4\.0\.\d` matched none.[^ere-probe]
-Write `[0-9]`, `[[:space:]]` and plain alternation, and use no
-lookaround. Prove each pattern against a real call site before you
-commit it.
+regex, while the pattern is also compiled as a JavaScript `RegExp`. A
+JavaScript-only escape matches nothing there: `4\.0\.[0-9]` matched 77
+lines of `okf/` while `4\.0\.\d` matched none.[^ere-probe] So `--check`
+does two things: it compiles each pattern, and it refuses `\d`, `\D`,
+`\s`, `\S`, `\w`, `\W`, `\b`, `\B`, `\<`, `\>` and `(?`
+lookaround or groups. Write `[0-9]`, `[[:space:]]` and plain alternation
+instead. Neither check proves that a pattern finds the old shape, or that it
+avoids matching everything. Prove each pattern against a real call site, and
+against this repository, before you commit it.
 
 ## The frontmatter subset
 

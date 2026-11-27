@@ -179,7 +179,8 @@ export interface UnreadableDirectory<C = PlatformError.PlatformError> {
 
 /**
  * One symbolic link `descend` passed over under `onUnreadable: "record"`: a
- * link to a directory the walk did not enter, or a link that does not resolve.
+ * link to a directory the walk did not enter, a link that does not resolve,
+ * or a link to something that is neither a file nor a directory.
  *
  * @remarks
  * Only entries of directories the walk actually reads are seen, so a link
@@ -222,8 +223,18 @@ export interface SkippedLink {
 	 * missing, whether it once named a file or a directory. Reported for every
 	 * dangling link in a directory the walk reads, whatever the pattern, since
 	 * it can be classed as neither file nor directory.
+	 *
+	 * `"special"`: the link resolves, but to something that is neither a
+	 * regular file nor a directory — a character or block device, a FIFO or
+	 * a socket (`notes.md -> /dev/null`). The walk never matches or opens
+	 * it. Reported for every such link in a directory the walk reads,
+	 * whatever the pattern, like `"dangling"`. Which kind of special file
+	 * it is stays the caller's to learn: `stat` the link's own path (`path`
+	 * joined to `cwd`), which follows the link. Never `stat` the `target`
+	 * text itself — it may be relative to the link's directory, not to the
+	 * process's working directory.
 	 */
-	readonly kind: "directory" | "dangling";
+	readonly kind: "directory" | "dangling" | "special";
 }
 
 /**
@@ -242,7 +253,7 @@ export interface DescendResult<C = PlatformError.PlatformError> {
 	/** Directories that could not be read, each with its cause, in walk order. */
 	readonly unreadable: ReadonlyArray<UnreadableDirectory<C>>;
 	/**
-	 * Symbolic links the walk passed over — unentered directory links and dangling links — in walk order.
+	 * Symbolic links the walk passed over — unentered directory links, dangling links and links to special files — in walk order.
 	 *
 	 * @remarks
 	 * **From the sync forms, a port without `readLink` reports NO links**: this
@@ -309,7 +320,7 @@ export interface DescendEntriesResult<I = FileSystem.File.Info, C = PlatformErro
 	/** Directories that could not be read, each with its cause, in walk order. */
 	readonly unreadable: ReadonlyArray<UnreadableDirectory<C>>;
 	/**
-	 * Symbolic links the walk passed over — unentered directory links and dangling links — in walk order.
+	 * Symbolic links the walk passed over — unentered directory links, dangling links and links to special files — in walk order.
 	 *
 	 * @remarks
 	 * **From the sync forms, a port without `readLink` reports NO links**: this
@@ -437,8 +448,8 @@ const descendEntriesImpl = Effect.fn("Walker.descendEntries")(function* (
  * The walk continues past each such directory exactly as `"skip"` does; it
  * never aborts and it never discards the offending path or its cause. The
  * result also lists every {@link SkippedLink}: each symbolic link to a
- * directory the walk did not enter, and each dangling link, in the
- * directories it read.
+ * directory the walk did not enter, each dangling link, and each link to a
+ * device, FIFO or socket, in the directories it read.
  *
  * @public
  */
