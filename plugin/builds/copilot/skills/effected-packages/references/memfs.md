@@ -41,7 +41,7 @@ Both follow symlinks (their operations are `stat`-defined) and fail with node's 
 
 ## Helpers
 
-`MemoryFileSystem.file(content, { mode, mtime })`, `directory({ mode })`, `symlink(target)` (seed entries); `failTimes(n, error)` (a transient fault, counted per execution); `die(defect)` (a defect-arm fault, which `Effect.catch` cannot absorb); `wrapFile(file, overrides)` (decorates an opened `File` member by member — return it from an `open` fault); `errno(code, syscall, path?)` (the node-shaped error a port fault throws); `Volume` (the context key).
+`MemoryFileSystem.file(content, { mode, mtime })`, `directory({ mode })`, `symlink(target)`, `special(type, { mode, mtime })` (seed entries; `special` seeds a `"CharacterDevice"`, `"BlockDevice"`, `"FIFO"` or `"Socket"` that `stat`, `lstat`, listings and the ports report by type, while every content operation on it — `open`, `readFile`, `writeFile`, `truncate`, `copyFile`, `copy` — fails typed with errno `ENXIO`, so a link like `notes.md -> /dev/null` is seeded honestly, never faked with a `stat` fault); `failTimes(n, error)` (a transient fault, counted per execution); `die(defect)` (a defect-arm fault, which `Effect.catch` cannot absorb); `wrapFile(file, overrides)` (decorates an opened `File` member by member — return it from an `open` fault); `errno(code, syscall, path?)` (the node-shaped error a port fault throws); `Volume` (the context key).
 
 ## node-sync
 

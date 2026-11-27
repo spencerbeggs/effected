@@ -29,6 +29,7 @@ export type ErrnoCode =
 	| "ENOENT"
 	| "ENOTDIR"
 	| "ENOTEMPTY"
+	| "ENXIO"
 	| "EPERM"
 	| "ERR_FS_CP_DIR_TO_NON_DIR"
 	| "ERR_FS_CP_EINVAL"
@@ -46,6 +47,7 @@ export const errnoMessages: { readonly [Code in ErrnoCode]: string } = {
 	ENOENT: "no such file or directory",
 	ENOTDIR: "not a directory",
 	ENOTEMPTY: "directory not empty",
+	ENXIO: "no such device or address",
 	EPERM: "operation not permitted",
 	ERR_FS_CP_DIR_TO_NON_DIR: "cannot overwrite non-directory with directory",
 	ERR_FS_CP_EINVAL: "invalid src or dest",

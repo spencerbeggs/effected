@@ -13,7 +13,7 @@ import { lexicallyNormalized } from "./lexical.js";
  * @internal
  */
 export interface LiteralTree {
-	readonly lstat: (path: string) => { readonly kind: "file" | "directory" | "symlink" } | undefined;
+	readonly lstat: (path: string) => { readonly kind: "file" | "directory" | "symlink" | "special" } | undefined;
 	readonly readLink: (path: string) => string | undefined;
 }
 

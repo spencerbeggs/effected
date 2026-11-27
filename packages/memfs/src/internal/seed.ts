@@ -4,11 +4,30 @@ import type { FileSystem } from "effect";
 import { Effect, Result } from "effect";
 import type { PlatformError } from "effect/PlatformError";
 import { badArgument } from "effect/PlatformError";
-import type { MemoryFileSystemOptions, MemoryFileSystemSeed, MemoryFileSystemSeedEntry } from "../MemoryFileSystem.js";
+import type {
+	MemoryFileSystemOptions,
+	MemoryFileSystemSeed,
+	MemoryFileSystemSeedEntry,
+	MemoryFileSystemSpecialType,
+} from "../MemoryFileSystem.js";
+
+/**
+ * The engine's special-entry constructor: `FileSystem` has no `mknod`, so the
+ * seed reaches the engine directly for a device, FIFO or socket.
+ */
+export type MakeSpecial = (
+	path: string,
+	kind: MemoryFileSystemSpecialType,
+	mode?: number,
+) => Effect.Effect<void, PlatformError>;
 
 const encoder = new TextEncoder();
 
-export const seedVolume = (fs: FileSystem.FileSystem, seed: MemoryFileSystemSeed): Effect.Effect<void, PlatformError> =>
+export const seedVolume = (
+	fs: FileSystem.FileSystem,
+	seed: MemoryFileSystemSeed,
+	makeSpecial: MakeSpecial,
+): Effect.Effect<void, PlatformError> =>
 	Effect.gen(function* () {
 		for (const [path, entry] of Object.entries(seed)) {
 			const separator = path.lastIndexOf("/");
@@ -51,6 +70,15 @@ export const seedVolume = (fs: FileSystem.FileSystem, seed: MemoryFileSystemSeed
 				}
 				case "MemoryFileSystemSeedSymlink": {
 					yield* fs.symlink(entry.target, path);
+					break;
+				}
+				case "MemoryFileSystemSeedSpecial": {
+					yield* makeSpecial(path, entry.type, entry.mode);
+					if (entry.mtime !== undefined) {
+						// A `Date`, for the same seconds-vs-milliseconds reason as a file's.
+						const stamp = new Date(entry.mtime);
+						yield* fs.utimes(path, stamp, stamp);
+					}
 					break;
 				}
 			}
@@ -112,6 +140,7 @@ export const seedWith = (
 	fs: FileSystem.FileSystem,
 	seed: MemoryFileSystemSeed,
 	options: MemoryFileSystemOptions | undefined,
+	makeSpecial: MakeSpecial,
 ): Effect.Effect<void, PlatformError> =>
 	Effect.gen(function* () {
 		const applied = applyRoot(seed, options?.root);
@@ -123,5 +152,5 @@ export const seedWith = (
 		if (applied.success.root !== undefined) {
 			yield* fs.makeDirectory(applied.success.root, { recursive: true });
 		}
-		yield* seedVolume(fs, applied.success.seed);
+		yield* seedVolume(fs, applied.success.seed, makeSpecial);
 	});

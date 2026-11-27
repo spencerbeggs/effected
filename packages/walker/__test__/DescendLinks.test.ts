@@ -196,3 +196,77 @@ describe("descend record mode: links", () => {
 		assert.deepStrictEqual(without.unreadable, full.unreadable);
 	});
 });
+
+// A link to something that is neither a file nor a directory (#1437): memfs seeds the device, FIFO and socket
+// themselves (stat-only entries), so both drivers read one plain volume — the FileSystem service and the
+// handle's unfaulted sync port. `/proj/sock` is a socket that is NOT a link: it is never reported.
+const SPECIAL_TREE: Readonly<Record<string, MemoryFileSystemSeedEntry>> = {
+	"/dev/null": MemoryFileSystem.special("CharacterDevice", { mode: 0o666 }),
+	"/run/pipe": MemoryFileSystem.special("FIFO"),
+	"/proj/a.md": "",
+	"/proj/notes.md": MemoryFileSystem.symlink("/dev/null"),
+	"/proj/sub/pipe": MemoryFileSystem.symlink("/run/pipe"),
+	"/proj/sock": MemoryFileSystem.special("Socket"),
+};
+
+const special = MemoryFileSystem.makeSync(SPECIAL_TREE);
+
+const specialRun = (source: string, options: Options = {}) =>
+	Effect.gen(function* () {
+		const pattern = compile(source);
+		const all = { cwd: "/proj", onUnreadable: "record", ...options } as const;
+		const viaEffect = yield* descend(pattern, all).pipe(Effect.provide(special.layer));
+		const viaSync = Result.getOrThrow(descendSync(pattern, { ...all, fileSystem: special.sync, path: posix }));
+		assert.deepStrictEqual(viaSync, viaEffect, `${source} sync parity`);
+		const entries = yield* descendEntries(pattern, all).pipe(Effect.provide(special.layer));
+		assert.deepStrictEqual(entries.links, viaEffect.links, `${source} descendEntries`);
+		return viaEffect;
+	});
+
+const NOTES = { path: "notes.md", target: "/dev/null", kind: "special" } as const;
+const PIPE = { path: "sub/pipe", target: "/run/pipe", kind: "special" } as const;
+
+describe("descend record mode: links to special files", () => {
+	it.effect("reports a link to a device, FIFO or socket as special, and never matches it", () =>
+		Effect.gen(function* () {
+			const result = yield* specialRun("**");
+			assert.deepStrictEqual(result.matches, ["a.md"]);
+			assert.deepStrictEqual(
+				[...result.links].sort((a, b) => (a.path < b.path ? -1 : 1)),
+				[NOTES, PIPE],
+			);
+		}),
+	);
+
+	it.effect("is reported whatever the pattern, like a dangling link: a name the pattern would match is no match", () =>
+		Effect.gen(function* () {
+			const result = yield* specialRun("*.md");
+			assert.deepStrictEqual(result.matches, ["a.md"]);
+			assert.deepStrictEqual(result.links, [NOTES]);
+		}),
+	);
+
+	it.effect("is neither matched nor entered under match: any or followSymlinks", () =>
+		Effect.gen(function* () {
+			const any = yield* specialRun("**", { match: "any" });
+			assert.deepStrictEqual(any.matches, ["a.md", "sub"]);
+			const followed = yield* specialRun("**", { followSymlinks: true });
+			assert.deepStrictEqual(followed.matches, ["a.md"]);
+			assert.deepStrictEqual(
+				[...followed.links].sort((a, b) => (a.path < b.path ? -1 : 1)),
+				[NOTES, PIPE],
+			);
+		}),
+	);
+
+	it.effect("a special file that is not a link is never reported", () =>
+		Effect.gen(function* () {
+			const result = yield* specialRun("*");
+			assert.notInclude(
+				result.links.map((link) => link.path),
+				"sock",
+			);
+			assert.notInclude(result.matches, "sock");
+		}),
+	);
+});

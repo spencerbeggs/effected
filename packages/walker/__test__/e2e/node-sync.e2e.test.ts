@@ -58,6 +58,28 @@ describe("descendSync over node:fs", () => {
 			assert.isAbove(entries[0]?.info.mtimeMs ?? 0, 0);
 		});
 	});
+
+	it.skipIf(process.platform === "win32")(
+		"record mode reports a real link to a character device as special, and never matches it",
+		() => {
+			const root = mkdtempSync(join(tmpdir(), "walker-e2e-"));
+			try {
+				writeFileSync(join(root, "a.md"), "");
+				symlinkSync("/dev/null", join(root, "notes.md"));
+				const result = Result.getOrThrow(
+					descendSync(Result.getOrThrow(GlobPattern.compileResult("*.md")), {
+						cwd: root,
+						onUnreadable: "record",
+						...nodeWalkerSyncOps,
+					}),
+				);
+				assert.deepStrictEqual(result.matches, ["a.md"]);
+				assert.deepStrictEqual(result.links, [{ path: "notes.md", target: "/dev/null", kind: "special" }]);
+			} finally {
+				rmSync(root, { recursive: true, force: true });
+			}
+		},
+	);
 });
 
 describe("confineRealSync over node:fs", () => {

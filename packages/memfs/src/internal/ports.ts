@@ -19,10 +19,19 @@ import { fallbackErrnoForTag, nodeErrno } from "./errno.js";
 import { assertKnownFaultKeys } from "./faults.js";
 import { realPathOf, resolvePath } from "./resolve.js";
 
+// The type predicates node's `Stats` and `Dirent` share, from a literal kind.
+const kindPredicates = (s: MemoryFileSystemVolumeStat | undefined) => ({
+	isFile: () => s?.kind === "file",
+	isDirectory: () => s?.kind === "directory",
+	isSymbolicLink: () => s?.kind === "symlink",
+	isCharacterDevice: () => s?.special === "CharacterDevice",
+	isBlockDevice: () => s?.special === "BlockDevice",
+	isFIFO: () => s?.special === "FIFO",
+	isSocket: () => s?.special === "Socket",
+});
+
 const portStats = (s: MemoryFileSystemVolumeStat): MemoryFileSystemPortStats => ({
-	isFile: () => s.kind === "file",
-	isDirectory: () => s.kind === "directory",
-	isSymbolicLink: () => s.kind === "symlink",
+	...kindPredicates(s),
 	mtimeMs: s.mtimeMs,
 	size: s.size,
 });
@@ -160,10 +169,12 @@ const readBytes = (volume: MemoryFileSystemVolume, path: string): Uint8Array => 
 	if ("code" in r) throw nodeErrno(r.code, "open", path);
 	const bytes = volume.bytes(r.path);
 	if (bytes === undefined) {
-		// Reading a directory as a file is EISDIR in `readFileSync`; anything
-		// else that is not a regular file is ENOTDIR. `read` works on a
+		// Reading a directory as a file is EISDIR in `readFileSync`; a special
+		// entry cannot be opened (ENXIO, KIT EXTENSION: special entries);
+		// anything else that is not a regular file is ENOTDIR. `read` works on a
 		// descriptor, so node's EISDIR carries no path.
-		throw volume.isDirectory(r.path) ? nodeErrno("EISDIR", "read", undefined) : nodeErrno("ENOTDIR", "open", path);
+		if (volume.isDirectory(r.path)) throw nodeErrno("EISDIR", "read", undefined);
+		throw nodeErrno(volume.lstat(r.path)?.kind === "special" ? "ENXIO" : "ENOTDIR", "open", path);
 	}
 	return bytes;
 };
@@ -192,13 +203,7 @@ export const makeSyncFileSystem = (volume: MemoryFileSystemVolume): MemoryFileSy
 		if (options?.withFileTypes !== true) return names;
 		const base = r.path === "/" ? "" : r.path;
 		return names.map((name): MemoryFileSystemDirent => {
-			const kind = volume.lstat(`${base}/${name}`)?.kind;
-			return {
-				name,
-				isFile: () => kind === "file",
-				isDirectory: () => kind === "directory",
-				isSymbolicLink: () => kind === "symlink",
-			};
+			return { name, ...kindPredicates(volume.lstat(`${base}/${name}`)) };
 		});
 	}
 	return {
@@ -267,6 +272,7 @@ const methodSyscall: { readonly [method: string]: string | undefined } = {
 	writeFile: "open",
 	makeDirectory: "mkdir",
 	symlink: "symlink",
+	makeSpecial: "mknod",
 	chmod: "chmod",
 	utimes: "utime",
 	remove: "lstat",

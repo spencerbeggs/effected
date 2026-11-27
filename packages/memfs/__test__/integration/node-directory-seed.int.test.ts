@@ -1,6 +1,7 @@
 // NodeDirectorySeed.read against real fixture trees under os.tmpdir(): what is
-// copied (bytes exactly, empty directories, in-fixture links as links), and
-// what is refused (links leaving the fixture, oversized files, other types).
+// copied (bytes exactly, empty directories, in-fixture links as links, special
+// files as stat-only entries), and what is refused (links leaving the fixture,
+// oversized files).
 
 import { execFileSync } from "node:child_process";
 import {
@@ -14,6 +15,7 @@ import {
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
@@ -353,10 +355,29 @@ describe("NodeDirectorySeed.read — what is refused", () => {
 		);
 	});
 
-	it.skipIf(process.platform === "win32")("a FIFO", () => {
-		const dir = fresh("fifo");
+	// Read from the walk's `lstat` alone: opening the FIFO would block this
+	// test forever, so finishing at all proves it was never opened.
+	it.skipIf(process.platform === "win32")("a FIFO and a socket become stat-only special entries", async () => {
+		const dir = fresh("special");
 		execFileSync("mkfifo", [join(dir, "pipe")]);
-		assert.strictEqual(thrownBy(() => NodeDirectorySeed.read(dir)).code, "ERR_SEED_UNSUPPORTED_TYPE");
+		const server = createServer();
+		await new Promise<void>((resolve) => server.listen(join(dir, "sock"), resolve));
+		try {
+			const seed = NodeDirectorySeed.read(dir, { mountAt: "/repo" });
+			assert.deepStrictEqual(seed["/repo/pipe"], { _tag: "MemoryFileSystemSeedSpecial", type: "FIFO" });
+			assert.deepStrictEqual(seed["/repo/sock"], { _tag: "MemoryFileSystemSeedSpecial", type: "Socket" });
+			const withModes = NodeDirectorySeed.read(dir, { mountAt: "/repo", modes: true });
+			assert.deepStrictEqual(withModes["/repo/pipe"], {
+				_tag: "MemoryFileSystemSeedSpecial",
+				type: "FIFO",
+				mode: lstatSync(join(dir, "pipe")).mode & 0o7777,
+			});
+			const handle = MemoryFileSystem.makeSync(seed);
+			assert.isTrue(handle.sync.lstat("/repo/pipe").isFIFO());
+			assert.isTrue(handle.sync.lstat("/repo/sock").isSocket());
+		} finally {
+			await new Promise<void>((resolve) => server.close(() => resolve()));
+		}
 	});
 
 	it("a missing directory, a file, and bad options", () => {

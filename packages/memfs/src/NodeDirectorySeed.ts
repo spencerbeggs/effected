@@ -9,7 +9,9 @@ import type {
 	MemoryFileSystemSeedDirectory,
 	MemoryFileSystemSeedEntry,
 	MemoryFileSystemSeedFile,
+	MemoryFileSystemSeedSpecial,
 	MemoryFileSystemSeedSymlink,
+	MemoryFileSystemSpecialType,
 } from "./MemoryFileSystem.js";
 
 /**
@@ -326,9 +328,11 @@ const trimTrailingSlashes = (path: string): string => {
  *   parent). Node has no `openat`, so each entry is still reached by path: a
  *   swap made and undone between two checks is not seen. The guarantee is for
  *   a fixture tree, not one an adversary rewrites while it is read.
- * - **Anything else** — a FIFO, a socket, a device — throws
- *   `ERR_SEED_UNSUPPORTED_TYPE`; the volume models files, directories and
- *   links only.
+ * - **A FIFO, socket or device** becomes a stat-only special entry (as
+ *   `MemoryFileSystem.special` builds), decided from the walk's `lstat`
+ *   alone: it is never opened, so a FIFO cannot block the read. Its mode is
+ *   copied only with `modes: true`. Any other type throws
+ *   `ERR_SEED_UNSUPPORTED_TYPE`.
  *
  * A read failure is node's own error, rethrown (`ENOENT` for a missing
  * directory, `ENOTDIR` for a file). Every thrown error carries `code` and
@@ -423,7 +427,30 @@ export class NodeDirectorySeed {
 						: { _tag: "MemoryFileSystemSeedFile", content };
 					seed[keyFor(relative)] = entry;
 				} else {
-					throw seedError("ERR_SEED_UNSUPPORTED_TYPE", realPath, "only files, directories and symlinks can be seeded");
+					// A FIFO, socket or device becomes a stat-only special entry,
+					// from the walk's `lstat` alone — it is never opened, so a FIFO
+					// cannot block the read. Anything else (no such host type
+					// today) is still refused.
+					const type: MemoryFileSystemSpecialType | undefined = stat.isFIFO()
+						? "FIFO"
+						: stat.isSocket()
+							? "Socket"
+							: stat.isCharacterDevice()
+								? "CharacterDevice"
+								: stat.isBlockDevice()
+									? "BlockDevice"
+									: undefined;
+					if (type === undefined) {
+						throw seedError(
+							"ERR_SEED_UNSUPPORTED_TYPE",
+							realPath,
+							"only files, directories, symlinks and special files can be seeded",
+						);
+					}
+					const entry: MemoryFileSystemSeedSpecial = modes
+						? { _tag: "MemoryFileSystemSeedSpecial", type, mode: stat.mode & 0o7777 }
+						: { _tag: "MemoryFileSystemSeedSpecial", type };
+					seed[keyFor(relative)] = entry;
 				}
 			}
 			// Reversed onto the stack so subdirectories are visited in name order.

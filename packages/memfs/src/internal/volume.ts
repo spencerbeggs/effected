@@ -47,6 +47,12 @@
 //   `noFollow` (ELOOP on a final-component symlink, as O_NOFOLLOW does) and
 //   the handle's `read`/`readAlloc` honor `File.ReadOptions.position` (read at
 //   the offset, cursor untouched, negative is BadArgument).
+// - Special entries: a `Special` inode (character device, block device, FIFO,
+//   socket), created only by the seed through `makeSpecial`. `stat`/`lstat`
+//   and `readDirectoryEntries` report its kind; every content operation on it
+//   fails ENXIO (open with any flag, readFile, writeFile, truncate, copyFile
+//   from or onto it, `copy` of it); namespace operations treat it as any
+//   non-directory.
 
 import type { Cause } from "effect";
 import {
@@ -132,7 +138,48 @@ interface SymbolicLinkInode extends InodeMetadata {
 	readonly target: string;
 }
 
-type InodeEntry = FileInode | DirectoryInode | SymbolicLinkInode;
+// KIT EXTENSION (special entries): a character device, block device, FIFO or
+// socket. Stat-only: it has a kind and metadata but no content, so every
+// content operation on it (open, readFile, writeFile, truncate, copyFile, and
+// the copy of it by `copy`) fails ENXIO — nothing is ever read from or written
+// to it, and nothing fabricates bytes for it. Namespace operations (rename,
+// remove, link, chmod, utimes) treat it like any non-directory.
+/** @internal */
+export type SpecialKind = "CharacterDevice" | "BlockDevice" | "FIFO" | "Socket";
+
+interface SpecialInode extends InodeMetadata {
+	readonly _tag: "Special";
+	readonly kind: SpecialKind;
+}
+
+// The `S_IF*` type bits `stat` reports in `mode` for each kind.
+const SPECIAL_TYPE_MODE: { readonly [Kind in SpecialKind]: number } = {
+	CharacterDevice: 0o020000,
+	BlockDevice: 0o060000,
+	FIFO: 0o010000,
+	Socket: 0o140000,
+};
+const SPECIAL_PERMISSIONS = 0o644;
+// END KIT EXTENSION (special entries)
+
+type InodeEntry = FileInode | DirectoryInode | SymbolicLinkInode | SpecialInode;
+
+// The `FileSystem.File.Type` of an entry: its tag, or a special entry's kind.
+const entryType = (entry: InodeEntry): Exclude<InodeEntry["_tag"], "Special"> | SpecialKind =>
+	entry._tag === "Special" ? entry.kind : entry._tag;
+
+// The literal kind the shared resolver (./resolve.js) walks by.
+const literalKind = (entry: InodeEntry): "file" | "directory" | "symlink" | "special" =>
+	entry._tag === "File"
+		? "file"
+		: entry._tag === "Directory"
+			? "directory"
+			: entry._tag === "SymbolicLink"
+				? "symlink"
+				: "special";
+
+// KIT EXTENSION (special entries): content operations refuse a special entry.
+const noDevice = (method: string, path: string): PlatformError => errnoError(method, path, "ENXIO");
 
 const InodeEntry = Data.taggedEnum<InodeEntry>();
 
@@ -492,6 +539,37 @@ const createSymbolicLink = Effect.fnUntraced(function* (state: State, target: st
 					ctime: now,
 					birthtime: now,
 					target,
+				}),
+			),
+		},
+		ino,
+	] as const;
+});
+
+// KIT EXTENSION (special entries): an unlinked special inode, `mode`'s
+// permission bits over the kind's type bits.
+const createSpecial = Effect.fnUntraced(function* (state: State, kind: SpecialKind, mode = SPECIAL_PERMISSIONS) {
+	const now = yield* DateTime.now;
+	const ino = Inode(state.nextInode);
+	return [
+		{
+			...state,
+			nextInode: state.nextInode + 1,
+			inodes: HashMap.set(
+				state.inodes,
+				ino,
+				InodeEntry.Special({
+					ino,
+					mode: SPECIAL_TYPE_MODE[kind] | (mode & PERMISSION_MODE),
+					uid: DEFAULT_UID,
+					gid: DEFAULT_GID,
+					nlink: 0,
+					openCount: 0,
+					atime: now,
+					mtime: now,
+					ctime: now,
+					birthtime: now,
+					kind,
 				}),
 			),
 		},
@@ -1050,6 +1128,26 @@ const symlink = (volume: Volume) =>
 		);
 	});
 
+// KIT EXTENSION (special entries): `mknod`/`mkfifo`/`bind` for the seed. Not a
+// `FileSystem` member — core has no such operation — so only the seed reaches
+// it. Errors follow `symlink`'s, the other entry-creating call without content.
+const makeSpecial = (volume: Volume) =>
+	Effect.fnUntraced(function* (path: string, kind: SpecialKind, mode?: number) {
+		const method = "makeSpecial";
+		yield* validateMode(method, mode);
+		return yield* volume.mutate((state) =>
+			Effect.gen(function* () {
+				const parent = yield* resolveParent(state, path, method, path, "ENOENT", "EEXIST");
+				const [createdState, inode] = yield* createSpecial(state, kind, mode);
+				const nextState = yield* linkInode(createdState, parent.inode, parent.name, inode, method).pipe(
+					Effect.mapError((error) => withSystemErrorPath(error, method, path)),
+				);
+				return transitionResult(nextState, undefined, [{ _tag: "Create", path: childPath(parent.path, parent.name) }]);
+			}),
+		);
+	});
+// END KIT EXTENSION (special entries)
+
 const readLink = (volume: Volume) =>
 	Effect.fnUntraced(function* (path: string) {
 		return yield* volume.withState((state) =>
@@ -1081,7 +1179,7 @@ const realPath = (volume: Volume) =>
 					lstat: (at) => {
 						const entry = literal(at);
 						if (entry === undefined) return undefined;
-						return { kind: entry._tag === "File" ? "file" : entry._tag === "Directory" ? "directory" : "symlink" };
+						return { kind: literalKind(entry) };
 					},
 					readLink: (at) => {
 						const entry = literal(at);
@@ -1326,6 +1424,10 @@ const cloneInode: (
 				nextState = applyMetadata(nextState, yield* getDirectory(nextState, inode, method, path));
 				return [nextState, inode] as const;
 			}),
+		// KIT EXTENSION (special entries): `copy` (and a directory copy reaching
+		// one) refuses a special entry rather than inventing one — the transition
+		// is atomic, so nothing is committed.
+		Special: () => Effect.fail(noDevice(method, path)),
 	});
 });
 
@@ -1496,6 +1598,10 @@ const copyFileUnlocked = Effect.fnUntraced(function* (state: State, fromPath: st
 	const source = yield* resolve(state, fromPath, { method }).pipe(
 		Effect.mapError((error) => withSystemErrorPath(error, method, fromPath)),
 	);
+	// KIT EXTENSION (special entries): a special source has no content to copy.
+	if (source.entry._tag === "Special") {
+		return yield* noDevice(method, fromPath);
+	}
 	if (source.entry._tag !== "File") {
 		return yield* badResource(method, fromPath, "EISDIR", "Source is not a file");
 	}
@@ -1507,6 +1613,10 @@ const copyFileUnlocked = Effect.fnUntraced(function* (state: State, fromPath: st
 
 	if (existingInode !== undefined) {
 		const existing = yield* getInode(state, existingInode, method, toPath);
+		// KIT EXTENSION (special entries): nor does a special destination take any.
+		if (existing._tag === "Special") {
+			return yield* noDevice(method, toPath);
+		}
 		if (existing._tag !== "File") {
 			return yield* badResource(method, toPath, "EISDIR", "Destination is a directory");
 		}
@@ -1743,6 +1853,11 @@ const openDescriptorUnlocked: (
 					}
 					return yield* withSystemErrorPath(resolved.failure, "open", path);
 				}
+				// KIT EXTENSION (special entries): no descriptor on a special entry,
+				// whatever the flag — so `writeFile` onto one fails here too.
+				if (resolved.success.entry._tag === "Special") {
+					return yield* noDevice("open", path);
+				}
 				if (resolved.success.entry._tag !== "File") {
 					return yield* badResource("open", path, "EISDIR");
 				}
@@ -1866,7 +1981,8 @@ const closeDescriptor = Effect.fnUntraced(function* (volume: Volume, fd: FileDes
 });
 
 const fileInfo = (entry: InodeEntry): FileSystem.File.Info => ({
-	type: entry._tag,
+	// KIT EXTENSION (special entries): a special entry reports its kind.
+	type: entryType(entry),
 	mtime: Option.some(DateTime.toDateUtc(entry.mtime)),
 	atime: Option.some(DateTime.toDateUtc(entry.atime)),
 	birthtime: Option.some(DateTime.toDateUtc(entry.birthtime)),
@@ -2210,7 +2326,7 @@ const readDirectoryEntries = (volume: Volume) =>
 					// KIT EXTENSION (case folding): `name` is a stored key; exact hit.
 					const inode = findEntry(nextState, directory, name);
 					const child = inode === undefined ? undefined : findInode(nextState, inode);
-					entries.push({ name, type: child?._tag ?? "Unknown" });
+					entries.push({ name, type: child === undefined ? "Unknown" : entryType(child) });
 				}
 				return transitionResult(nextState, entries);
 			}),
@@ -2222,6 +2338,10 @@ const readFile = (volume: Volume) =>
 		return yield* volume.mutate((state) =>
 			Effect.gen(function* () {
 				const resolved = yield* resolve(state, path, { method: "readFile" });
+				// KIT EXTENSION (special entries)
+				if (resolved.entry._tag === "Special") {
+					return yield* noDevice("readFile", path);
+				}
 				if (resolved.entry._tag !== "File") {
 					return yield* badResource("readFile", path, "EISDIR");
 				}
@@ -2283,6 +2403,10 @@ const truncate = (volume: Volume) =>
 		return yield* volume.mutate((state) =>
 			Effect.gen(function* () {
 				const resolved = yield* resolve(state, path, { method: "truncate" });
+				// KIT EXTENSION (special entries)
+				if (resolved.entry._tag === "Special") {
+					return yield* noDevice("truncate", path);
+				}
 				if (resolved.entry._tag !== "File") {
 					return yield* badResource("truncate", path, "EISDIR");
 				}
@@ -2694,7 +2818,8 @@ export const make: Effect.Effect<FileSystem.FileSystem> = Effect.map(
 /** @internal */
 export interface VolumeEntrySnapshot {
 	readonly path: string;
-	readonly type: "File" | "Directory" | "SymbolicLink";
+	// KIT EXTENSION (special entries): a special entry reports its kind.
+	readonly type: "File" | "Directory" | "SymbolicLink" | SpecialKind;
 	/** The live data reference for a `File` entry (callers must copy), `undefined` otherwise. */
 	readonly data: Uint8Array | undefined;
 	/** The entry's modification time as epoch milliseconds — the same clock `stat` reports. */
@@ -2709,7 +2834,7 @@ const encoder = new TextEncoder();
 
 const snapshotOf = (path: string, entry: InodeEntry): VolumeEntrySnapshot => ({
 	path,
-	type: entry._tag,
+	type: entryType(entry),
 	data: entry._tag === "File" ? entry.data : undefined,
 	mtime: DateTime.toEpochMillis(entry.mtime),
 	target: entry._tag === "SymbolicLink" ? entry.target : undefined,
@@ -2799,6 +2924,8 @@ export interface InspectableFileSystem {
 	readonly emit: (events: ReadonlyArray<FileSystem.WatchEvent>) => void;
 	/** The number of live watch subscriptions (KIT EXTENSION: watch injection). */
 	readonly watcherCount: () => number;
+	/** Creates a special entry at `path` — the seed's only route to one (KIT EXTENSION: special entries). */
+	readonly makeSpecial: (path: string, kind: SpecialKind, mode?: number) => Effect.Effect<void, PlatformError>;
 }
 
 /** @internal */
@@ -2816,6 +2943,7 @@ export const makeInspectableWith = (options: EngineOptions): Effect.Effect<Inspe
 		},
 		emit: volume.emit,
 		watcherCount: () => volume.watchers.size,
+		makeSpecial: makeSpecial(volume),
 	}));
 
 /** @internal */

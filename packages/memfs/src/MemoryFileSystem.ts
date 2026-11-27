@@ -133,7 +133,7 @@ export interface MemoryFileSystemVolume {
 	 * Literal like the rest of this view: a symbolic link reports as
 	 * `"symlink"`, never as its target, and its `size` is the UTF-8 byte length
 	 * of the stored target. A file's `size` is its byte length; a directory's
-	 * is `0`. `mtimeMs` is the same clock {@link MemoryFileSystemVolume.mtime}
+	 * is `0`, and so is a special entry's (`"special"`, its type on `special`). `mtimeMs` is the same clock {@link MemoryFileSystemVolume.mtime}
 	 * reads.
 	 */
 	readonly lstat: (path: string) => MemoryFileSystemVolumeStat | undefined;
@@ -145,13 +145,26 @@ export interface MemoryFileSystemVolume {
  * @public
  */
 export interface MemoryFileSystemVolumeStat {
-	/** What lives at the path — a link is `"symlink"`, never its target's kind. */
-	readonly kind: "file" | "directory" | "symlink";
+	/**
+	 * What lives at the path — a link is `"symlink"`, never its target's kind;
+	 * a character device, block device, FIFO or socket is `"special"`.
+	 */
+	readonly kind: "file" | "directory" | "symlink" | "special";
+	/** Which special entry this is — present exactly when `kind` is `"special"`. */
+	readonly special?: MemoryFileSystemSpecialType;
 	/** The entry's modification time as epoch milliseconds. */
 	readonly mtimeMs: number;
-	/** File byte length, symlink target UTF-8 byte length, or `0` for a directory. */
+	/** File byte length, symlink target UTF-8 byte length, or `0` for a directory or special entry. */
 	readonly size: number;
 }
+
+/**
+ * The kind of a special (non-regular, non-directory, non-link) entry — the
+ * `FileSystem.File.Type` values `stat` reports for one.
+ *
+ * @public
+ */
+export type MemoryFileSystemSpecialType = "CharacterDevice" | "BlockDevice" | "FIFO" | "Socket";
 
 /**
  * The error a synchronous `node:fs` call throws: an `Error` carrying `code`,
@@ -270,9 +283,17 @@ export interface MemoryFileSystemPortStats {
 	isDirectory(): boolean;
 	/** Whether the entry is a symbolic link (only ever true for `lstat`). */
 	isSymbolicLink(): boolean;
+	/** Whether the entry is a character device. */
+	isCharacterDevice(): boolean;
+	/** Whether the entry is a block device. */
+	isBlockDevice(): boolean;
+	/** Whether the entry is a FIFO (named pipe). */
+	isFIFO(): boolean;
+	/** Whether the entry is a socket. */
+	isSocket(): boolean;
 	/** The modification time as epoch milliseconds. */
 	readonly mtimeMs: number;
-	/** File byte length, symlink target UTF-8 byte length, or `0` for a directory. */
+	/** File byte length, symlink target UTF-8 byte length, or `0` for a directory or special entry. */
 	readonly size: number;
 }
 
@@ -291,6 +312,14 @@ export interface MemoryFileSystemDirent {
 	isDirectory(): boolean;
 	/** Whether the entry is a symbolic link. */
 	isSymbolicLink(): boolean;
+	/** Whether the entry is a character device. */
+	isCharacterDevice(): boolean;
+	/** Whether the entry is a block device. */
+	isBlockDevice(): boolean;
+	/** Whether the entry is a FIFO (named pipe). */
+	isFIFO(): boolean;
+	/** Whether the entry is a socket. */
+	isSocket(): boolean;
 }
 
 /**
@@ -581,9 +610,31 @@ export interface MemoryFileSystemSeedSymlink {
 }
 
 /**
+ * A seed entry describing a character device, block device, FIFO or socket —
+ * built with `MemoryFileSystem.special`.
+ *
+ * @remarks
+ * Stat-only: `stat`/`lstat` report its type with size `0`, listings include
+ * it, and links resolve to it, but every content operation on it fails with
+ * errno `ENXIO` — nothing is ever read from or written to it.
+ *
+ * @public
+ */
+export interface MemoryFileSystemSeedSpecial {
+	readonly _tag: "MemoryFileSystemSeedSpecial";
+	/** Which special entry to create. */
+	readonly type: MemoryFileSystemSpecialType;
+	/** Initial permission bits (defaults to `0o644`). */
+	readonly mode?: number;
+	/** Modification time in epoch milliseconds (defaults to the volume's clock at seed time). */
+	readonly mtime?: number;
+}
+
+/**
  * One value in a {@link MemoryFileSystemSeed}: plain file contents
  * (`string | Uint8Array`, unchanged from the original seed shape), or a tagged
- * entry describing a file with a mode, a directory, or a symbolic link.
+ * entry describing a file with a mode, a directory, a symbolic link, or a
+ * special entry (device, FIFO, socket).
  *
  * @public
  */
@@ -592,7 +643,8 @@ export type MemoryFileSystemSeedEntry =
 	| Uint8Array
 	| MemoryFileSystemSeedFile
 	| MemoryFileSystemSeedDirectory
-	| MemoryFileSystemSeedSymlink;
+	| MemoryFileSystemSeedSymlink
+	| MemoryFileSystemSeedSpecial;
 
 /**
  * A volume seed: absolute POSIX paths mapped to seed entries.
@@ -853,7 +905,7 @@ const buildHandle = (
 	Effect.gen(function* () {
 		const engine = yield* internal.makeInspectableWith(engineOptions(options));
 		const raw = engine.fileSystem;
-		yield* seedWith(raw, seed, options);
+		yield* seedWith(raw, seed, options, engine.makeSpecial);
 		const volume = makeVolumeService(engine);
 		const fileSystem =
 			options?.faults === undefined && options?.spies === undefined
@@ -1381,6 +1433,39 @@ export class MemoryFileSystem {
 	static readonly symlink = (target: string): MemoryFileSystemSeedSymlink => ({
 		_tag: "MemoryFileSystemSeedSymlink",
 		target,
+	});
+
+	/**
+	 * A seed entry for a character device, block device, FIFO or socket.
+	 *
+	 * @remarks
+	 * Stat-only, so a test can seed what a real tree holds — `/dev/null`, a
+	 * named pipe, a socket — without inventing content for it. `stat`/`lstat`
+	 * report its `type` with size `0`, `readDirectory` and
+	 * `readDirectoryEntries` list it, a symbolic link resolves to it through
+	 * `stat` and `realPath`, and it can be renamed, removed or hard-linked like
+	 * a file. Every content operation on it fails typed with errno `ENXIO`
+	 * (reason `Unknown`, the code on `cause.code`, as the node adapter maps
+	 * it): `open` with any flag, `readFile`, `writeFile`, `truncate`,
+	 * `copyFile` from or onto it, and `copy` of it. The ports report it through
+	 * `isCharacterDevice`/`isBlockDevice`/`isFIFO`/`isSocket`, with `isFile`,
+	 * `isDirectory` and `isSymbolicLink` all `false`, and their `readFile`
+	 * throws `ENXIO` with `syscall: "open"`. The volume view's `lstat` reports
+	 * kind `"special"`; `snapshot` and `paths` list regular files only, so they
+	 * omit it.
+	 *
+	 * @param type - Which special entry to create.
+	 * @param options - `mode`: initial permission bits (default `0o644`);
+	 *   `mtime`: modification time in epoch milliseconds.
+	 */
+	static readonly special = (
+		type: MemoryFileSystemSpecialType,
+		options?: { readonly mode?: number | undefined; readonly mtime?: number | undefined },
+	): MemoryFileSystemSeedSpecial => ({
+		_tag: "MemoryFileSystemSeedSpecial",
+		type,
+		...(options?.mode !== undefined ? { mode: options.mode } : {}),
+		...(options?.mtime !== undefined ? { mtime: options.mtime } : {}),
 	});
 
 	/**

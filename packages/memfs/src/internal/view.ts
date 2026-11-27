@@ -44,8 +44,13 @@ export const makeVolumeService = (engine: InspectableFileSystem): MemoryFileSyst
 		lstat: (path) => {
 			const entry = at(path);
 			if (entry === undefined) return undefined;
-			const kind = entry.type === "File" ? "file" : entry.type === "Directory" ? "directory" : "symlink";
-			return { kind, mtimeMs: entry.mtime, size: entry.size };
+			// KIT EXTENSION (special entries): a device, FIFO or socket is
+			// `"special"`, carrying its type.
+			if (entry.type === "File" || entry.type === "Directory" || entry.type === "SymbolicLink") {
+				const kind = entry.type === "File" ? "file" : entry.type === "Directory" ? "directory" : "symlink";
+				return { kind, mtimeMs: entry.mtime, size: entry.size };
+			}
+			return { kind: "special", special: entry.type, mtimeMs: entry.mtime, size: entry.size };
 		},
 	};
 };
