@@ -57,6 +57,11 @@ returns. When the caller must finish first, defer it:
 - **`Effect.catchTag(tag, handler)` / `Effect.catchTags({ Tag: handler })`** —
   the default for domain errors. `catchTag` also takes a non-empty tag array
   sharing one handler (`Effect.ts:2911` `Arr.NonEmptyReadonlyArray<Tags<E>>`).
+  The tag must be a member of `E` (`K extends Tags<E>`; `catchTags` maps an
+  unknown key to `never`, `Effect.ts:3020-3021`), so **removing an error from
+  a public signature breaks every caller that handled it**, even when it could
+  never fire: version it as a breaking change and tell callers to delete the
+  dead handler ([release-and-publish](../release-and-publish/SKILL.md)).
 - **`Effect.catch`** for any typed failure (no `catchAll`), **`catchCause`** for
   the full cause, **`catchDefect`** for defects, **`Effect.match`** to totalize.
 - Selective recovery takes a `Filter`, not an `Option`-returning predicate:
