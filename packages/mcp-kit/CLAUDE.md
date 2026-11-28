@@ -220,8 +220,9 @@ carry `initialize`, `initializeWith`, `sentSoFar`, `discover`, `listTools`, `lis
   (Effect-TS/effect PR #8508), naming every excess, missing and invalid
   field in one `InvalidParams`; a kit pre-check in front of it would hide
   the missing and invalid fields. The `addTool` decorator catches that
-  `InvalidParams` as it leaves the registered handler (core's only
-  `InvalidParams` there is a parameter failure) and appends one
+  `InvalidParams` as it leaves the registered handler (a handler's own
+  `InvalidParams` leaves the same way: core answers it as invalid input, not as a
+  declared failure) and appends one
   `Accepted params at <path>: …` line per payload level with an unknown
   key, walked by `ToolInputSchema.unknownKeys` over the served input
   schema (`keys matching …` for `acceptedPatterns`; `This tool accepts no

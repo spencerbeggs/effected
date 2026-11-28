@@ -217,9 +217,11 @@ type Registration = Parameters<McpServer.McpServer["Service"]["addTool"]>[0];
  * The registration `McpToolkit.layer` hands core in place of `registration`:
  * a union tool gets its payload decoded first, with the wrapped handler built
  * only after the decode passes, so a rejected payload never reaches it.
- * Anything else is decoded by core as before, and core's parameter failure,
- * the only `InvalidParams` its `handle` fails with, gets the accepted params
- * appended.
+ * Anything else is decoded by core as before, and an `InvalidParams` its
+ * `handle` fails with gets the accepted params appended for each payload level
+ * with an unknown key. That is core's parameter failure, and also a handler's
+ * own `InvalidParams`, which core passes through as invalid input rather than
+ * as a declared failure; a payload with no unknown key leaves either unchanged.
  *
  * @internal
  */
@@ -342,8 +344,9 @@ export class McpToolkit {
 	 * arguments answer JSON-RPC `-32602` on `2025-06-18` and an `isError`
 	 * result on the later revisions, exactly as a `Tool.make` decode failure
 	 * does. Registered through core's `McpServer.toolkit` it still decodes
-	 * strictly, in the handler, but the `InvalidParams` is then a declared
-	 * failure: an `isError` result on every revision.
+	 * strictly, in the handler, and core answers a handler's `InvalidParams`
+	 * the same way: `-32602` on `2025-06-18` and an `isError` result on the
+	 * later revisions.
 	 *
 	 * Never annotate it `Tool.Strict` true: core dies at registration on a
 	 * strict tool with a raw JSON Schema.
