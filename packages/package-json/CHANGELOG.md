@@ -1,5 +1,13 @@
 # @effected/package-json
 
+## 0.32.3
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/files | dependency | updated | 0.3.0 | 0.4.0 |
+
 ## 0.32.2
 
 ### Dependencies

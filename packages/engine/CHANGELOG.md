@@ -1,5 +1,15 @@
 # @effected/engine
 
+## 0.20.6
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/bundler | dependency | updated | 0.7.5 | 0.7.6 |
+| @effected/files | dependency | updated | 0.3.0 | 0.4.0 |
+| @effected/schemastore | dependency | updated | 0.33.1 | 0.33.2 |
+
 ## 0.20.5
 
 ### Dependencies

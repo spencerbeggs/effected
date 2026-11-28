@@ -1,5 +1,19 @@
 # @effected/plugin
 
+## 0.6.12
+
+### Documentation
+
+- The README now tells bun users to declare `typescript` beside the carrier. bun hoists the `typescript@6` that `@microsoft/api-extractor` depends on and does not install the carrier's 7.x peer, so the bins fail to start with `ERR_MODULE_NOT_FOUND` for `typescript/ast` until the consumer declares it.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/cli | dependency | updated | 0.33.5 | 0.33.6 |
+| @effected/mcp | dependency | updated | 0.19.6 | 0.19.7 |
+| @effected/schemastore | dependency | updated | 0.33.1 | 0.33.2 |
+
 ## 0.6.11
 
 ### Dependencies
