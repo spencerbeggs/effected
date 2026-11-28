@@ -128,6 +128,32 @@ const F_QUOTED = 5;
 const F_LITERAL = 6;
 const FRAME = 7;
 
+// The fields of one recorded substitution in `scanNested`'s `entries`,
+// `ENTRY` int32s apart.
+/** What opened it: one of the `O_*` codes. */
+const E_OPENING = 0;
+/** 1 when a command substitution's opener sat in double quotes. */
+const E_IN_DOUBLE_QUOTES = 1;
+/** Where its opener starts. */
+const E_START = 2;
+/** Where its body starts. */
+const E_BODY_START = 3;
+/** Where its closer ends, or -1 while it is open. */
+const E_END = 4;
+/** 1 for an `ARITH_SUBST` entry that closed as arithmetic: not a substitution. */
+const E_ARITHMETIC = 5;
+const ENTRY = 6;
+
+// What opened a recorded substitution.
+/** `$(`, or `$((` read as one. */
+const O_DOLLAR = 0;
+/** A backtick. */
+const O_BACKTICK = 1;
+/** `<(`. */
+const O_PROCESS_IN = 2;
+/** `>(`. */
+const O_PROCESS_OUT = 3;
+
 /** Whether `kind` is a frame inside which a quoted run is still expanded. */
 const expandsQuotes = (kind: number): boolean =>
 	kind === BRACE || kind === ARITH_SUBST || kind === ARITH_GROUP || kind === ARITH_PAREN || kind === ARITH_BRACKET;
@@ -312,19 +338,6 @@ const isCommentStart = (source: string, i: number, bodyStart: number): boolean =
 	return prev === " " || prev === "\t" || prev === ";" || prev === "&" || prev === "|" || prev === "(" || prev === ")";
 };
 
-type Opening =
-	| { readonly kind: "commandSubstitution"; readonly style: "dollar" | "backtick"; readonly inDoubleQuotes: boolean }
-	| { readonly kind: "processSubstitution"; readonly direction: "<" | ">" };
-
-interface Entry {
-	readonly opening: Opening;
-	readonly start: number;
-	readonly bodyStart: number;
-	end: number;
-	/** An `ARITH_SUBST` entry that closed as arithmetic: not a substitution. */
-	arithmetic: boolean;
-}
-
 /**
  * Scan from `start` (just past the opener) to the matching closer.
  *
@@ -394,7 +407,15 @@ export const scanNested = (
 		depth += 1;
 	};
 	frame(root, start, start, -1, false, inDoubleQuotes && root !== SUBST && root !== BACKTICK, -1);
-	const entries: Array<Entry> = [];
+	// The substitutions recorded at this level: `ENTRY` int32 fields each
+	// (`E_*`), `entryCount` of them. Every `$((` at this level records one,
+	// since an arithmetic frame is not a substitution, so a megabyte of `$((`
+	// is hundreds of thousands of records, all live until the scan ends, and
+	// most never close. Held as objects they were most of the scan's
+	// allocation and grew its GC cost faster than the input (#1429), as the
+	// frame stack's did (#1387).
+	let entries = new Int32Array(ENTRY * 16);
+	let entryCount = 0;
 	const quoted: Array<RawSpan> = [];
 	const closers: Array<RawSpan> = [];
 	// A substitution root's body is parsed again by the caller, who sees its
@@ -405,13 +426,26 @@ export const scanNested = (
 	let pending: Array<{ readonly delimiter: string; readonly stripTabs: boolean; readonly quoted: boolean }> = [];
 	let i = start;
 
-	const push = (kind: number, at: number, opener: number, opening?: Opening): void => {
+	// `opening` is an `O_*` code for a frame that records a substitution, or -1.
+	const push = (kind: number, at: number, opener: number, opening = -1, openedInDoubleQuotes = false): void => {
 		let record = -1;
 		let raises = false;
-		if (opening !== undefined) {
+		if (opening !== -1) {
 			if (substDepth === 0) {
-				record = entries.length;
-				entries.push({ opening, start: at, bodyStart: at + opener, end: -1, arithmetic: false });
+				if ((entryCount + 1) * ENTRY > entries.length) {
+					const grown = new Int32Array(entries.length * 2);
+					grown.set(entries);
+					entries = grown;
+				}
+				record = entryCount;
+				const base = entryCount * ENTRY;
+				entries[base + E_OPENING] = opening;
+				entries[base + E_IN_DOUBLE_QUOTES] = openedInDoubleQuotes ? 1 : 0;
+				entries[base + E_START] = at;
+				entries[base + E_BODY_START] = at + opener;
+				entries[base + E_END] = -1;
+				entries[base + E_ARITHMETIC] = 0;
+				entryCount += 1;
 			}
 			// An arithmetic frame is not a substitution: what is inside it is
 			// listed at this level, so a `$(cmd)` inside `$((…))` is never lost.
@@ -441,10 +475,9 @@ export const scanNested = (
 		const raised = field(depth, F_COUNTED) === 1;
 		if (depth === 0) return true;
 		if (raised) substDepth -= 1;
-		const entry = record === -1 ? undefined : entries[record];
-		if (entry !== undefined) {
-			entry.end = closerEnd;
-			if (kind === ARITH_SUBST) entry.arithmetic = true;
+		if (record !== -1) {
+			entries[record * ENTRY + E_END] = closerEnd;
+			if (kind === ARITH_SUBST) entries[record * ENTRY + E_ARITHMETIC] = 1;
 		}
 		return false;
 	};
@@ -501,10 +534,10 @@ export const scanNested = (
 		if (next === "(") {
 			const inner = skipContinuations(source, open + 1, limit);
 			if (inner < limit && source[inner] === "(") {
-				push(ARITH_SUBST, i, opener, { kind: "commandSubstitution", style: "dollar", inDoubleQuotes });
+				push(ARITH_SUBST, i, opener, O_DOLLAR, inDoubleQuotes);
 				i = inner + 1;
 			} else {
-				push(SUBST, i, opener, { kind: "commandSubstitution", style: "dollar", inDoubleQuotes });
+				push(SUBST, i, opener, O_DOLLAR, inDoubleQuotes);
 				i = open + 1;
 			}
 		} else if (next === "{") {
@@ -539,7 +572,7 @@ export const scanNested = (
 	};
 
 	const backtick = (inDoubleQuotes: boolean): void => {
-		push(BACKTICK, i, 1, { kind: "commandSubstitution", style: "backtick", inDoubleQuotes });
+		push(BACKTICK, i, 1, O_BACKTICK, inDoubleQuotes);
 		i += 1;
 	};
 
@@ -549,7 +582,7 @@ export const scanNested = (
 		if (c !== "<" && c !== ">") return false;
 		const open = skipContinuations(source, i + 1, limit);
 		if (open >= limit || source[open] !== "(") return false;
-		push(SUBST, i, open + 1 - i, { kind: "processSubstitution", direction: c });
+		push(SUBST, i, open + 1 - i, c === "<" ? O_PROCESS_IN : O_PROCESS_OUT);
 		i = open + 1;
 		return true;
 	};
@@ -792,31 +825,34 @@ export const scanNested = (
 
 	function finish(end: number, terminated: boolean, demoted: boolean): NestedScan {
 		const complete: Array<RawSubstitution> = [];
-		for (const entry of entries) {
-			if (entry.end === -1 || entry.arithmetic) continue;
-			const bodyEnd = entry.end - 1;
-			const opening = entry.opening;
-			if (opening.kind === "processSubstitution") {
+		for (let base = 0; base < entryCount * ENTRY; base += ENTRY) {
+			const entryEnd = entries[base + E_END] as number;
+			if (entryEnd === -1 || entries[base + E_ARITHMETIC] === 1) continue;
+			const entryStart = entries[base + E_START] as number;
+			const bodyStart = entries[base + E_BODY_START] as number;
+			const bodyEnd = entryEnd - 1;
+			const opening = entries[base + E_OPENING] as number;
+			if (opening === O_PROCESS_IN || opening === O_PROCESS_OUT) {
 				complete.push({
 					kind: "processSubstitution",
-					direction: opening.direction,
-					start: entry.start,
-					end: entry.end,
-					bodyStart: entry.bodyStart,
+					direction: opening === O_PROCESS_IN ? "<" : ">",
+					start: entryStart,
+					end: entryEnd,
+					bodyStart,
 					bodyEnd,
 				});
 			} else {
 				complete.push({
 					kind: "commandSubstitution",
-					style: opening.style,
-					start: entry.start,
-					end: entry.end,
-					bodyStart: entry.bodyStart,
+					style: opening === O_BACKTICK ? "backtick" : "dollar",
+					start: entryStart,
+					end: entryEnd,
+					bodyStart,
 					bodyEnd,
 					body:
-						opening.style === "backtick"
-							? backtickBody(source, entry.bodyStart, bodyEnd, opening.inDoubleQuotes)
-							: source.slice(entry.bodyStart, bodyEnd),
+						opening === O_BACKTICK
+							? backtickBody(source, bodyStart, bodyEnd, entries[base + E_IN_DOUBLE_QUOTES] === 1)
+							: source.slice(bodyStart, bodyEnd),
 				});
 			}
 		}

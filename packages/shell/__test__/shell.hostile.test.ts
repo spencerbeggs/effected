@@ -26,9 +26,13 @@ const MEASURED = MEGABYTE / 16;
  * Growth is measured to 64 KiB, not to the megabyte the unit parses: a quadratic scan reads 16x at any size, and a
  * short parse is repeated until it can be timed. To a quarter megabyte every unit read 3.7x to 4.7x on macOS, but
  * the worst of the 86 read 8.6x on a Linux runner, against the bound of 10. Past about a megabyte the
- * memory a parse holds starts to cost more than the parse: `$((` read 4.2x from a quarter megabyte to one and 7.6x
- * to 11.6x from one to four on macOS, and 11.9x from a quarter megabyte to one on a Linux runner. That knee moves
- * with the machine, so a ratio taken across it measures the machine (#1387 found the same for `((`).
+ * memory a parse holds starts to cost more than the parse. `$((` read 4.2x from a quarter megabyte to one and 7.6x
+ * to 11.6x from one to four on macOS, and 11.9x from a quarter megabyte to one on a Linux runner, while it kept an
+ * object per unit live; #1387 found the same for `((`. Neither does now, but the scanner's typed arrays are external
+ * memory, for which V8 requests collections at a rate linear in the input. The fastest of five samples misses them
+ * at the smaller size and cannot at the larger, so `$((` from a quarter megabyte to one still read 5.8x to 9.2x on
+ * macOS, where repeated parses cost 3.95x from one megabyte to four (#1429). A ratio taken across a megabyte
+ * measures when the collector ran.
  *
  * The ratio is the whole bound: no unit asserts an absolute time. A ceiling of 10 s of CPU on the full run measured the
  * machine, not the parse. CPU time here is the process's, GC helper threads included (about 1.4x the wall time of a
