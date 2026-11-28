@@ -100,9 +100,10 @@ export class FrontmatterSourceBlock extends Schema.Class<FrontmatterSourceBlock>
  * @remarks
  * `body` is exactly `source.slice(bodyOffset)` — the string and the offset
  * can never disagree. With no block, `body` is the whole source and
- * `bodyOffset` is `0` (unless a BOM was skipped; see below). With a block, `bodyOffset` sits immediately after
- * the closing fence line and its line terminator (the terminator belongs to
- * the fence line, as every line's terminator belongs to its line), which is
+ * `bodyOffset` is `0`, or the source after a skipped mark and `1` (see
+ * below). With a block, `bodyOffset` sits immediately after the closing
+ * fence line and its line terminator (the terminator belongs to the fence
+ * line, as every line's terminator belongs to its line), which is
  * gray-matter's body boundary; when the closing fence ends the document
  * there is no terminator and the body is empty.
  *

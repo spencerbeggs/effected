@@ -4,7 +4,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { FrontmatterSource } from "../src/FrontmatterSource.js";
 
-const BOM = "﻿";
+const BOM = "\uFEFF";
 const skip = (source: string) => FrontmatterSource.split(source, { bom: "skip" });
 
 describe("FrontmatterSource.split without the bom option", () => {

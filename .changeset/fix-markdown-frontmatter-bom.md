@@ -9,7 +9,7 @@
 ```ts
 import { FrontmatterSource } from "@effected/markdown";
 
-const split = FrontmatterSource.split("﻿---\ntitle: hi\n---\n", { bom: "skip" });
+const split = FrontmatterSource.split("\uFEFF---\ntitle: hi\n---\n", { bom: "skip" });
 split.bom; // true
 split.frontmatter?.valueStart; // 5
 ```
