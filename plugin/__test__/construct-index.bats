@@ -1,27 +1,15 @@
 #!/usr/bin/env bats
-# construct-index.bats — pins the construct-index generator (effected#188): the
-# committed constructs/ tables are exactly what regeneration from the doc
-# models + annotations produces, and every value-kind export carries an intent
-# annotation (strictness phased in; see the strict test below).
+# construct-index.bats — pins the construct-index generator (effected#188)
+# against fixture repositories: rendering, annotation checks, staleness and
+# --only. construct-index-repo.bats holds the two checks over this repository's
+# own doc models.
 
 PLUGIN_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-REPO_ROOT="$(cd "$PLUGIN_ROOT/.." && pwd)"
 GEN="$PLUGIN_ROOT/scripts/generate-constructs.mts"
 FIXTURES="$PLUGIN_ROOT/__test__/fixtures"
 
-setup_file() {
-	# CI's shell-tests job runs this suite on a fresh checkout with no dist/
-	# artifacts. Generator exit 2 is the missing-doc-model signal and 3 the
-	# stale-doc-model one (src/ newer than the model) — provision them
-	# ourselves; turbo's remote cache makes the build cheap there. Exit 0/1
-	# (ok / annotation problems) need no build.
-	local status=0
-	node "$GEN" check >/dev/null 2>&1 || status=$?
-	if [ "$status" -eq 2 ] || [ "$status" -eq 3 ]; then
-		echo "# doc models missing or stale — running pnpm build to provision them" >&3
-		(cd "$REPO_ROOT" && pnpm build) >&2 || return 1
-	fi
-}
+# The two tests over the repository's own doc models live in construct-index-repo.bats, which needs a full build;
+# every test here reads fixtures and needs none.
 
 @test "fixture: generate renders one table per package with merged kinds, escaped pipes, and cross-links" {
 	out="$BATS_TEST_TMPDIR/constructs"
@@ -298,30 +286,5 @@ _age_model() { # $1 = package: its model now predates its src/
 	_age_model impl
 	run node "$GEN" check --only demo --packages "$repo/packages" \
 		--annotations "$FIXTURES/constructs-annotations.json"
-	[ "$status" -eq 0 ]
-}
-
-@test "repo: committed constructs/ is exactly what regeneration produces" {
-	committed="$PLUGIN_ROOT/skills/effected-packages/references/constructs"
-	regenerated="$BATS_TEST_TMPDIR/regenerated"
-	run node "$GEN" generate --out "$regenerated"
-	if [ "$status" -eq 2 ] || [ "$status" -eq 3 ]; then
-		echo "doc models missing or stale — run \`pnpm build\` before this suite" >&2
-		echo "$output" >&2
-		return 1
-	fi
-	[ "$status" -eq 0 ]
-	run diff -ru "$committed" "$regenerated"
-	if [ "$status" -ne 0 ]; then
-		echo "constructs/ has drifted from the doc models + annotations:" >&2
-		echo "$output" >&2
-		echo "" >&2
-		echo "run: node plugin/scripts/generate-constructs.mts generate  — and commit the result" >&2
-		return 1
-	fi
-}
-
-@test "repo: annotations are complete — every value-kind construct has intent, none are stale" {
-	run node "$GEN" check --require-intent
 	[ "$status" -eq 0 ]
 }

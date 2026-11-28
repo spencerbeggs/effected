@@ -21,7 +21,7 @@
 #     deciding — which is the judgement itself, not a check of it.
 #   - A reference file that EXISTS but documents an API the package no longer
 #     has. Existence is mechanical; accuracy is not. The construct index
-#     (construct-index.bats) covers exported-symbol drift; prose drift stays a
+#     (construct-index-repo.bats) covers exported-symbol drift; prose drift stays a
 #     human problem.
 # Treat a green run here as "the countable claims are true", never as "the
 # skill is accurate".

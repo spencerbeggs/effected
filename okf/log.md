@@ -4,6 +4,10 @@
 
 * Updated @effected/testing
 * Updated The vitest suite splits into a fast tier with coverage and slow, hostile and full tiers run beside it
+* Updated Never hand-edit the construct index — regenerate it
+* Updated ai-plugin
+* Updated construct-annotations.json
+* Updated workspace
 
 ## 2026-11-27
 

@@ -11,10 +11,10 @@ sources:
     resource: ../../plugin/scripts/generate-constructs.mts
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-02T14:55:07Z
+  at: 2026-11-28T00:21:23Z
 x-okfit-integrity:
   generated:
-    body: c016e6759d7a164f
+    body: 3625ecd640d6b218
 ---
 
 # Never hand-edit the construct index — regenerate it
@@ -50,7 +50,7 @@ To change what the index says:
    which copies the regenerated tables into both committed builds under
    `plugin/builds/`, and commit the source and builds together.
 
-`plugin/__test__/construct-index.bats`'s drift test
+`plugin/__test__/construct-index-repo.bats`'s drift test
 regenerates the committed index into a temp directory and diffs it
 against the committed one — a hand-edit that has drifted from what the
 generator would produce fails that test rather than merging quietly.

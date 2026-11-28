@@ -19,10 +19,10 @@ sources:
     resource: "npm:pluginfinity"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-26T06:05:38Z
+  at: 2026-11-28T00:21:23Z
 x-okfit-integrity:
   generated:
-    body: b02fc57e77d34ffe
+    body: 2b72af91c5849a7e
 ---
 
 # ai-plugin
@@ -311,7 +311,10 @@ reads the source.
   uncommitted input, and an artifact under `node_modules` or `.repos`.
   The rest pin settling, the lock and its reclaim, and that Copilot ships
   no monitor. Build before running it.
-- `construct-index.bats` and `construct-index-gate.bats` — the generator
+- `construct-index.bats`, `construct-index-repo.bats` and
+  `construct-index-gate.bats` — the generator against fixtures, the
+  committed index against this repo's doc models (CI runs it in
+  `slow-tests.yml`'s Construct Index job, not the Silk shell-test step),
   and the pre-push gate; see
   [construct-annotations](../models/construct-annotations.md).
 - `upgrade.bats` — the `upgrade` scripts against

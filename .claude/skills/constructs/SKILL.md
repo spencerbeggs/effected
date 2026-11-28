@@ -13,7 +13,7 @@ joined with `plugin/scripts/construct-annotations.json`. The generated files
 are never hand-edited — every change flows through the annotations file or the
 source itself, then regeneration.
 
-`plugin/__test__/construct-index.bats` enforces three things: the committed
+`plugin/__test__/construct-index-repo.bats` enforces three things: the committed
 files match a fresh regeneration, no annotation names a construct that no
 longer exists, and every value-kind export (Class / Variable / Function /
 Enum) carries an intent annotation. Interfaces and type aliases ride on their
@@ -42,7 +42,8 @@ TSDoc summary; annotating them is optional.
 5. `pnpm build --filter @effected/ai-plugins` — copies the regenerated tables
    into both committed builds under `plugin/builds/`. The pre-push gate
    blocks a push whose builds lag the source.
-6. `bats plugin/__test__/construct-index.bats` — must be green before commit.
+6. `bats plugin/__test__/construct-index-repo.bats` — must be green before commit.
+   `construct-index.bats` beside it pins the generator against fixtures.
 
 ## Annotations file shape
 
@@ -85,7 +86,7 @@ misses documented in #188). Rules:
 - A construct whose TSDoc summary already contains the searchable verbs still
   needs an annotation if it is value-kind — the check does not parse prose.
 
-## Repairing a red construct-index.bats
+## Repairing a red construct-index-repo.bats
 
 - "has drifted" — someone changed exports or annotations without
   regenerating: run step 4 for the drifted packages and commit the result. Never hand-edit the tables.
