@@ -10,10 +10,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-28T03:38:55Z
+  at: 2026-11-28T04:02:07Z
 x-okfit-integrity:
   generated:
-    body: 082b8b89b82edade
+    body: 356fa9a94475d36d
 ---
 
 # `@effected/files`
@@ -70,11 +70,16 @@ Under `links: "follow"`:
 4. Require `realPath(directory)` to equal that rebuilt directory, which also catches a link above the root.
 5. `lstat` the target. A link is refused unless `links: "replace"`, which replaces the link entry as it does unconfined.
 
-The mode, the `access` check and the temp then follow the `"replace"` choreography (`lstat`, temp in the real directory). After the temp is written, synced and `chmod`ed, steps 3 to 5 run again immediately before the `rename`. A refusal there disarms the temp cleanup, because removing the temp by path could now cross the new link, so a `.effected-*.tmp` can remain in the directory that was moved.
+The mode, the `access` check and the temp then follow the `"replace"` choreography (`lstat`, temp in the real directory). Steps 3 to 5 run again before each path call on the temp: immediately before the temp's `open`, before the `chmod` that restores an existing mode, and immediately before the `rename`. A refusal after the `open` removes the temp by the path it was created by. Its random name was created exclusively (`wx`), so that path reaches our temp or nothing.
 
-What stays open: core `FileSystem` names everything by path and has no directory handle (`openat`/`renameat`), so a link swapped in between the last check and the `rename` call itself still redirects the rename. The window shrinks from the whole write to a few system calls; it does not close. A hard link at the target is not a symbolic link and is replaced as usual.
+What stays open: core `FileSystem` names everything by path and has no directory handle (`openat`/`renameat`), so each path call resolves its parents afresh. Two windows of a few system calls each remain:
 
-The tests stage each swap from an `open` fault on the temp: a parent directory moved aside and replaced by a link, a link put at the target, and a directory above the root replaced by a link.
+- A parent swapped for a link between the pre-open check and the `open` makes the `open` create the temp, with the full content, at the link's destination, outside the root. The next check refuses, and the removal by the same path reaches that temp, so the content does not stay there.
+- A link swapped in between the last check and the `rename` call still redirects the rename.
+
+When a parent is moved aside after the `open`, the removal path leads through the new link and finds nothing, so a `.effected-*.tmp` remains in the moved directory, still inside the root. A hard link at the target is not a symbolic link and is replaced as usual.
+
+The tests stage each swap from a fault: after the temp's `open` (a parent directory moved aside and replaced by a link, a link put at the target, a directory above the root replaced by a link), after the `chmod`, after the `access` check (caught by the pre-open check, no temp opened), and inside the temp's `open` before it runs (the temp lands outside and is removed).
 
 ## Limits
 

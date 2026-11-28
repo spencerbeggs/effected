@@ -1026,7 +1026,7 @@ describe("AtomicFile.write confineTo option", () => {
 			assert.strictEqual(volume.text("/outside/config.json"), "secret");
 			assert.deepStrictEqual(yield* tempsIn("/outside"), []);
 			assert.strictEqual(volume.text("/root/moved/config.json"), "old");
-			// The temp is left where it landed rather than removed through the new link.
+			// The removal by path leads through the new link and finds nothing, so the temp stays in the moved directory.
 			assert.strictEqual((yield* tempsIn("/root/moved")).length, 1);
 		}).pipe(
 			Effect.provide(
@@ -1036,6 +1036,72 @@ describe("AtomicFile.write confineTo option", () => {
 						faults: swapAfterTempOpen((fs) =>
 							Effect.andThen(fs.rename("/root/sub", "/root/moved"), fs.symlink("/outside", "/root/sub")),
 						),
+					},
+				),
+			),
+		),
+	);
+
+	it.effect("a link swapped in at a parent before the temp's open is caught by the check ahead of it", () => {
+		let tempOpens = 0;
+		return Effect.gen(function* () {
+			assertRefused(yield* Effect.flip(AtomicFile.write(NESTED, "new", { confineTo: ROOT })));
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(tempOpens, 0);
+			assert.strictEqual(volume.text("/outside/config.json"), "secret");
+			assert.deepStrictEqual(yield* tempsIn("/outside"), []);
+			assert.strictEqual(volume.text("/root/moved/config.json"), "old");
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath(
+					{ [NESTED]: "old", "/outside/config.json": "secret" },
+					{
+						// The access check is the last path call before the pre-open check.
+						faults: (base) => ({
+							access: (path, options) =>
+								Effect.andThen(
+									base.access(path, options),
+									Effect.andThen(base.rename("/root/sub", "/root/moved"), base.symlink("/outside", "/root/sub")),
+								),
+							open: (path, options) =>
+								path.includes(".effected-")
+									? Effect.andThen(
+											Effect.sync(() => {
+												tempOpens++;
+											}),
+											base.open(path, options),
+										)
+									: undefined,
+						}),
+					},
+				),
+			),
+		);
+	});
+
+	it.effect("a temp the open creates through a parent swapped in after the last check is removed on refusal", () =>
+		Effect.gen(function* () {
+			assertRefused(yield* Effect.flip(AtomicFile.write(NESTED, "new", { confineTo: ROOT })));
+			const volume = yield* MemoryFileSystem.Volume;
+			// The open followed the new link, so the temp landed outside the root; the refusal removes it there.
+			assert.deepStrictEqual(yield* tempsIn("/outside"), []);
+			assert.strictEqual(volume.text("/outside/config.json"), "secret");
+			assert.deepStrictEqual(yield* tempsIn("/root/moved"), []);
+			assert.strictEqual(volume.text("/root/moved/config.json"), "old");
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath(
+					{ [NESTED]: "old", "/outside/config.json": "secret" },
+					{
+						faults: (base) => ({
+							open: (path, options) =>
+								path.includes(".effected-")
+									? Effect.andThen(
+											Effect.andThen(base.rename("/root/sub", "/root/moved"), base.symlink("/outside", "/root/sub")),
+											base.open(path, options),
+										)
+									: undefined,
+						}),
 					},
 				),
 			),
@@ -1064,7 +1130,8 @@ describe("AtomicFile.write confineTo option", () => {
 			const volume = yield* MemoryFileSystem.Volume;
 			assert.strictEqual(volume.readLink(NESTED), ESCAPE);
 			assert.strictEqual(volume.text(ESCAPE), "secret");
-			assert.strictEqual((yield* tempsIn("/root/sub")).length, 1);
+			// The directory did not move, so the refusal removes the temp.
+			assert.deepStrictEqual(yield* tempsIn("/root/sub"), []);
 		}).pipe(
 			Effect.provide(
 				MemoryFileSystem.layerWithPath(

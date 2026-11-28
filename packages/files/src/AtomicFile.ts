@@ -55,9 +55,9 @@ export interface AtomicFileOptions {
 	 * describes. Passing `links: "follow"` with `confineTo` is a defect, since
 	 * following the link is what confinement refuses.
 	 *
-	 * The temp file is written in the target's real directory. After the temp is
-	 * written and synced, the same checks run again before the `chmod` that
-	 * restores an existing mode (itself a path call) and once more immediately
+	 * The temp file is written in the target's real directory. The same checks
+	 * run again immediately before the temp is opened, before the `chmod` that
+	 * restores an existing mode (itself a path call), and once more immediately
 	 * before the rename: every directory below the root is still not a link, the
 	 * directory's `realPath` still equals the planned real path (so it is still
 	 * inside the root's real path), and the target has not become a link. Any
@@ -67,17 +67,27 @@ export interface AtomicFileOptions {
 	 * is told apart from the filesystem's own by its `module`.
 	 *
 	 * What it closes: a link at the target or at any parent below the root that
-	 * exists when the write starts, and one swapped in while the temp is being
-	 * written. What it does not close: core `FileSystem` names files by path,
-	 * with no directory handle (`openat`/`renameat`), so a swap in the instant
-	 * between the last check and the `rename` call itself still lands the
-	 * rename through the new link. The window is a few system calls wide,
-	 * instead of the whole write. When the pre-rename check fails, the temp is
-	 * left where it is rather than removed through a path that may now cross a
-	 * link, so a `.effected-*.tmp` file can remain in the directory that was
-	 * moved. A hard link at the target is not a symbolic link and is replaced as
-	 * usual. The root itself is not re-resolved: a link swapped in above the
-	 * root is caught only because the directory's `realPath` stops matching.
+	 * exists when the write starts, or is swapped in before the last check ahead
+	 * of the temp's `open`; and a rename through a link swapped in while the temp
+	 * is written. What it does not close: core `FileSystem` names files by path,
+	 * with no directory handle (`openat`/`renameat`), so each path call resolves
+	 * its parents afresh. A parent swapped for a link in the instant between the
+	 * check and the temp's `open` makes the open create the temp, with the full
+	 * content, at the link's destination, outside the root; the next check then
+	 * refuses. A swap in the instant between the last check and the `rename`
+	 * still lands the rename through the new link. Each window is a few system
+	 * calls wide, instead of the whole write.
+	 *
+	 * After a refusal the temp is removed by the same path it was created by.
+	 * When a parent was swapped before the `open`, that path still reaches the
+	 * temp at the link's destination, so the content does not stay outside the
+	 * root. When a parent was moved after the `open`, the path now leads through
+	 * the link instead, the removal finds nothing there (the name is random and
+	 * was created exclusively), and a `.effected-*.tmp` file remains in the
+	 * directory that was moved, still inside the root. A hard link at the target
+	 * is not a symbolic link and is replaced as usual. The root itself is not
+	 * re-resolved: a link swapped in above the root is caught only because the
+	 * directory's `realPath` stops matching.
 	 */
 	readonly confineTo?: string;
 }
@@ -134,8 +144,9 @@ export class AtomicFile {
 	 *
 	 * Pass `{ confineTo: root }` to keep the write inside `root`: a symbolic link
 	 * at the target, or at any directory between `root` and the target, is
-	 * refused, and the check runs again immediately before the rename. See
-	 * {@link AtomicFileOptions.confineTo} for what that does and does not close.
+	 * refused, and the check runs again before the temp is opened and immediately
+	 * before the rename. See {@link AtomicFileOptions.confineTo} for what that
+	 * does and does not close.
 	 *
 	 * @param target - The file to replace or create.
 	 * @param content - The complete new content.
@@ -175,7 +186,7 @@ export class AtomicFile {
 		const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content;
 
 		let final = target;
-		// Under confineTo, the check to repeat immediately before the rename.
+		// Under confineTo, the check to repeat before each path call on the temp.
 		let verify: Effect.Effect<void, PlatformError.PlatformError> | undefined;
 		if (confineTo !== undefined) {
 			const plan = yield* planConfined(fs, path, target, confineTo, links === "replace");
@@ -208,11 +219,13 @@ export class AtomicFile {
 		const temp = path.join(path.dirname(final), `.effected-${suffix.toString(36)}.tmp`);
 
 		// The temp is ours to remove only once our open made it: `wx` failing means it is another writer's. Uninterruptible
-		// so an interrupt cannot land between the open and arming the cleanup, which would leak the temp. A failed
-		// confinement check disarms it again: the temp's path may now cross a link, and removing through it would reach
-		// outside the root.
+		// so an interrupt cannot land between the open and arming the cleanup, which would leak the temp. Under confineTo the
+		// checks run again before every path call that follows planning: the open, the chmod and the rename. A refusal after
+		// the open still removes the temp: its random name was created exclusively, so the path reaches our temp or nothing.
+		const confined = verify ?? Effect.void;
 		let opened = false;
 		yield* Effect.gen(function* () {
+			yield* confined;
 			yield* Effect.scoped(
 				Effect.gen(function* () {
 					const file = yield* fs.open(temp, mode === undefined ? { flag: "wx" } : { flag: "wx", mode }).pipe(
@@ -227,18 +240,7 @@ export class AtomicFile {
 					yield* file.sync;
 				}),
 			);
-			const confined =
-				verify === undefined
-					? Effect.void
-					: verify.pipe(
-							Effect.tapError(() =>
-								Effect.sync(() => {
-									opened = false;
-								}),
-							),
-						);
-			// open's mode is subject to umask, so it can land narrower than the original. Under confineTo the chmod is a path
-			// call too, so the directory is checked before it as well as before the rename.
+			// open's mode is subject to umask, so it can land narrower than the original.
 			if (mode !== undefined) {
 				yield* confined;
 				yield* fs.chmod(temp, mode);
@@ -260,7 +262,7 @@ const refuse = (target: string, description: string): PlatformError.PlatformErro
 	});
 
 /**
- * Plans a confined write: the real final path and the check to repeat before the rename. The root is resolved once;
+ * Plans a confined write: the real final path and the check to repeat before each path call on the temp. The root is resolved once;
  * every directory below it is walked with `lstat` (never followed), and the directory's `realPath` must equal the path
  * built from the root's real path, which also catches a link swapped in above the root.
  */
