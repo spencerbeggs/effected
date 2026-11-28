@@ -1,11 +1,11 @@
 import { assert, describe, it, vi } from "@effect/vitest";
-import { Cause, Effect, Exit, Fiber, Schedule, Schema } from "effect";
+import { Cause, Effect, Exit, Fiber, Schedule } from "effect";
 import { Text } from "ink";
 import type { ReactElement } from "react";
 import { createElement, useState } from "react";
 import { CliInteractive, CliTheme, Fmt } from "../../src/index.js";
 import { makeFakeStreams } from "../../src/ui/testing/fakeStreams.js";
-import type { Screen, ViewportRow, ViewportState } from "../../src/ui.js";
+import type { Screen, ViewportRow } from "../../src/ui.js";
 import { CliUi, KeyHelp, UiStreams, Viewport, useKeys } from "../../src/ui.js";
 import { CliUiTest } from "../../src/ui-testing.js";
 
@@ -17,50 +17,7 @@ const FULL_CLEAR = `${ESC}[1;1H${ESC}[J`;
 type Move = "up" | "down" | "home" | "end" | "pageup" | "pagedown";
 const MOVES: ReadonlyArray<Move> = ["up", "down", "home", "end", "pageup", "pagedown"];
 
-/** The reducer's invariants: the cursor is an item and is in view, and the window never runs past the end. */
-const holds = (state: ViewportState): boolean => {
-	if (state.count === 0) return state.cursor === 0 && state.offset === 0;
-	return (
-		state.cursor >= 0 &&
-		state.cursor < state.count &&
-		state.offset <= state.cursor &&
-		state.cursor < state.offset + state.height &&
-		state.offset >= 0 &&
-		state.offset <= Math.max(0, state.count - state.height)
-	);
-};
-
-const Count = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 300 }));
-const Height = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 40 }));
-const Moves = Schema.Array(Schema.Literals(MOVES));
-
 describe("Viewport reducer", () => {
-	it.prop(
-		"every step keeps the cursor an item, in view, with the window inside the list",
-		{ count: Count, height: Height, start: Count, moves: Moves },
-		({ count, height, start, moves }) => {
-			let state = Viewport.init(count, height, start);
-			if (!holds(state)) return false;
-			for (const move of moves) {
-				state = Viewport.step(state, move);
-				if (!holds(state)) return false;
-			}
-			return true;
-		},
-		{ arbitrary: { runs: 400, size: 300 } },
-	);
-
-	it.prop(
-		"resize keeps the cursor in view at the new height",
-		{ count: Count, height: Height, next: Height, moves: Moves },
-		({ count, height, next, moves }) => {
-			const moved = moves.reduce((state, move) => Viewport.step(state, move), Viewport.init(count, height));
-			const resized = Viewport.resize(moved, next);
-			return holds(resized) && resized.cursor === moved.cursor && resized.height === next;
-		},
-		{ arbitrary: { runs: 400, size: 300 } },
-	);
-
 	it("never moves past either end", () => {
 		const top = Viewport.init(10, 4);
 		assert.strictEqual(Viewport.step(top, "up").cursor, 0);

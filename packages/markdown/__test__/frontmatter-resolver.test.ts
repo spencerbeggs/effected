@@ -1,5 +1,6 @@
-// Unit and property coverage for the frontmatter $schema declaration contract
-// and the registry-backed resolver (P3 Task 4).
+// Unit coverage for the frontmatter $schema declaration contract and the
+// registry-backed resolver (P3 Task 4). The classification properties are in
+// `frontmatter-resolver.property.test.ts`.
 //
 // The design doc's "$schema declarations" section is prescriptive: the
 // four-variant classification (ByUrl / ByPath / Inline / ByName), the
@@ -135,49 +136,6 @@ describe("SchemaResolver.classify", () => {
 			assert.instanceOf(result.failure, SchemaDeclarationInvalidError);
 		}
 	});
-
-	it.prop(
-		"classification totality: any string classifies without throwing, to exactly one shape",
-		[Schema.String],
-		([s]) => {
-			const result = SchemaResolver.classify(s);
-			if (Result.isSuccess(result)) {
-				const declaration = result.success;
-				if (s.includes("://")) {
-					assert.instanceOf(declaration, SchemaDeclarationByUrl);
-				} else if (s.startsWith("./") || s.startsWith("../") || s.startsWith("/")) {
-					assert.instanceOf(declaration, SchemaDeclarationByPath);
-				} else {
-					assert.instanceOf(declaration, SchemaDeclarationByName);
-				}
-			}
-		},
-		{ arbitrary: { runs: 300 } },
-	);
-
-	const Segments = Schema.Array(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 9999 }))).check(
-		Schema.isBetweenLength(1, 3),
-	);
-
-	it.prop(
-		"grammar round-trip: generated integer segments always classify, junk suffixes never do",
-		[Segments],
-		([parts]) => {
-			const version = parts.join(".");
-			const result = SchemaResolver.classify(`skill@${version}`);
-			assert.isTrue(Result.isSuccess(result));
-			if (Result.isSuccess(result)) {
-				const declaration = result.success;
-				assert.instanceOf(declaration, SchemaDeclarationByName);
-				if (declaration instanceof SchemaDeclarationByName) {
-					assert.strictEqual(declaration.version, version);
-				}
-			}
-			const junk = SchemaResolver.classify(`skill@${version}-beta`);
-			assert.isTrue(Result.isFailure(junk));
-		},
-		{ arbitrary: { runs: 200 } },
-	);
 });
 
 describe("SchemaResolver.declarationOf", () => {
