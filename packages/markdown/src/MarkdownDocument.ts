@@ -538,8 +538,8 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 
 	/**
 	 * An image's description: the inline content between its brackets, as
-	 * phrasing nodes, or `Option.none()` when the node is not one this
-	 * document's parse produced.
+	 * phrasing nodes, or `Option.none()` when the node is not one a parse
+	 * produced.
 	 *
 	 * @remarks
 	 * An mdast image has no children — its bracket content flattens to the
@@ -555,7 +555,9 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 	 * but a description nesting past the hardening cap reads as
 	 * `Option.none()`. It is a side table keyed by node identity, no part of
 	 * the tree's schema, equality or encoded form, so a node rebuilt by `make`,
-	 * a transform or a decode has none.
+	 * a transform or a decode has none. The lookup reads the node alone, not
+	 * this document: an image another document's parse produced returns its
+	 * own description, positioned in that document's source.
 	 *
 	 * @example
 	 * ```ts
@@ -570,7 +572,7 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 	 * }
 	 * ```
 	 *
-	 * @param image - An image or image reference node from this document's tree.
+	 * @param image - An image or image reference node, from this document's tree to read its positions here.
 	 * @returns The description's phrasing content, or `Option.none()`.
 	 */
 	imageDescription(image: Image | ImageReference): Option.Option<ReadonlyArray<PhrasingContent>> {
