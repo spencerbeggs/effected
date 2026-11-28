@@ -45,7 +45,7 @@ describe("GitRemote properties", () => {
 		[gitish],
 		([raw]) => roundTrips(raw),
 		{
-			arbitrary: { runs: Depth.pick({ sample: 200, full: 2000 }) },
+			arbitrary: { runs: Depth.pick({ sample: 2_000, full: 20_000 }) },
 		},
 	);
 
@@ -54,12 +54,12 @@ describe("GitRemote properties", () => {
 		[schemed],
 		([raw]) => roundTrips(raw),
 		{
-			arbitrary: { runs: Depth.pick({ sample: 200, full: 2000 }) },
+			arbitrary: { runs: Depth.pick({ sample: 2_000, full: 20_000 }) },
 		},
 	);
 
 	it.prop("parse is total and round-trips for arbitrary strings", [Schema.String], ([raw]) => roundTrips(raw), {
-		arbitrary: { runs: Depth.pick({ sample: 100, full: 1000 }) },
+		arbitrary: { runs: Depth.pick({ sample: 1_000, full: 10_000 }) },
 	});
 
 	// No filter on the password: it may hold `/`, `:`, `@`, `?`, `#` and
@@ -78,7 +78,7 @@ describe("GitRemote properties", () => {
 				!GitRemote.format(GitRemote.redact(remote)).includes("S3CRET")
 			);
 		},
-		{ arbitrary: { runs: Depth.pick({ sample: 200, full: 2000 }) } },
+		{ arbitrary: { runs: Depth.pick({ sample: 2_000, full: 20_000 }) } },
 	);
 
 	it.prop(
@@ -89,7 +89,7 @@ describe("GitRemote properties", () => {
 			const out = GitRemote.format(GitRemote.redact(parsed(`https://U${user}@host/o/n?Q${query}`)));
 			return out === "https://<redacted>@host/o/n?<redacted>";
 		},
-		{ arbitrary: { runs: Depth.pick({ sample: 100, full: 1000 }) } },
+		{ arbitrary: { runs: Depth.pick({ sample: 1_000, full: 10_000 }) } },
 	);
 });
 
@@ -140,6 +140,6 @@ describe("GitRemote.redact — conservative whatever the form, generated", () =>
 			if (user.includes("@") || rest.includes("@")) return true;
 			return !redacted(`${prefix}${user}:S3CRET${tail}@${rest}`).includes("S3CRET");
 		},
-		{ arbitrary: { runs: Depth.pick({ sample: 500, full: 5000 }) } },
+		{ arbitrary: { runs: Depth.pick({ sample: 5_000, full: 50_000 }) } },
 	);
 });

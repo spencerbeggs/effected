@@ -29,7 +29,7 @@ describe("LaunchContext.projectDir — property", () => {
 			const result = LaunchContext.projectDir({ argv, env, keys, cwd });
 			return result !== "" && !LaunchContext.isUnsubstituted(result);
 		},
-		{ arbitrary: { runs: Depth.pick({ sample: 20, full: 200 }) } },
+		{ arbitrary: { runs: Depth.pick({ sample: 200, full: 2_000 }) } },
 	);
 });
 
@@ -40,6 +40,6 @@ describe("LaunchContext.resolve — property", () => {
 		({ argv, env, cwd }) =>
 			LaunchContext.projectDir({ argv, env, keys, cwd }) ===
 			Option.getOrElse(LaunchContext.resolve({ argv, env, keys }), () => cwd),
-		{ arbitrary: { runs: Depth.pick({ sample: 20, full: 200 }) } },
+		{ arbitrary: { runs: Depth.pick({ sample: 200, full: 2_000 }) } },
 	);
 });

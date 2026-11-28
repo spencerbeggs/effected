@@ -27,6 +27,6 @@ describe("TextInput reducer properties", () => {
 			const splitsPair = high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff;
 			return !lone.test(state.value) && !splitsPair && state.cursor >= 0 && state.cursor <= state.value.length;
 		},
-		{ arbitrary: { runs: Depth.pick({ sample: 50, full: 500 }), size: 40 } },
+		{ arbitrary: { runs: Depth.pick({ sample: 500, full: 5_000 }), size: 40 } },
 	);
 });

@@ -29,7 +29,7 @@ describe("SchemaResolver.classify — properties", () => {
 				}
 			}
 		},
-		{ arbitrary: { runs: Depth.pick({ sample: 30, full: 300 }) } },
+		{ arbitrary: { runs: Depth.pick({ sample: 300, full: 3_000 }) } },
 	);
 
 	const Segments = Schema.Array(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 9999 }))).check(
@@ -53,6 +53,6 @@ describe("SchemaResolver.classify — properties", () => {
 			const junk = SchemaResolver.classify(`skill@${version}-beta`);
 			assert.isTrue(Result.isFailure(junk));
 		},
-		{ arbitrary: { runs: Depth.pick({ sample: 20, full: 200 }) } },
+		{ arbitrary: { runs: Depth.pick({ sample: 200, full: 2_000 }) } },
 	);
 });

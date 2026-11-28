@@ -37,7 +37,7 @@ describe("Viewport reducer properties", () => {
 			}
 			return true;
 		},
-		{ arbitrary: { runs: Depth.pick({ sample: 40, full: 400 }), size: 300 } },
+		{ arbitrary: { runs: Depth.pick({ sample: 400, full: 4_000 }), size: 300 } },
 	);
 
 	it.prop(
@@ -48,6 +48,6 @@ describe("Viewport reducer properties", () => {
 			const resized = Viewport.resize(moved, next);
 			return holds(resized) && resized.cursor === moved.cursor && resized.height === next;
 		},
-		{ arbitrary: { runs: Depth.pick({ sample: 40, full: 400 }), size: 300 } },
+		{ arbitrary: { runs: Depth.pick({ sample: 400, full: 4_000 }), size: 300 } },
 	);
 });

@@ -33,6 +33,6 @@ describe("GlobPattern oracle (public seam)", () => {
 					`${pattern} vs ${candidate}`,
 				);
 			}),
-		{ arbitrary: { runs: Depth.pick({ sample: 20, full: 200 }) } },
+		{ arbitrary: { runs: Depth.pick({ sample: 200, full: 2_000 }) } },
 	);
 });

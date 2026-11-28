@@ -42,7 +42,11 @@ describe("CheckRunOutput byte budgeting, generated", () => {
 		// 65 535-byte budget (0/100 probed), at 40_000 about one in five does.
 		// That makes each run expensive — ~0.7s for 100 locally, past the 5s
 		// default under coverage on a CI runner — so the run count is halved and
-		// the timeout raised rather than the domain shrunk.
-		{ arbitrary: { size: 40_000, runs: Depth.pick({ sample: 20, full: 50 }) }, timeout: 30_000 },
+		// the timeout raised rather than the domain shrunk. The full run is coverage-free
+		// and ten times longer, so its timeout scales with it.
+		{
+			arbitrary: { size: 40_000, runs: Depth.pick({ sample: 50, full: 500 }) },
+			timeout: Depth.pick({ sample: 30_000, full: 120_000 }),
+		},
 	);
 });

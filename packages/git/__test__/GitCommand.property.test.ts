@@ -32,6 +32,6 @@ describe("GitCommand redaction — the form-independent credential backstop, gen
 			const value = `${head}${user}:S3CRET${tail}@${rest}`;
 			return !redacted(value).includes("S3CRET");
 		},
-		{ arbitrary: { runs: Depth.pick({ sample: 500, full: 5000 }) } },
+		{ arbitrary: { runs: Depth.pick({ sample: 5_000, full: 50_000 }) } },
 	);
 });

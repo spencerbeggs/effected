@@ -171,7 +171,7 @@ describe("engine compliance: oracle properties", () => {
 					`${pattern} vs ${candidate}`,
 				);
 			}),
-		{ arbitrary: { runs: Depth.pick({ sample: 50, full: 500 }) } },
+		{ arbitrary: { runs: Depth.pick({ sample: 500, full: 5_000 }) } },
 	);
 
 	it.effect.prop(
@@ -186,7 +186,7 @@ describe("engine compliance: oracle properties", () => {
 					`${pattern} vs ${candidate} (${JSON.stringify(options)})`,
 				);
 			}),
-		{ arbitrary: { runs: Depth.pick({ sample: 50, full: 500 }) } },
+		{ arbitrary: { runs: Depth.pick({ sample: 500, full: 5_000 }) } },
 	);
 
 	it.effect.prop(
@@ -201,7 +201,7 @@ describe("engine compliance: oracle properties", () => {
 					`${pattern} vs ${candidate} (dot ${dot})`,
 				);
 			}),
-		{ arbitrary: { runs: Depth.pick({ sample: 50, full: 500 }) } },
+		{ arbitrary: { runs: Depth.pick({ sample: 500, full: 5_000 }) } },
 	);
 
 	it.effect.prop(
@@ -218,7 +218,7 @@ describe("engine compliance: oracle properties", () => {
 				assert.isTrue(m.match(s), `escape(${JSON.stringify(s)}) must match its own literal`);
 				assert.strictEqual(m.match(s), oracle(s, oracle.escape(s, { magicalBraces: true }), oracleOpts(opts)));
 			}),
-		{ arbitrary: { runs: Depth.pick({ sample: 30, full: 300 }) } },
+		{ arbitrary: { runs: Depth.pick({ sample: 300, full: 3_000 }) } },
 	);
 
 	it.effect.prop(
@@ -230,6 +230,6 @@ describe("engine compliance: oracle properties", () => {
 				const upstream = new OracleMinimatch(pattern, oracleOpts({ platform: "posix" }));
 				assert.deepStrictEqual(vendored.braceExpand(), upstream.braceExpand(), pattern);
 			}),
-		{ arbitrary: { runs: Depth.pick({ sample: 30, full: 300 }) } },
+		{ arbitrary: { runs: Depth.pick({ sample: 300, full: 3_000 }) } },
 	);
 });

@@ -50,6 +50,6 @@ describe("MarkdownEdit — property", () => {
 			}
 			return batch === sequential;
 		},
-		{ arbitrary: { runs: Depth.pick({ sample: 20, full: 200 }), size: 64 } },
+		{ arbitrary: { runs: Depth.pick({ sample: 200, full: 2_000 }), size: 64 } },
 	);
 });

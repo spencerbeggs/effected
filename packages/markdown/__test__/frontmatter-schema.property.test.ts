@@ -58,7 +58,7 @@ describe("frontmatter round-trip property", () => {
 				const block = yield* Yaml.stringify(data);
 				assert.deepStrictEqual(yield* decodeVia(fenced("---", block, "---"), YamlFrontmatter), data);
 			}),
-		{ arbitrary: { runs: Depth.pick({ sample: 20, full: 60 }) } },
+		{ arbitrary: { runs: Depth.pick({ sample: 60, full: 600 }) } },
 	);
 
 	it.effect.prop(
@@ -69,7 +69,7 @@ describe("frontmatter round-trip property", () => {
 				const block = yield* Toml.stringify(data);
 				assert.deepStrictEqual(yield* decodeVia(fenced("+++", block, "+++"), TomlFrontmatter), data);
 			}),
-		{ arbitrary: { runs: Depth.pick({ sample: 20, full: 60 }) } },
+		{ arbitrary: { runs: Depth.pick({ sample: 60, full: 600 }) } },
 	);
 
 	it.effect.prop(
@@ -80,6 +80,6 @@ describe("frontmatter round-trip property", () => {
 				const block = yield* Jsonc.stringify(data);
 				assert.deepStrictEqual(yield* decodeVia(fenced("---json", block, "---"), JsonFrontmatter), data);
 			}),
-		{ arbitrary: { runs: Depth.pick({ sample: 20, full: 60 }) } },
+		{ arbitrary: { runs: Depth.pick({ sample: 60, full: 600 }) } },
 	);
 });

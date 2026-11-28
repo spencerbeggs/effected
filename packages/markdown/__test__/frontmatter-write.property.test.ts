@@ -53,7 +53,7 @@ describe("frontmatter write round-trip property", () => {
 			Effect.gen(function* () {
 				assert.deepStrictEqual(yield* insertRoundTrip(YamlFrontmatter, data), data);
 			}),
-		{ arbitrary: { runs: Depth.pick({ sample: 20, full: 60 }) } },
+		{ arbitrary: { runs: Depth.pick({ sample: 60, full: 600 }) } },
 	);
 
 	it.effect.prop(
@@ -63,7 +63,7 @@ describe("frontmatter write round-trip property", () => {
 			Effect.gen(function* () {
 				assert.deepStrictEqual(yield* insertRoundTrip(TomlFrontmatter, data), data);
 			}),
-		{ arbitrary: { runs: Depth.pick({ sample: 20, full: 60 }) } },
+		{ arbitrary: { runs: Depth.pick({ sample: 60, full: 600 }) } },
 	);
 
 	it.effect.prop(
@@ -73,7 +73,7 @@ describe("frontmatter write round-trip property", () => {
 			Effect.gen(function* () {
 				assert.deepStrictEqual(yield* insertRoundTrip(JsonFrontmatter, data), data);
 			}),
-		{ arbitrary: { runs: Depth.pick({ sample: 20, full: 60 }) } },
+		{ arbitrary: { runs: Depth.pick({ sample: 60, full: 600 }) } },
 	);
 
 	const fenced = `---\ntitle: Old\ncount: 0\n---\n\n${bodyDoc}`;
@@ -89,6 +89,6 @@ describe("frontmatter write round-trip property", () => {
 				const result = yield* MarkdownFrontmatter.schema(Meta, YamlFrontmatter)(reparsed);
 				assert.deepStrictEqual(result, data);
 			}),
-		{ arbitrary: { runs: Depth.pick({ sample: 20, full: 60 }) } },
+		{ arbitrary: { runs: Depth.pick({ sample: 60, full: 600 }) } },
 	);
 });

@@ -60,6 +60,6 @@ describe("line breaks — property", () => {
 			assert.strictEqual(parsedValue(withBreaks(lf, CR)), expected, `CR twin of ${JSON.stringify(lf)}`);
 			assert.strictEqual(parsedValue(withBreaks(lf, CRLF)), expected, `CRLF twin of ${JSON.stringify(lf)}`);
 		},
-		{ arbitrary: { runs: Depth.pick({ sample: 400, full: 4000 }), size: 16 } },
+		{ arbitrary: { runs: Depth.pick({ sample: 4_000, full: 40_000 }), size: 16 } },
 	);
 });

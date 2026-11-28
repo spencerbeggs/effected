@@ -44,13 +44,13 @@ const keepsValue = ([input]: readonly [string]): void => {
 
 describe("YamlLint.fix — property", () => {
 	it.prop("applying every fix never changes the parsed value", [documentOf(BASE, 16)], keepsValue, {
-		arbitrary: { runs: Depth.pick({ sample: 400, full: 4000 }), size: 16 },
+		arbitrary: { runs: Depth.pick({ sample: 4_000, full: 40_000 }), size: 16 },
 	});
 
 	it.prop(
 		"applying every fix never changes the parsed value, flow and block indicators included",
 		[documentOf(RICH, 16)],
 		keepsValue,
-		{ arbitrary: { runs: Depth.pick({ sample: 400, full: 4000 }), size: 16 } },
+		{ arbitrary: { runs: Depth.pick({ sample: 4_000, full: 40_000 }), size: 16 } },
 	);
 });

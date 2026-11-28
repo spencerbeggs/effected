@@ -77,6 +77,6 @@ describe("more than one globstar: reference properties", () => {
 				assert.strictEqual(answer, reference(row, candidate, dot, partial), label);
 				assert.strictEqual(answer, oracleSays(row.join("/"), candidate, { dot, partial }), `oracle: ${label}`);
 			}),
-		{ arbitrary: { runs: Depth.pick({ sample: 200, full: 2000 }) } },
+		{ arbitrary: { runs: Depth.pick({ sample: 2_000, full: 20_000 }) } },
 	);
 });

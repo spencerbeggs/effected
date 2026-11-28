@@ -57,7 +57,7 @@ describe("Markdown parse invariants — properties", () => {
 			// Failure is legal (a guard trip); a throw is not.
 			return Result.isSuccess(result) || Result.isFailure(result);
 		},
-		{ arbitrary: { runs: Depth.pick({ sample: 25, full: 250 }), size: 40 } },
+		{ arbitrary: { runs: Depth.pick({ sample: 250, full: 2_500 }), size: 40 } },
 	);
 
 	it.prop(
@@ -75,6 +75,6 @@ describe("Markdown parse invariants — properties", () => {
 			});
 			return ok;
 		},
-		{ arbitrary: { runs: Depth.pick({ sample: 25, full: 250 }), size: 40 } },
+		{ arbitrary: { runs: Depth.pick({ sample: 250, full: 2_500 }), size: 40 } },
 	);
 });
