@@ -100,11 +100,21 @@ export class FrontmatterSourceBlock extends Schema.Class<FrontmatterSourceBlock>
  * @remarks
  * `body` is exactly `source.slice(bodyOffset)` — the string and the offset
  * can never disagree. With no block, `body` is the whole source and
- * `bodyOffset` is `0`. With a block, `bodyOffset` sits immediately after
+ * `bodyOffset` is `0` (unless a BOM was skipped; see below). With a block, `bodyOffset` sits immediately after
  * the closing fence line and its line terminator (the terminator belongs to
  * the fence line, as every line's terminator belongs to its line), which is
  * gray-matter's body boundary; when the closing fence ends the document
  * there is no terminator and the body is empty.
+ *
+ * With `bom: "skip"` and a skipped mark, every offset counts the mark:
+ * `bodyOffset` is `1` with no block, and `valueStart`, `valueEnd` and
+ * `bodyOffset` are each one more than for the same source without it, so
+ * they index the source as passed with no arithmetic of the caller's. `body`
+ * never starts with the skipped mark.
+ *
+ * `bom` is set only when `split` was asked to `"skip"`: `true` when it
+ * stepped over a leading mark, `false` when the source had none. `join`
+ * reads it, re-emitting the mark when `true`, so the round trip keeps it.
  *
  * `bodyOffset` is informational output of `split`; `join` never reads it,
  * and it constructor-defaults to `0` so a hand-built value for `join` can
@@ -126,7 +136,28 @@ export class FrontmatterSourceSplit extends Schema.Class<FrontmatterSourceSplit>
 	bodyOffset: Schema.Number.pipe(Schema.withConstructorDefault(Effect.succeed(0))),
 	fence: Schema.optionalKey(FrontmatterFenceState),
 	fenceFormat: Schema.optionalKey(FrontmatterFormat),
+	bom: Schema.optionalKey(Schema.Boolean),
 }) {}
+
+/**
+ * Options for {@link FrontmatterSource.split}.
+ *
+ * @public
+ */
+export interface FrontmatterSourceSplitOptions {
+	/**
+	 * What to do with a leading byte order mark (U+FEFF). `"keep"`, the
+	 * default, reads it as an ordinary character, so offset 0 is not a fence.
+	 * `"skip"` steps over exactly one leading mark before reading the fence
+	 * and records whether it did as the result's `bom` field; a
+	 * second mark is an ordinary character. Every offset in the result stays
+	 * relative to the source as passed, mark included.
+	 */
+	readonly bom?: "keep" | "skip";
+}
+
+/** U+FEFF, the byte order mark, as a UTF-16 code unit. */
+const BOM = 0xfeff;
 
 /** The opening fence line per format (the closed grammar's spellings). */
 const OPEN_FENCE: Record<FrontmatterFormat, string> = {
@@ -160,9 +191,12 @@ export class FrontmatterSource {
 	 * @remarks
 	 * The grammar is the parser's own offset-0 pre-scan, over raw bytes:
 	 * the fence set is closed (`---` yaml, `+++` toml, `---json` json), a
-	 * fence line is exactly the fence with no surrounding whitespace, and a
-	 * leading BOM means offset 0 is not a fence — strip one before calling
-	 * if the source may carry it. Unlike the parse path there is no capture
+	 * fence line is exactly the fence with no surrounding whitespace, and by
+	 * default a leading BOM means offset 0 is not a fence. Pass
+	 * `{ bom: "skip" }` for a source that may carry one (a file read from
+	 * disk): `split` steps over exactly one leading U+FEFF, reports it as
+	 * `bom: true`, and keeps every offset relative to `source` as passed, so
+	 * a caller never strips the mark and shifts offsets back itself. Unlike the parse path there is no capture
 	 * toggle here: `frontmatter` is absent exactly when the source has no
 	 * closed block, and `fence` says why — `"absent"` for no opening fence,
 	 * `"unclosed"` for one that never closes.
@@ -182,37 +216,51 @@ export class FrontmatterSource {
 	 * console.log(split.body); // => "\n# Body\n"
 	 * console.log(split.frontmatter?.valueStart); // => 4
 	 * console.log(FrontmatterSource.split("---\ntitle: hi\n").fence); // => "unclosed"
+	 *
+	 * const marked = FrontmatterSource.split("\uFEFF---\ntitle: hi\n---\n", { bom: "skip" });
+	 * console.log(marked.bom); // => true
+	 * console.log(marked.frontmatter?.valueStart); // => 5
 	 * ```
 	 *
 	 * @param source - The raw document source, body format irrelevant.
+	 * @param options - {@link FrontmatterSourceSplitOptions}; `bom` defaults
+	 *   to `"keep"`.
 	 * @returns A {@link FrontmatterSourceSplit}; `frontmatter` is absent when
 	 *   the source opens with no closed fence block, and `fence` says which.
 	 */
-	static split(source: string): FrontmatterSourceSplit {
-		const fence = scanRawFence(source);
+	static split(source: string, options?: FrontmatterSourceSplitOptions): FrontmatterSourceSplit {
+		// Under `bom: "skip"` the grammar runs on the source after one leading
+		// U+FEFF, and `start` shifts every reported offset back onto `source`.
+		const skipBom = options?.bom === "skip";
+		const start = skipBom && source.charCodeAt(0) === BOM ? 1 : 0;
+		const bom = skipBom ? { bom: start === 1 } : {};
+		const fence = scanRawFence(start === 0 ? source : source.slice(start));
 		if (fence.state === "absent") {
-			return FrontmatterSourceSplit.make({ body: source, bodyOffset: 0, fence: "absent" });
+			return FrontmatterSourceSplit.make({ body: source.slice(start), bodyOffset: start, fence: "absent", ...bom });
 		}
 		if (fence.state === "unclosed") {
 			return FrontmatterSourceSplit.make({
-				body: source,
-				bodyOffset: 0,
+				body: source.slice(start),
+				bodyOffset: start,
 				fence: "unclosed",
 				fenceFormat: fence.format,
+				...bom,
 			});
 		}
+		const bodyOffset = start + fence.bodyOffset;
 		return FrontmatterSourceSplit.make({
 			frontmatter: FrontmatterSourceBlock.make({
 				format: fence.format,
 				value: fence.value,
 				newline: fence.newline,
-				valueStart: fence.valueStart,
-				valueEnd: fence.valueEnd,
+				valueStart: start + fence.valueStart,
+				valueEnd: start + fence.valueEnd,
 			}),
-			body: source.slice(fence.bodyOffset),
-			bodyOffset: fence.bodyOffset,
+			body: source.slice(bodyOffset),
+			bodyOffset,
 			fence: "closed",
 			fenceFormat: fence.format,
+			...bom,
 		});
 	}
 
@@ -224,7 +272,10 @@ export class FrontmatterSource {
 	 * is the opening fence, `newline` (default `"\n"`), the value — a
 	 * non-empty value missing a final line terminator gets `newline`
 	 * appended, so the closing fence always starts its own line — the
-	 * closing fence, `newline`, then the body verbatim.
+	 * closing fence, `newline`, then the body verbatim. A split whose `bom`
+	 * is `true` gets one U+FEFF before all of it, so
+	 * `join(split(source, { bom: "skip" })) === source` under the same
+	 * contract.
 	 *
 	 * **Round-trip contract:** `join(split(source)) === source`, byte for
 	 * byte, for every source whose closing fence line ends with a line
@@ -240,15 +291,16 @@ export class FrontmatterSource {
 	 * @returns The combined source string.
 	 */
 	static join(split: FrontmatterSourceSplit): string {
+		const bom = split.bom === true ? "\uFEFF" : "";
 		const block = split.frontmatter;
 		if (block === undefined) {
-			return split.body;
+			return `${bom}${split.body}`;
 		}
 		const newline = block.newline ?? "\n";
 		const value =
 			block.value === "" || block.value.endsWith("\n") || block.value.endsWith("\r")
 				? block.value
 				: `${block.value}${newline}`;
-		return `${OPEN_FENCE[block.format]}${newline}${value}${CLOSE_FENCE[block.format]}${newline}${split.body}`;
+		return `${bom}${OPEN_FENCE[block.format]}${newline}${value}${CLOSE_FENCE[block.format]}${newline}${split.body}`;
 	}
 }

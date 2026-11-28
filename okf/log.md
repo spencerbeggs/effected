@@ -12,6 +12,8 @@
 * Updated CI's Run Tests step took 21 minutes, half of the file time in five files
 * Updated @effected/mcp-kit
 * Updated @effected/files
+* Updated @effected/markdown
+* Updated @effected/markdown frontmatter
 
 ## 2026-11-27
 

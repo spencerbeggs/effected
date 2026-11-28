@@ -51,10 +51,10 @@ sources:
     resource: ../../packages/markdown/__test__/visitor-traverse.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-25T13:41:08Z
+  at: 2026-11-28T03:30:30Z
 x-okfit-integrity:
   generated:
-    body: 58b91a51ff08ff49
+    body: 3fe10a7daf72be28
 ---
 
 # `@effected/markdown`
@@ -686,7 +686,9 @@ code in the blockquote, while micromark keeps it inside the definition.
 The parser does not drop a leading byte order mark (U+FEFF), as micromark's
 preprocessing does: the mark is text at offset 0, so the mark followed by `# Title` parses
 as a paragraph, not a heading. A caller that wants micromark's reading
-strips one mark first, as [`markdown-lint`](markdown-lint.md)'s hosts do;
+strips one mark first, as [`markdown-lint`](markdown-lint.md)'s hosts do
+(`FrontmatterSource.split(source, { bom: "skip" })` does the same for the
+string-level fence, offsets kept relative to the unstripped source);
 `markdown-lint` records the divergence this leaves for a source opening with
 two or more marks. No test pins the parser's behaviour here.
 

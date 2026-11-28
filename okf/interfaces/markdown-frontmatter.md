@@ -9,7 +9,7 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-07T02:02:05Z
+  at: 2026-11-28T03:30:30Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:41.636Z
@@ -21,7 +21,7 @@ verified:
     at: 2026-11-25T21:38:57Z
 x-okfit-integrity:
   generated:
-    body: 05f269156eb28341
+    body: 444366daa4f9c2f1
   verified:
     by: human:spencer
     at: 2026-11-25T21:38:57Z
@@ -191,6 +191,15 @@ never closes, `closed` for a block) and `fenceFormat`, the format the opening
 fence declared whenever there was one. `join` reads neither. A block `split`
 produced also records `valueStart` and `valueEnd`, UTF-16 code-unit offsets with
 `source.slice(valueStart, valueEnd) === value`, which `join` ignores too.
+
+By default a leading byte order mark (U+FEFF) is text, so offset 0 is not a
+fence and `split` reports `absent`. `split(source, { bom: "skip" })` steps over
+exactly one leading mark (a second one is text), records `bom` on the result
+(`true` when it skipped one, `false` when there was none; the field is absent
+without the option), and counts the mark in every offset, so `valueStart`,
+`valueEnd` and `bodyOffset` index the source as passed and `body` never starts
+with the skipped mark. `join` re-emits the mark when `bom` is `true`, keeping
+the round trip byte-exact.
 
 `FrontmatterSourceBlock.value` deliberately differs from the parsed
 `Frontmatter` node's `value`: the string-level surface keeps every line's own
