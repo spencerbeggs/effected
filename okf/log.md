@@ -17,6 +17,7 @@
 * Updated Error handling standards
 * Updated @effected/cli-kit
 * Updated @effected/shell
+* Updated @effected/plugin
 
 ## 2026-11-27
 
