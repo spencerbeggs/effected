@@ -193,8 +193,8 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					strategy: "lock-minor",
 				},
 				"@effect/tsgo": {
-					range: "^0.73.7",
-					peer: "^0.73.0",
+					range: "^0.74.1",
+					peer: "^0.74.0",
 					strategy: "lock-minor",
 				},
 				effect: {
@@ -542,13 +542,13 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 		"effected:build": {
 			packages: {
 				"@microsoft/api-extractor": {
-					range: "^7.60.1",
-					peer: "^7.60.1",
+					range: "^7.60.2",
+					peer: "^7.60.2",
 					strategy: "lock",
 				},
 				"@microsoft/api-extractor-model": {
-					range: "^7.33.16",
-					peer: "^7.33.16",
+					range: "^7.33.17",
+					peer: "^7.33.17",
 					strategy: "lock",
 				},
 				// 0.17.0 dropped the line break before an inline node (microsoft/tsdoc#493); 0.17.1
@@ -564,7 +564,7 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					strategy: "lock",
 				},
 				"@rsbuild/core": {
-					range: "^2.3.4",
+					range: "^2.3.5",
 					peer: "^2.3.0",
 					strategy: "lock-minor",
 				},
@@ -607,7 +607,7 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					strategy: "lock-minor",
 				},
 				rolldown: {
-					range: "^1.3.3",
+					range: "^1.3.4",
 					peer: "^1.3.0",
 					strategy: "lock-minor",
 				},
@@ -670,8 +670,13 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 		"@effect/*",
 		"@effect/tsgo-*",
 		"@effected/*",
+		"@microsoft/api-extractor-model",
+		"@microsoft/api-extractor",
 		"@oxc-project/*",
 		"@rolldown/*",
+		"@rushstack/node-core-library",
+		"@rushstack/terminal",
+		"@rushstack/ts-command-line",
 		"@rsbuild/*",
 		"@rspack/*",
 		"@tsdown/*",
