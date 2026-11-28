@@ -51,3 +51,33 @@ describe("images nested in image labels", () => {
 		}
 	}
 });
+
+// A level's label is re-parsed with the inline images nested in it left out, which holds only while the text left out
+// plays no part in how the label holding it reads: a `$` in it can pair with one past it and open math, a link formed
+// in it makes the link starts before it inactive, and a `]` in a code span in it does not end the label holding it.
+const MD054_ALL = { inline: false, full: false, shortcut: false, collapsed: false, autolink: false };
+const across: ReadonlyArray<readonly [name: string, source: string, rule: LintRule, settings: unknown]> = [
+	["a `$` pairing out of a nested label", "![x ![a $](x) [b][c] $](y)\n", MD052, true],
+	[
+		"a `$` pairing out of a nested label, shortcuts read",
+		"![x ![a $](x) [b] $](y)\n",
+		MD052,
+		{ shortcut_syntax: true },
+	],
+	["a `$` pairing out of a nested label", "[c]: u\n\n![x ![a $](x) [b][c] $](y)\n\n[unused]: v\n", MD053, true],
+	["a link formed in a nested label", "![[`![bb[r]_](x)*][r]](x)\n\n[r]: u\n", MD052, true],
+	["a link formed in a nested label", "![[`![bb[r]_](x)*][r]](x)\n\n[r]: u\n", MD054, MD054_ALL],
+	["a `]` in a code span in a nested label", "![![a` [r]](x)`![`\nb][]](x)\n](x)](x)\n\n[r]: u\n", MD052, true],
+	["a `]` in a code span in a nested label", "![![a` [r]](x)`![`\nb][]](x)\n](x)](x)\n\n[r]: u\n", MD053, true],
+	["a `]` in a code span in a nested label", "![![a` [r]](x)`![`\nb][]](x)\n](x)](x)\n\n[r]: u\n", MD054, MD054_ALL],
+	["a `]` in a nested image's title", '![a ![b](x "t]")](y)\n', MD052, true],
+];
+
+describe("labels holding a nested image", () => {
+	for (const [name, source, rule, settings] of across) {
+		it(`${rule.name} matches markdownlint over ${name}`, () => {
+			const { reason } = compareOne(rule, { default: false, [rule.name]: settings }, { name, source });
+			assert.isUndefined(reason);
+		});
+	}
+});

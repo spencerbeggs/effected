@@ -33,10 +33,10 @@ sources:
     resource: ../../packages/markdown-lint/__test__/inputs.hostile.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-28T03:46:15Z
+  at: 2026-11-28T04:14:57Z
 x-okfit-integrity:
   generated:
-    body: 0c59accf00bbd81c
+    body: ac06b5d69a6419b8
 ---
 
 # `@effected/markdown-lint`
@@ -327,13 +327,20 @@ so both label readers (`imageLabelNodes` in `src/internal/inline.ts`, and
 paragraph, one nesting level at a time on a worklist. Each level's text is
 its own characters only: `labelSource` reads the label from the source and
 reduces every inline image or full reference nested directly in it to an
-empty label (`![](…)`), whose brackets bound every construct inside, so it
-cannot change how the holder parses. The nested images, their label ends
-and their nodes come from `@effected/markdown`'s
-`MarkdownDocument.imageDescription` (`nestedImages`), so a chain of nested
-images lints in linear time (#1416). A collapsed or shortcut reference's
-label is its reference too, so it is kept whole; a label holding a chain of
-those still re-parses each level's full text.
+empty label (`![](…)`), whose brackets bound every construct the kit parses
+inside, so it cannot change how the holder parses. A link formed in the
+label left out, at any depth, makes micromark's link starts before it
+inactive, so that label is reduced to a stand-in link (`![[](x)](…)`,
+`holdsLink`) instead. The nested images, their label ends and their nodes
+come from `@effected/markdown`'s `MarkdownDocument.imageDescription`
+(`nestedImages`, `imageLabelEnd`: a `]` in a code span in a label does not
+end it), so a chain of nested images lints in linear time (#1416). Two kinds
+of label are kept whole, as before #1416: a collapsed or shortcut
+reference's, which is its reference too, and any holding a `$`, which can
+pair with a `$` past the label and open inline math that the kit's parse
+does not read (such an image's label end is counted by brackets too). A
+chain of either still re-parses each level's full text, quadratic in its
+depth.
 
 MD042, MD052, MD053 and MD054 read markdownlint's reference link and image
 data through one internal helper (`src/internal/references.ts`): the

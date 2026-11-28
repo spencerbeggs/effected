@@ -17,7 +17,7 @@
 // labelled by the second. A failed `]` is data, so any later shim back to an
 // earlier start holds it and records nothing.
 
-import type { MarkdownNode } from "@effected/markdown";
+import type { Image, ImageReference, MarkdownNode } from "@effected/markdown";
 import { MarkdownDocument, MarkdownParseOptions } from "@effected/markdown";
 import { Result } from "effect";
 import type { LintContext } from "../LintContext.js";
@@ -26,6 +26,7 @@ import { paragraphBreaks } from "./directives.js";
 import type { NestedImage } from "./inline.js";
 import {
 	characterReference,
+	imageLabelEnd,
 	inMathText,
 	isReference,
 	labelDefinitions,
@@ -474,12 +475,14 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 			case "image":
 			case "imageReference": {
 				const label = events.open(view.toSource(start), true);
-				const close = labelEnd(text, start + 1, end);
 				// The kit's node: this one in the reading, or the one the label holding it names. A nested label's text
-				// is its own when the label holding it was read with it left out (see `labelSource`).
+				// is its own when the label holding it was read with it left out (see `labelSource`). The reading's own
+				// image ends its label where the kit's parse did, past any `]` in a code span in it.
+				const reading = view === documentView;
+				const close = reading ? imageLabelEnd(context, node as Image | ImageReference) : labelEnd(text, start + 1, end);
 				const open = view.toSource(start + 1);
 				const inner = view.nested?.get(open);
-				const original = view === documentView ? node : inner?.node;
+				const original = reading ? node : inner?.node;
 				const nested = nestedImages(context, original);
 				const own = labelSource(context, open, inner?.close ?? view.toSource(close), nested);
 				record(view, node, start, end, close);
