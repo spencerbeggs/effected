@@ -1,5 +1,23 @@
 # @effected/pnpm-plugin-effect
 
+## 0.27.7
+
+### Maintenance
+
+#### Updates 3 catalog:effected versions
+
+- `@effected/mcp` ^0.19.5 -> ^0.19.6 (peer ^0.19.0)
+- `@effected/mcp-kit` ^0.15.1 -> ^0.15.2 (peer ^0.15.0)
+- `@effected/plugin` ^0.6.10 -> ^0.6.11 (peer ^0.6.0)
+
+#### Updates the toolchain catalog entries
+
+- `@effect/tsgo` ^0.73.7 -> ^0.74.1 (peer ^0.74.0)
+- `@microsoft/api-extractor` ^7.60.1 -> ^7.60.2
+- `@microsoft/api-extractor-model` ^7.33.16 -> ^7.33.17
+- `@rsbuild/core` ^2.3.4 -> ^2.3.5
+- `rolldown` ^1.3.3 -> ^1.3.4
+
 ## 0.27.6
 
 ### Maintenance
