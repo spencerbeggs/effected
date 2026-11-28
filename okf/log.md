@@ -8,6 +8,7 @@
 * Updated ai-plugin
 * Updated construct-annotations.json
 * Updated workspace
+* Updated A root workspace:* devDependency puts its whole closure into turbo's global hash
 
 ## 2026-11-27
 
