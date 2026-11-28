@@ -53,6 +53,40 @@ export interface SuggestOptions {
 	readonly maxDistance?: number | undefined;
 }
 
+/**
+ * A unit {@link Fmt.durationWords} can write, largest first.
+ *
+ * @public
+ */
+export type DurationWordsUnit = "days" | "hours" | "minutes" | "seconds" | "milliseconds";
+
+/**
+ * Options for {@link Fmt.durationWords}.
+ *
+ * @public
+ */
+export interface DurationWordsOptions {
+	/**
+	 * The most units written, counting only the units that are not zero; `2` by default, so `2 hours 30 minutes`.
+	 * `Infinity` writes every one. Anything else that is not a positive integer throws a `RangeError`.
+	 */
+	readonly parts?: number | undefined;
+	/** The smallest unit written; `milliseconds` by default. Whatever is left below it is dropped, never rounded up. */
+	readonly smallest?: DurationWordsUnit | undefined;
+}
+
+const WORD_UNITS: ReadonlyArray<{
+	readonly unit: DurationWordsUnit;
+	readonly singular: string;
+	readonly part: "days" | "hours" | "minutes" | "seconds" | "millis";
+}> = [
+	{ unit: "days", singular: "day", part: "days" },
+	{ unit: "hours", singular: "hour", part: "hours" },
+	{ unit: "minutes", singular: "minute", part: "minutes" },
+	{ unit: "seconds", singular: "second", part: "seconds" },
+	{ unit: "milliseconds", singular: "millisecond", part: "millis" },
+];
+
 // biome-ignore lint/suspicious/noControlCharactersInRegex: the point is to match control characters
 const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g;
 
@@ -172,6 +206,58 @@ export class Fmt {
 		const minutes = Math.floor(seconds / 60);
 		const rest = seconds % 60;
 		return rest === 0 ? `${minutes}m` : `${minutes}m ${rest}s`;
+	};
+
+	/**
+	 * A duration in words, for a sentence: `5 minutes`, `1 minute`, `2 hours 30 minutes`, `1 day 4 hours`.
+	 *
+	 * @remarks
+	 * The units are days (24 hours), hours, minutes, seconds and milliseconds; weeks, months and years are never
+	 * written, since their length depends on a calendar. The duration is balanced into those units as core's
+	 * `Duration.parts` balances it, the units that are zero are skipped, and the first `parts` of the rest (two by
+	 * default) are written, each with its count and its noun, singular for exactly one, joined by spaces with no
+	 * `and` or commas. So `1 day 0 hours 5 minutes` is `1 day 5 minutes`.
+	 *
+	 * Nothing is rounded: whatever is left below the last unit written, or below `smallest`, is dropped, so the text
+	 * never says more time than there is (`2 hours 59 minutes 59 seconds` with two parts is `2 hours 59 minutes`).
+	 * Below a millisecond is always dropped.
+	 *
+	 * Zero, and anything shorter than one `smallest` unit, is `0` and the plural of `smallest`: `0 milliseconds` by
+	 * default, `0 seconds` with `smallest: "seconds"`. An infinite duration is `infinity`. A negative duration, negative
+	 * infinity, and an input `Duration.Input` cannot read (an unparseable string, `NaN`) are treated as zero, as
+	 * {@link Fmt.duration} treats them: a formatter in a render path never throws on its input. A number is
+	 * milliseconds and a `bigint` nanoseconds, as in core. For the compact `1m 3s` form, use {@link Fmt.duration}.
+	 *
+	 * ```ts
+	 * Fmt.durationWords(Duration.minutes(150)) // => "2 hours 30 minutes"
+	 * Fmt.durationWords("90 seconds", { parts: 1 }) // => "1 minute"
+	 * ```
+	 *
+	 * @param input - the duration; a number is milliseconds
+	 * @param options - how many units, and the smallest one written
+	 */
+	static readonly durationWords = (input: Duration.Input, options?: DurationWordsOptions): string => {
+		const max = options?.parts ?? 2;
+		if (max !== Number.POSITIVE_INFINITY && (!Number.isInteger(max) || max < 1)) {
+			throw new RangeError(`Fmt.durationWords: parts must be a positive integer or Infinity, received ${max}`);
+		}
+		const smallest = options?.smallest ?? "milliseconds";
+		const last = WORD_UNITS.findIndex((entry) => entry.unit === smallest);
+		if (last === -1) {
+			throw new RangeError(`Fmt.durationWords: smallest must be a duration unit, received ${String(smallest)}`);
+		}
+		const zero = `0 ${smallest}`;
+		const duration = Option.getOrUndefined(Duration.fromInput(input));
+		if (duration === undefined || Duration.isNegative(duration)) return zero;
+		if (!Duration.isFinite(duration)) return "infinity";
+		const fragments = Duration.parts(duration);
+		const words: Array<string> = [];
+		for (const entry of WORD_UNITS.slice(0, last + 1)) {
+			if (words.length >= max) break;
+			const n = fragments[entry.part];
+			if (n !== 0) words.push(Fmt.plural(n, entry.singular));
+		}
+		return words.length === 0 ? zero : words.join(" ");
 	};
 
 	/**

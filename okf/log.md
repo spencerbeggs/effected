@@ -15,6 +15,7 @@
 * Updated @effected/markdown
 * Updated @effected/markdown frontmatter
 * Updated Error handling standards
+* Updated @effected/cli-kit
 
 ## 2026-11-27
 
