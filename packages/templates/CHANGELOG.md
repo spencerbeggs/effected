@@ -1,5 +1,13 @@
 # @effected/templates
 
+## 0.20.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/files | dependency | updated | 0.3.0 | 0.4.0 |
+
 ## 0.20.0
 
 ### Dependencies

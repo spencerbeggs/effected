@@ -1,5 +1,13 @@
 # @effected/schemastore
 
+## 0.33.2
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/files | dependency | updated | 0.3.0 | 0.4.0 |
+
 ## 0.33.1
 
 ### Bug Fixes

@@ -1,5 +1,16 @@
 # @effected/bundler
 
+## 0.7.6
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/changesets | dependency | updated | 0.8.0 | 0.9.0 |
+| @effected/config-file | dependency | updated | 0.31.0 | 0.31.1 |
+| @effected/files | dependency | updated | 0.3.0 | 0.4.0 |
+| @effected/package-json | dependency | updated | 0.32.2 | 0.32.3 |
+
 ## 0.7.5
 
 ### Dependencies

@@ -1,5 +1,14 @@
 # @effected/github-actions
 
+## 0.38.4
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/markdown | dependency | updated | 0.31.0 | 0.32.0 |
+| @effected/templates | dependency | updated | 0.20.0 | 0.20.1 |
+
 ## 0.38.3
 
 ### Dependencies
