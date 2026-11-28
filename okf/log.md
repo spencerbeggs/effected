@@ -9,6 +9,7 @@
 * Updated construct-annotations.json
 * Updated workspace
 * Updated A root workspace:* devDependency puts its whole closure into turbo's global hash
+* Updated CI's Run Tests step took 21 minutes, half of the file time in five files
 
 ## 2026-11-27
 
