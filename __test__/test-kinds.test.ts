@@ -433,8 +433,13 @@ describe("a test file's name says its kind, and no test reads a clock to bound a
 			assert.isTrue(existsSync(join(ROOT, file)), `${file} is exempt from Growth but does not exist`);
 			assert.isTrue(isHostile(file), `${file} is exempt from Growth but is not a hostile file`);
 			assert.isDefined(ALLOWED_CLOCKS[file], `${file} measures by hand, so ALLOWED_CLOCKS must name it`);
-			const found = offences([file], (path) => readFileSync(join(ROOT, path), "utf8"), ALLOWED_CLOCKS);
-			assert.include(found.join("\n"), "never reaches Growth", `${file} reaches Growth now; drop its exemption`);
+			// The package's whole test tree, so a helper the file imports resolves and a Growth it reaches through one
+			// counts: given the file alone, every relative import is unknown and the exemption could never go stale.
+			const tree = `${file.slice(0, file.indexOf("/__test__/"))}/__test__/`;
+			const files = governedFiles().filter((each) => each.startsWith(tree));
+			const found = offences(files, (path) => readFileSync(join(ROOT, path), "utf8"), ALLOWED_CLOCKS);
+			const own = found.filter((line) => line.startsWith(`${file}:`)).join("\n");
+			assert.include(own, "never reaches Growth", `${file} reaches Growth now; drop its exemption`);
 		}
 	});
 
