@@ -166,11 +166,23 @@ it("readSync reads the same directory whatever trailing separators the root carr
 });
 
 // `PendingChangesets.hostile.test.ts` holds that the trim is linear in the run.
-it("readSync answers for a root holding a long run of separators", () => {
-	// On this host the path is past the OS limit, so the read fails; a host or a trim that collapsed the run would
-	// answer an empty list instead. Either is fine: what matters is that it is an answer, not a throw.
+it("readSync answers a root holding a long run of separators with the OS's name-too-long failure", () => {
+	// A 100,000-character path is past PATH_MAX on Linux (4,096) and macOS (1,024), and both kernels check the raw
+	// length before collapsing separators, so the listing fails rather than answering an empty list.
 	const result = PendingChangesets.readSync(`/r${"/".repeat(100_000)}x`);
-	assert.isTrue(Result.isFailure(result) || Result.isSuccess(result));
+	assert.isTrue(Result.isFailure(result));
+	if (!Result.isFailure(result)) return;
+	const failure = result.failure;
+	assert.instanceOf(failure, PlatformError.PlatformError);
+	if (!(failure instanceof PlatformError.PlatformError)) return;
+	const reason = failure.reason;
+	assert.instanceOf(reason, PlatformError.SystemError);
+	if (!(reason instanceof PlatformError.SystemError)) return;
+	assert.strictEqual(reason._tag, "Unknown");
+	assert.strictEqual(reason.method, "readDirectory");
+	assert.strictEqual((reason.cause as { code?: unknown }).code, "ENAMETOOLONG");
+	// The run is inside the root, not trailing it, so the trim keeps it and `.changeset` lands after the `x`.
+	assert.isTrue(String(reason.pathOrDescriptor).endsWith("/x/.changeset"));
 });
 
 const denied = (method: string, path: string): PlatformError.PlatformError =>

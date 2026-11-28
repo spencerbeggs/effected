@@ -13,10 +13,10 @@ sources:
     resource: ../../plugin/scripts/generate-constructs.mts
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-02T14:55:07Z
+  at: 2026-11-28T00:21:23Z
 x-okfit-integrity:
   generated:
-    body: a650acc6d3368794
+    body: fe56112db4efe7f9
 ---
 
 # construct-annotations.json
@@ -95,14 +95,18 @@ documented discoverability miss on record was a value-level capability.
 
 ## Enforcement
 
-`plugin/__test__/construct-index.bats` pins the index:
-fixture tests for the generator, a repo drift test that regenerates the
-committed index into a temp dir and diffs it against the committed one,
-the strict `check --require-intent` test, and fixture tests pinning the
-staleness guard and `--only` with positive and negative controls. A
+Two files pin the index. `plugin/__test__/construct-index.bats` holds
+fixture tests for the generator, pinning the staleness guard and `--only`
+with positive and negative controls; it needs no build.
+`plugin/__test__/construct-index-repo.bats` holds the repo drift test,
+which regenerates the committed index into a temp dir and diffs it against
+the committed one, and the strict `check --require-intent` test. Its
 `setup_file()` hook self-provisions missing or stale doc models by running
-`pnpm build`, triggered by the generator's exit code 2 or 3, so CI's auto-discovered shell-test check
-needs no custom build step.
+`pnpm build`, triggered by the generator's exit code 2 or 3. Under CI it
+runs only in the Construct Index job of `.github/workflows/slow-tests.yml`,
+which builds first and sets `EFFECTED_CONSTRUCT_INDEX_JOB`; the Silk
+workflow's shell-test step skips it, because there the full build sat on
+the critical path.
 
 The generator writes only the pluginfinity source. pluginfinity copies
 the tables into `plugin/builds/claude/` and `plugin/builds/copilot/`, so

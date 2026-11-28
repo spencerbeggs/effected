@@ -1,5 +1,16 @@
 # Log
 
+## 2026-11-28
+
+* Updated @effected/testing
+* Updated The vitest suite splits into a fast tier with coverage and slow, hostile and full tiers run beside it
+* Updated Never hand-edit the construct index — regenerate it
+* Updated ai-plugin
+* Updated construct-annotations.json
+* Updated workspace
+* Updated A root workspace:* devDependency puts its whole closure into turbo's global hash
+* Updated CI's Run Tests step took 21 minutes, half of the file time in five files
+
 ## 2026-11-27
 
 * Updated @effected/memfs

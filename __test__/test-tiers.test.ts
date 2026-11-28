@@ -25,14 +25,15 @@ describe("the tier and depth variables", () => {
 		assert.deepStrictEqual([...DEPTH_SUFFIXES], [".parity.test.ts", ".corpus.test.ts", ".property.test.ts"]);
 	});
 
-	it("reads an unset or empty tier as none", () => {
+	it("reads an unset tier as none", () => {
 		assert.strictEqual(parseTier(undefined), undefined);
-		assert.strictEqual(parseTier(""), undefined);
 		assert.strictEqual(parseTier("hostile"), "hostile");
 	});
 
 	it("refuses an unknown tier and an unknown depth", () => {
 		assert.throws(() => parseTier("timing"), /EFFECTED_TEST_TIER must be one of fast, slow, hostile, full/);
+		// A workflow expression that expands to nothing must not read as a local run, which drops the slow exclusion.
+		assert.throws(() => parseTier(""), /EFFECTED_TEST_TIER/);
 		assert.throws(() => parseDepth("Full"), /EFFECTED_TEST_DEPTH/);
 		// A workflow expression that expands to nothing must not read as a full run.
 		assert.throws(() => parseDepth(""), /EFFECTED_TEST_DEPTH/);

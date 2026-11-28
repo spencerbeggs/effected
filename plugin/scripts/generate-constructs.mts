@@ -1,7 +1,7 @@
 // generate-constructs.mts — renders the construct index (effected#188):
 // one markdown table per kit package, from the build-emitted api-extractor
 // doc models joined with construct-annotations.json. Deterministic: same
-// inputs, byte-identical output; construct-index.bats diffs a regeneration
+// inputs, byte-identical output; construct-index-repo.bats diffs a regeneration
 // against the committed files.
 //
 // Usage:

@@ -34,10 +34,10 @@ sources:
     last_modified: 2026-11-24T00:00:00Z
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-25T19:35:42Z
+  at: 2026-11-28T02:22:45Z
 x-okfit-integrity:
   generated:
-    body: e2831e6dc92a5ae3
+    body: 05b8f24fd9ffa59d
   verified:
     by: human:spencer
     at: 2026-11-25T21:38:57Z
@@ -65,7 +65,7 @@ Two things then grew past that split. The step reached 38 minutes with 87% of th
 
 ## Decision
 
-`EFFECTED_TEST_TIER` selects a run. It takes `fast`, `slow`, `hostile` and `full`; any other value is refused. `lib/scripts/test-tiers.ts` holds the rules and `vitest.config.ts` wires them to project discovery.[^test-tiers]
+`EFFECTED_TEST_TIER` selects a run. It takes `fast`, `slow`, `hostile` and `full`; any other value is refused, the empty string too, so a workflow expression that expands to nothing never reads as a local run (#1424). `lib/scripts/test-tiers.ts` holds the rules and `vitest.config.ts` wires them to project discovery.[^test-tiers]
 
 - **`fast`** — what `pnpm ci:test` runs, with coverage and its thresholds. Each project excludes its `SLOW_TESTS` files and every hostile file (`**/*.hostile.test.{ts,tsx}`) from **discovery**, through `test.exclude`. The depth-aware files run here at sample depth.
 - **`slow`** — what `pnpm ci:test:slow` runs, with `--coverage.enabled=false`. Each project includes only its `SLOW_TESTS` files, and a project with none is dropped.[^root-package-json]
@@ -117,6 +117,12 @@ A test that passes only because an earlier file left state behind is the cost of
 `@vitest-agent/plugin` treats a tag-filtered run (`--tags-filter`) as a partial run and neutralizes the coverage thresholds (`Coverage thresholds skipped: partial run`). A fast tier selected by tag would therefore lose its coverage gate without failing. Excluding the files from discovery keeps the fast run a full run, so its thresholds still apply. The config does tag files by kind (`hostile`, which carries the timeout, and `parity`, `corpus` and `property`), but no tier is selected by a tag.
 
 The same reasoning shapes the depth axis. The parity corpus was not moved to a tier of its own: the files stay in the fast run and read fewer inputs there, so each rule's hand-written inputs still run on every pull request under coverage.
+
+### Time budget
+
+On a pull request whose builds the turbo cache already holds, the Silk workflow's Code Validation job, the critical path, stays at or under 10 minutes, and the Slow Tests and Hostile Tests jobs each stay at or under 8. Measured on PR 1444, they took 8, 3.6 and 5.8 minutes warm; see [the CI test-duration measurement](../measurements/ci-test-duration.md#after-the-tiers-the-construct-index-job-and-the-narrowed-build-hash). A cold run, which a change to a package the `effected` tool loads forces, took 12.9, 7 and 8.1 minutes, and is not held to the budget, since its excess is the build and not the tests.
+
+A warm run over budget is the signal to move a file: into `SLOW_TESTS` once it takes about 20 seconds on a runner, or to a sample when it is a depth-aware sweep. Raising the budget is a decision of its own, with a measurement behind it.
 
 ## Why every pull request, not nightly
 

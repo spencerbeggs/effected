@@ -11,8 +11,13 @@ name: Slow Tests
 #   grows with input size. They run one file at a time, so no other file shares the runner while
 #   they measure (#1387), and in a job of their own, so they neither wait for the slow tier's build
 #   nor go unreported when a slow test fails.
+# - Construct Index: plugin/__test__/construct-index-repo.bats, which checks the committed construct
+#   index against every package's api-extractor doc model. Those models are build output, so it
+#   needs a full build; in the Silk workflow's shell-test step that build sat on the critical path
+#   and, with any package's source changed, took about 4.5 of the step's 4.6 minutes. The Silk
+#   step skips the file under CI, and this job runs it after its own build.
 #
-# Both run on every pull request, not on a schedule: the hostile tier holds security regression
+# All three run on every pull request, not on a schedule: the hostile tier holds security regression
 # suites (shell, glob and lockfile hostility) that must not merge red. Coverage is off because
 # these files exercise code the fast tier already covers, and v8 instrumentation made them two to
 # three times slower.
@@ -83,3 +88,28 @@ jobs:
       - name: Report the growth checks nearest their bounds
         if: always()
         run: pnpm exec tsx lib/scripts/growth-report.ts "$RUNNER_TEMP/growth.jsonl" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  construct-index:
+    name: Construct Index
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Runtime
+        uses: savvy-web/silk-runtime-action@v2
+        with:
+          turbo-api: https://cache.savvyweb.systems
+          bats: "true"
+          kcov: "false"
+
+      - name: Build every package's doc model
+        run: pnpm run build
+
+      - name: Check the committed construct index
+        run: bats plugin/__test__/construct-index-repo.bats
+        env:
+          EFFECTED_CONSTRUCT_INDEX_JOB: "1"

@@ -28,17 +28,17 @@ sources:
   - id: turbo-json
     resource: ../../turbo.json
   - id: memfs-seed-test
-    resource: ../../packages/memfs/__test__/integration/node-directory-seed.int.test.ts
+    resource: ../../packages/memfs/__test__/integration/node-directory-seed.hostile.test.ts
   - id: owner-design
     resource: conversation with the repository owner
     author: human:spencer
     last_modified: 2026-11-24T00:00:00Z
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-25T19:35:32Z
+  at: 2026-11-28T00:06:14Z
 x-okfit-integrity:
   generated:
-    body: f77e89bd7a1c98e9
+    body: 5ac5c34ced64a41a
 ---
 
 # @effected/testing
@@ -96,8 +96,10 @@ them.
 
 That law binds memfs against the test kit too. `@effected/memfs` takes no
 `@effected` dependency of any kind, `@effected/testing` included, so its
-one growth check is a ratio written out by hand in its own test, with a
-local clock read that the no-clock rule allows by name.[^memfs-seed-test]
+one growth check is a ratio written out by hand in a `.hostile.test.ts`
+file, so the hostile tier runs it alone. Its clock read is allowed by name,
+and the structural test's `HOSTILE_WITHOUT_GROWTH` exempts it from the rule
+that a hostile file reaches `Growth` (#1420).[^memfs-seed-test]
 
 ## Outside the layering
 
@@ -249,7 +251,7 @@ collide; the artifacts do not.
 [^layers-json]: `lib/configs/layers.json` — the `unconstrained` list.
 [^turbo-json]: `turbo.json` — `!$TURBO_ROOT$/packages/testing/**` in the
     `build` task's `inputs`.
-[^memfs-seed-test]: `packages/memfs/__test__/integration/node-directory-seed.int.test.ts`
+[^memfs-seed-test]: `packages/memfs/__test__/integration/node-directory-seed.hostile.test.ts`
     — the hand-written ratio and the comment that gives the reason.
 [^owner-design]: The design the repository owner approved for the test
     kit on 2026-11-24: the package's name, its private status, and the

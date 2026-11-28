@@ -10,10 +10,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-25T19:35:42Z
+  at: 2026-11-28T00:21:23Z
 x-okfit-integrity:
   generated:
-    body: 6a43cfe9c7eaf23b
+    body: 0a5a2c512d5b0f65
 ---
 
 # workspace
@@ -82,6 +82,6 @@ The root `globalSetup` (`vitest.setup.ts`) runs `pnpm exec turbo run build` for 
 
 `pnpm ci:test` sets `CI=true` and `EFFECTED_TEST_TIER=fast`, which excludes the files `vitest.config.ts` lists in `SLOW_TESTS` and every `.hostile.test.ts` file at discovery; `pnpm ci:test:slow` and `pnpm ci:test:hostile` run only those, coverage off, each in a job of `.github/workflows/slow-tests.yml` beside the Silk workflow on every pull request. In the fast tier and in a run with no tier a project's test files share a process, except in `@effected/bundler` and `@effected/cli-kit`. `pnpm ci:test:full` runs the `.parity`, `.corpus` and `.property` files at full depth, in `.github/workflows/full-tests.yml` on the release pull request. An unset tier, every local run, runs everything but the hostile files; `pnpm test:hostile` and `pnpm test:full` run the rest. See [the vitest test tiers](../decisions/vitest-test-tiers.md). The global coverage thresholds in `vitest.config.ts` are set unconditionally. They measure the whole repository, so a filtered run cannot meet them — but `@vitest-agent/plugin` (4.x) detects a partial run (positional filter, `--project`, `--tags-filter`, `--changed`, `--related`, `--shard`, `-t`) and skips them, printing `Coverage thresholds skipped: partial run`. A filtered run's exit code is therefore a real signal; do not reintroduce a CI-only gate around the thresholds.
 
-Coverage is measured on our own sources only (`coverage.include`: `packages/*/src/**` and `lib/scripts/**`), so dependency files never reach the report. Under `CI` the config sets `persist: false` on `AgentPlugin`, skipping the SQLite history an ephemeral runner discards; `VITEST_AGENT_PERSIST` overrides it either way. The BATS construct-index positive control skips under `CI` (it would run a cold `pnpm build`; the pre-push gate proves it).
+Coverage is measured on our own sources only (`coverage.include`: `packages/*/src/**` and `lib/scripts/**`), so dependency files never reach the report. Under `CI` the config sets `persist: false` on `AgentPlugin`, skipping the SQLite history an ephemeral runner discards; `VITEST_AGENT_PERSIST` overrides it either way. The BATS construct-index positive control skips under `CI` (it would run a cold `pnpm build`; the pre-push gate proves it). `plugin/__test__/construct-index-repo.bats`, which checks the committed construct index against every package's doc model, skips in the Silk shell-test step for the same reason and runs in `slow-tests.yml`'s Construct Index job after a full build.
 
 Three of this repository's gates — the `suppressed:` count in `issues.json`, the `Tests:` line, and `packages.length`-style fixture assertions — work by asserting a number did not change unexpectedly; state which count moved and why whenever one does, per [state the reason when a gate count moves](../conventions/state-the-reason-when-a-gate-count-moves.md).

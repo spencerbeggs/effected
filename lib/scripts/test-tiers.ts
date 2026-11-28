@@ -35,9 +35,15 @@ export const isHostile = (file: string): boolean => hasSuffix(file, HOSTILE_SUFF
 /** Whether `file` is a depth-aware test file. */
 export const isDepthAware = (file: string): boolean => DEPTH_SUFFIXES.some((suffix) => hasSuffix(file, suffix));
 
-/** The tier in `raw`: none when unset or empty, and anything unknown throws. */
+/**
+ * The tier in `raw`: none when unset, and anything unknown throws, the empty string too.
+ *
+ * @remarks
+ * The empty string is refused for the reason {@link parseDepth} refuses it: a workflow expression that expands to
+ * nothing must not read as a local run, which would drop the slow exclusion without saying so (#1424).
+ */
 export const parseTier = (raw: string | undefined): Tier | undefined => {
-	if (raw === undefined || raw === "") return undefined;
+	if (raw === undefined) return undefined;
 	if ((TIERS as ReadonlyArray<string>).includes(raw)) return raw as Tier;
 	throw new Error(`EFFECTED_TEST_TIER must be one of ${TIERS.join(", ")} or unset, got ${JSON.stringify(raw)}`);
 };
