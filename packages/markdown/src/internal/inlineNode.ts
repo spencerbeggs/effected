@@ -41,6 +41,12 @@ export interface InlineNodeData {
 	referenceType?: ReferenceType;
 	markerChar?: EmphasisChar;
 	breakStyle?: BreakStyle;
+	/**
+	 * An image's bracket content, moved under a holder node when the image
+	 * closes: the tree keeps only its flattened `alt`, and the description is
+	 * materialized from here on request (`imageDescriptions.ts`).
+	 */
+	description?: InlineNode;
 }
 
 /** A node under construction, with its sibling and child links. */

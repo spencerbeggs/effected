@@ -33,10 +33,10 @@ sources:
     resource: ../../packages/markdown-lint/__test__/inputs.hostile.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-25T13:41:08Z
+  at: 2026-11-28T03:46:15Z
 x-okfit-integrity:
   generated:
-    body: 8ec1a013a6a2fc36
+    body: 0c59accf00bbd81c
 ---
 
 # `@effected/markdown-lint`
@@ -321,6 +321,20 @@ edit's span, and `MarkdownLint.applyFixes` removes each run of deleted
 lines as markdownlint does (a run reaching the source's end taking the line
 break before it), alone and beside other rules' edits on those lines.
 
+Image labels are inline content to micromark and a string `alt` to the kit,
+so both label readers (`imageLabelNodes` in `src/internal/inline.ts`, and
+`referenceData`'s `readAlt`) re-parse each label after its own `[` as a
+paragraph, one nesting level at a time on a worklist. Each level's text is
+its own characters only: `labelSource` reads the label from the source and
+reduces every inline image or full reference nested directly in it to an
+empty label (`![](…)`), whose brackets bound every construct inside, so it
+cannot change how the holder parses. The nested images, their label ends
+and their nodes come from `@effected/markdown`'s
+`MarkdownDocument.imageDescription` (`nestedImages`), so a chain of nested
+images lints in linear time (#1416). A collapsed or shortcut reference's
+label is its reference too, so it is kept whole; a label holding a chain of
+those still re-parses each level's full text.
+
 MD042, MD052, MD053 and MD054 read markdownlint's reference link and image
 data through one internal helper (`src/internal/references.ts`): the
 definitions (link and footnote, first wins, the rest duplicates) and the
@@ -534,8 +548,9 @@ plain synchronous function; no logging, no metrics.
   readers), ratio guards for MD054 over every style disallowed, MD051 over
   repeated headings, MD055 over a tall table and a run of pipes, the math
   re-read, undefined references, alternating images and links, label
-  starts closed in reverse, images naming one long definition and images
-  nested in one label (MD049 and MD052), `applyFixes` over
+  starts closed in reverse, images naming one long definition, images
+  nested in one label and images nested in one another's labels (MD049
+  and MD052), `applyFixes` over
   90,000 fixes, and the settings that drive a loop or a repeat, and holds
   each to linear growth through `Growth` from
   [`@effected/testing`](testing.md): four times the input must cost under

@@ -20,6 +20,8 @@
 // 3. An image's bracket content becomes its `alt` string rather than child
 //    nodes, because mdast images have no children. Upstream computes the same
 //    string at render time by re-rendering the children with tags disabled.
+//    The content itself is kept off the tree as the image's description
+//    (`../imageDescriptions.ts`), materialized only on request.
 
 import type { InlineNode } from "../inlineNode.js";
 import { appendChild, childrenOf, insertAfter, makeInlineNode, unlink } from "../inlineNode.js";
@@ -315,11 +317,15 @@ export const makeLinkCloseConstruct = (onNoMatch?: LinkCloseFallback): InlineCon
 		unlink(opener.node);
 
 		if (isImage) {
-			// mdast images carry alt text, not children.
+			// mdast images carry alt text, not children. The content moves under
+			// a holder of its own, out of the tree every later pass walks, so the
+			// image's description can be materialized on request.
 			node.value = plainTextOf(childrenOf(node));
+			const description = makeInlineNode("text", node.start, node.end);
 			for (const orphan of childrenOf(node)) {
-				unlink(orphan);
+				appendChild(description, orphan);
 			}
+			node.data.description = description;
 		} else {
 			// Links do not nest: every earlier link opener is spent.
 			scanner.deactivateLinkOpeners();

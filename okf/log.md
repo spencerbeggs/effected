@@ -18,6 +18,8 @@
 * Updated @effected/cli-kit
 * Updated @effected/shell
 * Updated @effected/plugin
+* Updated @effected/markdown
+* Updated @effected/markdown-lint
 
 ## 2026-11-27
 

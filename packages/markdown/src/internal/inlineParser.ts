@@ -54,6 +54,7 @@ import {
 	Text,
 } from "../MarkdownNode.js";
 import { GuardExceeded } from "./carriers.js";
+import { registerImageDescription } from "./imageDescriptions.js";
 import type { InlineNode } from "./inlineNode.js";
 import { appendChild, childrenOf, insertAfter, makeInlineNode, unlink } from "./inlineNode.js";
 import type { InlineDialectName } from "./inlineRegistry.js";
@@ -554,6 +555,26 @@ class InlineParser implements InlineScanner {
 		return children;
 	}
 
+	/**
+	 * Record how to materialize an image's description: its bracket content,
+	 * which the tree flattens to `alt`. Lazily, on request and once, from a
+	 * depth of its own — the description is no part of the tree's nesting —
+	 * with the dialect's postprocess passes run over it first, as the tree's
+	 * content has them run.
+	 */
+	private described<A extends Image | ImageReference>(node: InlineNode, built: A): A {
+		const description = node.data.description;
+		if (description !== undefined) {
+			registerImageDescription(built, () => {
+				for (const pass of this.dialect.postprocess) {
+					pass(description);
+				}
+				return this.materialize(description, 0);
+			});
+		}
+		return built;
+	}
+
 	private materializeNode(node: InlineNode, depth: number): PhrasingContent | undefined {
 		const position = this.position(node.start, node.end);
 		const { url, title, identifier, label, referenceType, markerChar, breakStyle } = node.data;
@@ -587,12 +608,15 @@ class InlineParser implements InlineScanner {
 					...(title === undefined ? {} : { title }),
 				});
 			case "image":
-				return Image.make({
-					url: url ?? "",
-					position,
-					...(title === undefined ? {} : { title }),
-					...(node.value === "" ? {} : { alt: node.value }),
-				});
+				return this.described(
+					node,
+					Image.make({
+						url: url ?? "",
+						position,
+						...(title === undefined ? {} : { title }),
+						...(node.value === "" ? {} : { alt: node.value }),
+					}),
+				);
 			case "linkReference":
 				return LinkReference.make({
 					identifier: identifier ?? "",
@@ -611,13 +635,16 @@ class InlineParser implements InlineScanner {
 					...(label === undefined ? {} : { label }),
 				});
 			case "imageReference":
-				return ImageReference.make({
-					identifier: identifier ?? "",
-					referenceType: referenceType ?? "shortcut",
-					position,
-					...(label === undefined ? {} : { label }),
-					...(node.value === "" ? {} : { alt: node.value }),
-				});
+				return this.described(
+					node,
+					ImageReference.make({
+						identifier: identifier ?? "",
+						referenceType: referenceType ?? "shortcut",
+						position,
+						...(label === undefined ? {} : { label }),
+						...(node.value === "" ? {} : { alt: node.value }),
+					}),
+				);
 			default:
 				// A bare text node never reaches here — `materialize` coalesces
 				// those before dispatching.
