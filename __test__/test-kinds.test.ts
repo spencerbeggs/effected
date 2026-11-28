@@ -24,12 +24,22 @@ import { tokenize } from "./support/tokenize.js";
  *    `.property.test.ts`. The full run finds its files by those suffixes, so a depth-aware file under another name
  *    would never run at full depth.
  * 4. A file with one of those suffixes reaches the matching API, so a suffix is never a label on a file that does
- *    not behave as its tier assumes.
+ *    not behave as its tier assumes. `HOSTILE_WITHOUT_GROWTH` names the hostile files that measure growth by hand
+ *    because their package may not depend on the test kit, each with the reason.
  *
  * "Reaches" follows relative imports inside the package's `__test__/`, so a rule test that reads its corpus through
  * a shared harness is depth-aware though it never names `Corpus` itself.
  */
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+/**
+ * The hostile files that measure growth without `Growth`, because their package may take no `@effected` edge. Each
+ * also reads a clock, so it is in `ALLOWED_CLOCKS` too.
+ */
+const HOSTILE_WITHOUT_GROWTH: Readonly<Record<string, string>> = {
+	"packages/memfs/__test__/integration/node-directory-seed.hostile.test.ts":
+		"memfs's zero-edges law forbids any @effected dependency, dev included, so the ratio is written out (#1420)",
+};
 
 /** The files that read a clock for a reason other than asserting how fast kit code runs. */
 const ALLOWED_CLOCKS: Readonly<Record<string, string>> = {
@@ -42,7 +52,7 @@ const ALLOWED_CLOCKS: Readonly<Record<string, string>> = {
 	"packages/commands/__test__/e2e/RunOnce.e2e.test.ts": "the startedAt timestamp of a lock file fixture",
 	"packages/glob/__test__/differential/run.ts":
 		"the differential runner's own summary line and watchdog; a script, not a test",
-	"packages/memfs/__test__/integration/node-directory-seed.int.test.ts":
+	"packages/memfs/__test__/integration/node-directory-seed.hostile.test.ts":
 		"a growth ratio written out by hand: memfs takes no @effected dependency of any kind, @effected/testing included",
 	"packages/s3/__test__/readme.test.ts": "a lower bound: the gap a retry backoff must leave on the live clock",
 	"packages/webhooks/__test__/StandardWebhooks.test.ts": "the timestamp a signed webhook fixture carries",
@@ -227,6 +237,7 @@ export const offences = (
 	files: ReadonlyArray<string>,
 	read: (file: string) => string | undefined,
 	allowedClocks: Readonly<Record<string, string>>,
+	hostileWithoutGrowth: Readonly<Record<string, string>> = {},
 ): ReadonlyArray<string> => {
 	const known = new Set(files);
 	const exists = (file: string): boolean => known.has(file);
@@ -271,7 +282,7 @@ export const offences = (
 					"so the full run would never find it.",
 			);
 		}
-		if (isHostile(file) && !reach.growth) {
+		if (isHostile(file) && !reach.growth && hostileWithoutGrowth[file] === undefined) {
 			found.push(`${file}: named .hostile.test.ts but never reaches Growth.`);
 		}
 		if (isDepthAware(file) && !reach.depth) {
@@ -400,6 +411,8 @@ describe("a test file's name says its kind, and no test reads a clock to bound a
 	it("flags a suffix on a file that does not reach the matching API", () => {
 		const hostile = sources({ "packages/a/__test__/a.hostile.test.ts": 'import { assert } from "vitest";\n' });
 		assert.match(offences(hostile.files, hostile.read, {})[0] ?? "", /never reaches Growth/);
+		const exempt = { "packages/a/__test__/a.hostile.test.ts": "measures by hand" };
+		assert.deepStrictEqual(offences(hostile.files, hostile.read, {}, exempt), []);
 		const parity = sources({ "packages/a/__test__/a.parity.test.ts": 'import { Growth } from "@effected/testing";\n' });
 		assert.lengthOf(offences(parity.files, parity.read, {}), 2);
 	});
@@ -413,6 +426,16 @@ describe("a test file's name says its kind, and no test reads a clock to bound a
 		assert.lengthOf(offences(namespace.files, namespace.read, {}), 2);
 		const other = sources({ "packages/a/__test__/a.test.ts": 'import { Growth } from "./growth-chart.js";\n' });
 		assert.deepStrictEqual(offences(other.files, other.read, {}), []);
+	});
+
+	it("every hostile file exempt from Growth exists, is hostile, never reaches Growth, and reads a clock", () => {
+		for (const file of Object.keys(HOSTILE_WITHOUT_GROWTH)) {
+			assert.isTrue(existsSync(join(ROOT, file)), `${file} is exempt from Growth but does not exist`);
+			assert.isTrue(isHostile(file), `${file} is exempt from Growth but is not a hostile file`);
+			assert.isDefined(ALLOWED_CLOCKS[file], `${file} measures by hand, so ALLOWED_CLOCKS must name it`);
+			const found = offences([file], (path) => readFileSync(join(ROOT, path), "utf8"), ALLOWED_CLOCKS);
+			assert.include(found.join("\n"), "never reaches Growth", `${file} reaches Growth now; drop its exemption`);
+		}
 	});
 
 	it("every allowed clock file exists and still reads a clock", () => {
@@ -432,7 +455,12 @@ describe("a test file's name says its kind, and no test reads a clock to bound a
 		const files = governedFiles();
 		// A walk that found nothing would pass everything.
 		assert.isAbove(files.length, 1000);
-		const found = offences(files, (file) => readFileSync(join(ROOT, file), "utf8"), ALLOWED_CLOCKS);
+		const found = offences(
+			files,
+			(file) => readFileSync(join(ROOT, file), "utf8"),
+			ALLOWED_CLOCKS,
+			HOSTILE_WITHOUT_GROWTH,
+		);
 		assert.deepStrictEqual(found, []);
 	});
 });

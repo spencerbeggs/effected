@@ -24,16 +24,6 @@ import { MemoryFileSystem } from "../../src/index.js";
 import { readSeedDirectory, readSeedFile } from "../../src/NodeDirectorySeed.js";
 import { NodeDirectorySeed } from "../../src/NodeSyncFileSystem.js";
 
-/**
- * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
- * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
- * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
- */
-const cpuNow = (): number => {
-	const used = process.cpuUsage();
-	return (used.user + used.system) / 1000;
-};
-
 let base: string;
 const fresh = (name: string): string => {
 	const dir = join(base, name);
@@ -112,31 +102,12 @@ describe("NodeDirectorySeed.read — what is copied", () => {
 		);
 	});
 
-	it("trims every trailing slash of mountAt, in time linear in its length", () => {
+	// `node-directory-seed.hostile.test.ts` holds that the trim is linear in the run.
+	it("trims every trailing slash of mountAt, and keeps a run that is not trailing", () => {
 		assert.isTrue(Object.hasOwn(NodeDirectorySeed.read(tree, { mountAt: "/repo///" }), "/repo/crlf.txt"));
 		assert.isTrue(Object.hasOwn(NodeDirectorySeed.read(tree, { mountAt: "///" }), "/crlf.txt"));
-		// A run of slashes that is not trailing: an end-anchored `/\/+$/` rescans
-		// the run from every start position.
-		const mount = (run: number): string => `/${"/".repeat(run)}m`;
-		assert.deepStrictEqual(Object.keys(NodeDirectorySeed.read(join(tree, "empty"), { mountAt: mount(1 << 16) })), [
-			mount(1 << 16),
-		]);
-		// A ratio, not a time: four times the run against the run, each the fastest of five. The linear trim reads
-		// about 1x here, since reading the directory outweighs it, and the quadratic one about 16x. This package takes
-		// no `@effected` dependency of any kind, `@effected/testing` included, so the measurement is written out.
-		const fastest = (mountAt: string): number => {
-			let best = Number.POSITIVE_INFINITY;
-			for (let sample = 0; sample < 5; sample += 1) {
-				const start = cpuNow();
-				NodeDirectorySeed.read(join(tree, "empty"), { mountAt });
-				best = Math.min(best, cpuNow() - start);
-			}
-			return best;
-		};
-		fastest(mount(1 << 10));
-		const small = fastest(mount(1 << 14));
-		const large = fastest(mount(1 << 16));
-		assert.isBelow(large / Math.max(small, 0.05), 10, `${small.toFixed(3)} ms -> ${large.toFixed(3)} ms`);
+		const mount = `/${"/".repeat(1 << 16)}m`;
+		assert.deepStrictEqual(Object.keys(NodeDirectorySeed.read(join(tree, "empty"), { mountAt: mount })), [mount]);
 	});
 
 	it.effect("relative keys seed under layerWith's root", () =>

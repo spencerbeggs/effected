@@ -169,7 +169,9 @@ export default async () => {
 				include: ["packages/*/src/**/*.{ts,tsx,mts,cts}", "lib/scripts/**/*.ts"],
 				// The catalog plugin's source imports rolldown-pnpm-config's build-only virtual modules,
 				// so no test can load it; its suite exercises the built pnpmfile instead.
-				exclude: ["scratchpad/**", "packages/pnpm-plugin-effected/src/**"],
+				// The private test kit is test support that never publishes, and `Growth`'s only tests run in the hostile
+				// tier with coverage off, so measured here it read as uncovered source (#1428).
+				exclude: ["scratchpad/**", "packages/pnpm-plugin-effected/src/**", "packages/testing/src/**"],
 			},
 		},
 	});

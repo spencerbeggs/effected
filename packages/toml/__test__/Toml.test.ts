@@ -376,7 +376,7 @@ describe("Toml", () => {
 
 		// The defect firewall is a property of the engine, not of the wrapper:
 		// a non-carrier throw must escape the sync form as a real throw, the
-		// same way it dies through the Effect form (pinned in hostile.test.ts).
+		// same way it dies through the Effect form (pinned in hardening.test.ts).
 		it("parseResult rethrows a non-engine defect rather than typing it", () => {
 			assert.throws(() => Toml.parseResult(42 as unknown as string), TypeError);
 		});

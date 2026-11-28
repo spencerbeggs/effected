@@ -34,10 +34,10 @@ sources:
     last_modified: 2026-11-24T00:00:00Z
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-25T19:35:42Z
+  at: 2026-11-28T00:06:14Z
 x-okfit-integrity:
   generated:
-    body: e2831e6dc92a5ae3
+    body: a5d80c473a4adaf6
   verified:
     by: human:spencer
     at: 2026-11-25T21:38:57Z
@@ -65,7 +65,7 @@ Two things then grew past that split. The step reached 38 minutes with 87% of th
 
 ## Decision
 
-`EFFECTED_TEST_TIER` selects a run. It takes `fast`, `slow`, `hostile` and `full`; any other value is refused. `lib/scripts/test-tiers.ts` holds the rules and `vitest.config.ts` wires them to project discovery.[^test-tiers]
+`EFFECTED_TEST_TIER` selects a run. It takes `fast`, `slow`, `hostile` and `full`; any other value is refused, the empty string too, so a workflow expression that expands to nothing never reads as a local run (#1424). `lib/scripts/test-tiers.ts` holds the rules and `vitest.config.ts` wires them to project discovery.[^test-tiers]
 
 - **`fast`** — what `pnpm ci:test` runs, with coverage and its thresholds. Each project excludes its `SLOW_TESTS` files and every hostile file (`**/*.hostile.test.{ts,tsx}`) from **discovery**, through `test.exclude`. The depth-aware files run here at sample depth.
 - **`slow`** — what `pnpm ci:test:slow` runs, with `--coverage.enabled=false`. Each project includes only its `SLOW_TESTS` files, and a project with none is dropped.[^root-package-json]

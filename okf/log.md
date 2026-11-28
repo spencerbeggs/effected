@@ -1,5 +1,10 @@
 # Log
 
+## 2026-11-28
+
+* Updated @effected/testing
+* Updated The vitest suite splits into a fast tier with coverage and slow, hostile and full tiers run beside it
+
 ## 2026-11-27
 
 * Updated @effected/memfs
