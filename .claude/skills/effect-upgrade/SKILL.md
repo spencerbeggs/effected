@@ -15,7 +15,7 @@ argument-hint: "<effect-version, e.g. 4.0.5> | --record | --reset"
 ## Ground rules
 
 - **The user runs the catalog commands, not you.** That means `pnpm pnpm:up`, `pnpm pnpm:export` and the install, and also any `okfit verify`.
-- **Never use raw git on `.repos/`.** Use `repos_manage` (pin, note). A guard blocks `git reset` there.
+- **Never use raw git on `.repos/`.** Use `repos_manage` (pin, note). A guard denies every `git` command that names a path under `.repos/`, so anything `repos_manage` leaves unstaged (a note's `.repos/config.json` change) is staged by the user.
 - **You cannot edit `.husky/*`.** If a hook breaks, show the user the exact fix and stop.
 - **Never use `git checkout`, `git restore` or `git stash`** to clean up surprise changes. Another process may own them (a concurrent `pnpm:export` rewrote `pnpm-workspace.yaml` mid-session once). Ask the user.
 - **A probe settles semantics, not reasoning.** Install the old and new `effect` side by side in the scratchpad (`npm i effect@<v>` in one directory per version) and run both before writing any claim about behaviour.
@@ -77,9 +77,11 @@ Downstream repositories upgrade with the plugin's `/effected:upgrade` skill. Its
 8. **OKF**
    - Grep `okf/` for the old version string and for "today". Body text describing the catalog goes stale on every patch, so reword it to name no patch version.
    - Run `okfit sync --yes` and `okfit validate` (0 errors).
-   - Add a `repos_manage` note recording the advance: kit breaks, workarounds kept or dropped and why, and anything that looked like a bug but isn't.
+   - Add a `repos_manage` note recording the advance (`action:"note"`, `name:"effect"`, `op:"add"`): kit breaks, workarounds kept or dropped and why, and anything that looked like a bug but isn't. The effect repo holds at most 10 notes (savvy-web/systems#925 tracks the cap), so when it is full, first remove the oldest per-advance history note (`op:"remove"` with its `id` from `repos_inspect`); never remove a standing note to make room.
+   - **The user stages the note.** Unlike `pin`, `repos_manage note` does not stage its change to `.repos/config.json`, and the guard denies any `git` command that names a path under `.repos/`, `git add .repos/config.json` included. Hand the user the exact command, `! git add .repos/config.json`, and wait for them to run it before phase 9.
 9. **Commit** (load `silk:commit-create`, and commit only through its `commit.sh`):
    - **(a) repin:** lockfile, catalogs, `.repos/`, `EFFECT_PIN` and changesets, in one commit, as the runbook requires.
+   - **(a2) repos note:** the staged `.repos/config.json` alone, as its own `chore(repos)` commit (the user staged it in phase 8). The pin's manifest change already went into (a).
    - **(b) code:** kit adoptions or dropped workarounds, if any.
    - **(c) plugin:** skills, anchors, ledger entries and `builds/`.
    - **(d) OKF.**
