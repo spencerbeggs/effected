@@ -13,6 +13,8 @@ sources:
     resource: ../../packages/config-file/src/ConfigFile.ts
   - id: effect-try
     resource: ../../.repos/effect/packages/effect/src/Effect.ts
+  - id: effect-catch-tag
+    resource: ../../.repos/effect/packages/effect/src/Effect.ts
   - id: result-try
     resource: ../../.repos/effect/packages/effect/src/Result.ts
   - id: effect-predicate
@@ -23,10 +25,10 @@ sources:
     resource: ../../packages/store/__test__/StoreLifecycle.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T06:55:47Z
+  at: 2026-11-28T03:28:28Z
 x-okfit-integrity:
   generated:
-    body: eef209c873b5a4a0
+    body: e1e3e2e5c76b96d9
 ---
 
 # Error handling standards
@@ -73,6 +75,16 @@ validated construction that made formatting total, or an owned emitter
 that removed the library whose failures the channel used to model. Treat
 an error case with no failing test as a defect to fix, not a case to
 leave documented for a future caller.
+
+**Deleting a channel from a public signature is a breaking change**, even
+when it could never fire, so it ships as a minor on `0.x` (a major past
+`1.0.0`). `Effect.catchTag` constrains its tag to `Tags<E>` and
+`Effect.catchTags` maps every case key outside the union to
+`never`,[^effect-catch-tag] so a caller's existing
+`catchTag("RemovedError", ...)` stops compiling once `RemovedError` leaves
+`E`. The changeset tells callers to delete the now-dead handler. Widening
+`E` is breaking too, the other way: a caller that handled every member now
+lets the new one through to its own error channel.
 
 ## A throwing call inside Effect code goes through `Effect.try({ try, catch })`
 
@@ -251,6 +263,10 @@ function object as `Fmt.causeMessage` and carries no copy of its own (see
 [^effect-try]: `.repos/effect/packages/effect/src/Effect.ts` — `try_`,
     exported as `try`: the bare-thunk overload fails with
     `Cause.UnknownError`; the `{ try, catch }` overload gives `Effect<A, E>`.
+[^effect-catch-tag]: `.repos/effect/packages/effect/src/Effect.ts:2911` —
+    `catchTag`'s `const K extends Tags<E> | Arr.NonEmptyReadonlyArray<Tags<E>>`;
+    `Effect.ts:3020-3021` — `catchTags`' `Cases` maps each key outside
+    `Extract<E, { _tag: string }>["_tag"]` to `never`.
 [^result-try]: `.repos/effect/packages/effect/src/Result.ts` — `try_`,
     exported as `try`, the synchronous `Result` equivalent.
 [^effect-predicate]: `.repos/effect/packages/effect/src/Predicate.ts` —

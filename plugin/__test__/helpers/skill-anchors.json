@@ -1128,6 +1128,35 @@
 		},
 		{
 			"file": "effect-v4-idioms/SKILL.md",
+			"anchor": "Effect.ts:3020-3021",
+			"source": "effect:Effect.ts",
+			"symbols": {
+				"3020": "& { [K in Extract<E, { _tag: string }>[\"_tag\"]]+?:",
+				"3021": "& (unknown extends E ? {} : { [K in Exclude<keyof Cases, Extract<E, { _tag: string }>[\"_tag\"]>]: never })"
+			},
+			"after": "export const catchTags: {"
+		},
+		{
+			"file": "release-and-publish/SKILL.md",
+			"anchor": "Effect.ts:2911",
+			"source": "effect:Effect.ts",
+			"symbols": {
+				"2911": "const K extends Tags<E> | Arr.NonEmptyReadonlyArray<Tags<E>>"
+			},
+			"after": "export const catchTag: {"
+		},
+		{
+			"file": "release-and-publish/SKILL.md",
+			"anchor": "Effect.ts:3020-3021",
+			"source": "effect:Effect.ts",
+			"symbols": {
+				"3020": "& { [K in Extract<E, { _tag: string }>[\"_tag\"]]+?:",
+				"3021": "& (unknown extends E ? {} : { [K in Exclude<keyof Cases, Extract<E, { _tag: string }>[\"_tag\"]>]: never })"
+			},
+			"after": "export const catchTags: {"
+		},
+		{
+			"file": "effect-v4-idioms/SKILL.md",
 			"anchor": "PlatformError.ts:163",
 			"source": "effect:PlatformError.ts",
 			"symbols": {

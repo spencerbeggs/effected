@@ -14,6 +14,7 @@
 * Updated @effected/files
 * Updated @effected/markdown
 * Updated @effected/markdown frontmatter
+* Updated Error handling standards
 
 ## 2026-11-27
 

@@ -1,7 +1,7 @@
 ---
 name: release-and-publish
-description: Use when publishing a package to npm, reading the npm registry from Effect v4, checking whether a version is already published, cutting a release tag or GitHub release from an action, applying a release-age gate, or deriving tracking tags for GitHub Actions distribution.
-when_to_use: NpmRegistry, PackagePublish, NpmExecutor, npm publish from CI, GitHub Packages vs npm registry, ReleaseAgeGate, VersioningStrategy, ReleaseTag, TrackingTag, macOS npm cache EACCES
+description: Use when publishing a package to npm, reading the npm registry from Effect v4, checking whether a version is already published, cutting a release tag or GitHub release from an action, applying a release-age gate, deriving tracking tags for GitHub Actions distribution, or choosing a changeset's bump when a public error type changes.
+when_to_use: changeset bump for a changed error type, is narrowing an error breaking, NpmRegistry, PackagePublish, NpmExecutor, npm publish from CI, GitHub Packages vs npm registry, ReleaseAgeGate, VersioningStrategy, ReleaseTag, TrackingTag, macOS npm cache EACCES
 ---
 
 # Release and publish
@@ -62,6 +62,15 @@ release pipeline.
   that decides workspace versioning requires it explicitly in `R` — ship
   named policies (`.layerNpm`, `.layerNone`) rather than letting a merge
   silently pick a default no type error would catch.
+- **Version a change to a public error type as breaking, narrowing
+  included.** `Effect.catchTag` constrains its tag to `K extends Tags<E>`
+  (`Effect.ts:2911`) and `Effect.catchTags` maps a case key outside the union
+  to `never` (`Effect.ts:3020-3021`), so removing a member from `E` — even
+  one that could never be raised — stops a caller's
+  `catchTag("RemovedError", ...)` compiling. Ship it as a minor on `0.x` (a
+  major on `1.x`), never a patch, and have the changeset tell callers to
+  delete the now-dead handler. Widening `E` is breaking the other way: a
+  caller that handled every member lets the new one through.
 - **Prefer `GitTag.upsert`/`GitHubRelease.create` over a hand-rolled
   exists-then-create sequence** when cutting a release; load `github-api`
   before you write the call, since a hand-rolled sequence races a concurrent run.
