@@ -60,6 +60,7 @@ index:
 | `Config` reads | `ConfigProvider.fromUnknown({ KEY: "value" })` — never `process.env` ([env-seam](./references/env-seam.md)) | `effect` |
 | `Clock`, `Schedule`, timeouts | `TestClock` (already installed by `it.effect`) | `effect/testing` |
 | `Stdio` | `Stdio.layerTest({ … })` | `effect` |
+| `Digest`, `Mac`, `Signature`, `SecureRandom` | the real layer, no double: `Digest.layerWebCrypto` (needs nothing), `Mac.layerWebCrypto` or `Signature.layerWebCrypto` with `Layer.provide(SecureRandom.layerWebCrypto)`, or `NodeCrypto.layerDigest` / `NodeCrypto.layer`. **`NodeServices.layer` provides no crypto service, `Digest` included** — only `ChildProcessSpawner`, `FileSystem`, `Path`, `Stdio` and `Terminal` — so a test or a standalone script that hashes composes `NodeCrypto.layerDigest` beside it | `effect/crypto`; `@effect/platform-node` |
 | a `Store`, or an app on `@effected/app` | `Store.layerTest({ migrations })`; `AppTest.layer(options)` | `@effected/store`; `@effected/app/testing` |
 | a CLI bin; an Ink screen | `CliTest`; `CliUiTest`, whose snapshot serializer is the one place a test uses `expect` ([effect-v4-cli](../effect-v4-cli/SKILL.md)) | `@effected/cli-kit/testing`; `@effected/cli-kit/ui/testing` |
 | an MCP server; an LSP server | `McpHarness`, `McpProbe` ([effect-v4-mcp](../effect-v4-mcp/SKILL.md)); `LspProbe` | `@effected/mcp-kit/testing`; `@effected/lsp/testing` |

@@ -54,6 +54,7 @@ import {
 	Text,
 } from "../MarkdownNode.js";
 import { GuardExceeded } from "./carriers.js";
+import { registerImageDescription } from "./imageDescriptions.js";
 import type { InlineNode } from "./inlineNode.js";
 import { appendChild, childrenOf, insertAfter, makeInlineNode, unlink } from "./inlineNode.js";
 import type { InlineDialectName } from "./inlineRegistry.js";
@@ -114,6 +115,191 @@ const indexBacktickRuns = (subject: string): Map<number, number[]> => {
  */
 type PositionOf = (startOffset: number, endOffset: number) => Position;
 
+/**
+ * Materializes an inline list into mdast phrasing nodes, positioned in the
+ * leaf's source. Holds only the leaf's source map, the dialect and the
+ * position builder: an image's lazy description captures it, so nothing here
+ * may reach the parser's tree or caches.
+ */
+class InlineMaterializer {
+	constructor(
+		private readonly source: InlineSource,
+		private readonly dialect: InlineDialect,
+		private readonly positionOf: PositionOf,
+	) {}
+
+	offsetAt(index: number): number {
+		return sourceOffsetAt(this.source.segments, index, this.source.startOffset);
+	}
+
+	position(from: number, to: number): Position {
+		const start = this.offsetAt(from);
+		// `to` is exclusive, so it binds to one past the last included
+		// character's source — not to the next segment's start. The two
+		// disagree only where the subject dropped source text at a segment
+		// boundary (stripped continuation indentation after a line ending):
+		// there the node must end just past the line ending it consumed, the
+		// shape mdast-util emits, pinned by the interop corpus.
+		const end = to > from ? this.offsetAt(to - 1) + 1 : this.offsetAt(to);
+		return this.positionOf(start, Math.max(end, start));
+	}
+
+	/**
+	 * Turn the mutable list into mdast nodes, coalescing adjacent text runs.
+	 *
+	 * Depth is emphasis nesting, which the input controls, so the same cap the
+	 * block pass applies to containers applies here.
+	 */
+	materialize(parent: InlineNode, depth: number): ReadonlyArray<PhrasingContent> {
+		if (depth > MAX_NESTING_DEPTH) {
+			throw new GuardExceeded("NestingDepthExceeded", MAX_NESTING_DEPTH, depth, this.offsetAt(parent.start));
+		}
+
+		const children: PhrasingContent[] = [];
+		let pendingText: InlineNode | undefined;
+
+		const flushText = (): void => {
+			if (pendingText === undefined) {
+				return;
+			}
+			if (pendingText.value.length > 0) {
+				children.push(
+					Text.make({ value: pendingText.value, position: this.position(pendingText.start, pendingText.end) }),
+				);
+			}
+			pendingText = undefined;
+		};
+
+		for (const node of childrenOf(parent)) {
+			if (node.type === "text") {
+				// Merge the run rather than emitting a node per construct: two
+				// text nodes side by side are one mdast text node.
+				if (pendingText === undefined) {
+					pendingText = makeInlineNode("text", node.start, node.end, node.value);
+				} else {
+					pendingText.value += node.value;
+					pendingText.end = node.end;
+				}
+				continue;
+			}
+
+			flushText();
+			const built = this.materializeNode(node, depth);
+			if (built !== undefined) {
+				children.push(built);
+			}
+		}
+
+		flushText();
+		return children;
+	}
+
+	/**
+	 * Record how to materialize an image's description: its bracket content,
+	 * which the tree flattens to `alt`. Lazily, on request and once, from a
+	 * depth of its own — the description is no part of the tree's nesting —
+	 * with the dialect's postprocess passes run over it first, as the tree's
+	 * content has them run.
+	 */
+	private described<A extends Image | ImageReference>(node: InlineNode, built: A): A {
+		const description = node.data.description;
+		if (description !== undefined) {
+			registerImageDescription(built, () => {
+				for (const pass of this.dialect.postprocess) {
+					pass(description);
+				}
+				return this.materialize(description, 0);
+			});
+		}
+		return built;
+	}
+
+	private materializeNode(node: InlineNode, depth: number): PhrasingContent | undefined {
+		const position = this.position(node.start, node.end);
+		const { url, title, identifier, label, referenceType, markerChar, breakStyle } = node.data;
+
+		switch (node.type) {
+			case "inlineCode":
+				return InlineCode.make({ value: node.value, position });
+			case "html":
+				return Html.make({ value: node.value, position });
+			case "break":
+				return Break.make({ position, ...(breakStyle === undefined ? {} : { breakStyle }) });
+			case "emphasis":
+				return Emphasis.make({
+					children: this.materialize(node, depth + 1),
+					position,
+					...(markerChar === undefined ? {} : { markerChar }),
+				});
+			case "delete":
+				return Delete.make({ children: this.materialize(node, depth + 1), position });
+			case "strong":
+				return Strong.make({
+					children: this.materialize(node, depth + 1),
+					position,
+					...(markerChar === undefined ? {} : { markerChar }),
+				});
+			case "link":
+				return Link.make({
+					url: url ?? "",
+					children: this.materialize(node, depth + 1),
+					position,
+					...(title === undefined ? {} : { title }),
+				});
+			case "image":
+				return this.described(
+					node,
+					Image.make({
+						url: url ?? "",
+						position,
+						...(title === undefined ? {} : { title }),
+						...(node.value === "" ? {} : { alt: node.value }),
+					}),
+				);
+			case "linkReference":
+				return LinkReference.make({
+					identifier: identifier ?? "",
+					referenceType: referenceType ?? "shortcut",
+					children: this.materialize(node, depth + 1),
+					position,
+					...(label === undefined ? {} : { label }),
+				});
+			case "footnoteReference":
+				// The GFM counterpart of `linkReference`, and unresolved for the
+				// same reason: which definition it points at is the consumer's
+				// business, not the parser's.
+				return FootnoteReference.make({
+					identifier: identifier ?? "",
+					position,
+					...(label === undefined ? {} : { label }),
+				});
+			case "imageReference":
+				return this.described(
+					node,
+					ImageReference.make({
+						identifier: identifier ?? "",
+						referenceType: referenceType ?? "shortcut",
+						position,
+						...(label === undefined ? {} : { label }),
+						...(node.value === "" ? {} : { alt: node.value }),
+					}),
+				);
+			default:
+				// A bare text node never reaches here — `materialize` coalesces
+				// those before dispatching.
+				return undefined;
+		}
+	}
+
+	// --- the loop -----------------------------------------------------------
+
+	/**
+	 * One construct at the cursor. Upstream's `parseInline`: try the
+	 * constructs this character triggers, then ordinary text, and failing both
+	 * take the character literally.
+	 */
+}
+
 class InlineParser implements InlineScanner {
 	readonly subject: string;
 	pos = 0;
@@ -132,6 +318,13 @@ class InlineParser implements InlineScanner {
 	private readonly source: InlineSource;
 	private readonly dialect: InlineDialect;
 	private readonly positionOf: PositionOf;
+	/**
+	 * Turns the output list into mdast nodes. Its own object, holding only what
+	 * that needs, because each image's lazy description captures it: capturing
+	 * the parser would keep the whole inline tree and its scan caches alive for
+	 * as long as the image node lives.
+	 */
+	private readonly materializer: InlineMaterializer;
 	/** The output list's root; only ever a container for the children. */
 	private readonly root: InlineNode;
 	/** Where unresolved footnote markers are reported; the caller owns it. */
@@ -153,6 +346,7 @@ class InlineParser implements InlineScanner {
 		this.refmap = refmap;
 		this.footnoteLabels = footnoteLabels;
 		this.root = makeInlineNode("text", 0, source.text.length);
+		this.materializer = new InlineMaterializer(source, dialect, positionOf);
 	}
 
 	// --- cursor -------------------------------------------------------------
@@ -483,155 +677,9 @@ class InlineParser implements InlineScanner {
 	}
 
 	noteUnresolvedFootnote(label: string, identifier: string, from: number, to: number): void {
-		this.unresolvedFootnotes.push({ label, identifier, position: this.position(from, to) });
+		this.unresolvedFootnotes.push({ label, identifier, position: this.materializer.position(from, to) });
 	}
 
-	// --- positions and materialization --------------------------------------
-
-	private offsetAt(index: number): number {
-		return sourceOffsetAt(this.source.segments, index, this.source.startOffset);
-	}
-
-	private position(from: number, to: number): Position {
-		const start = this.offsetAt(from);
-		// `to` is exclusive, so it binds to one past the last included
-		// character's source — not to the next segment's start. The two
-		// disagree only where the subject dropped source text at a segment
-		// boundary (stripped continuation indentation after a line ending):
-		// there the node must end just past the line ending it consumed, the
-		// shape mdast-util emits, pinned by the interop corpus.
-		const end = to > from ? this.offsetAt(to - 1) + 1 : this.offsetAt(to);
-		return this.positionOf(start, Math.max(end, start));
-	}
-
-	/**
-	 * Turn the mutable list into mdast nodes, coalescing adjacent text runs.
-	 *
-	 * Depth is emphasis nesting, which the input controls, so the same cap the
-	 * block pass applies to containers applies here.
-	 */
-	private materialize(parent: InlineNode, depth: number): ReadonlyArray<PhrasingContent> {
-		if (depth > MAX_NESTING_DEPTH) {
-			throw new GuardExceeded("NestingDepthExceeded", MAX_NESTING_DEPTH, depth, this.offsetAt(parent.start));
-		}
-
-		const children: PhrasingContent[] = [];
-		let pendingText: InlineNode | undefined;
-
-		const flushText = (): void => {
-			if (pendingText === undefined) {
-				return;
-			}
-			if (pendingText.value.length > 0) {
-				children.push(
-					Text.make({ value: pendingText.value, position: this.position(pendingText.start, pendingText.end) }),
-				);
-			}
-			pendingText = undefined;
-		};
-
-		for (const node of childrenOf(parent)) {
-			if (node.type === "text") {
-				// Merge the run rather than emitting a node per construct: two
-				// text nodes side by side are one mdast text node.
-				if (pendingText === undefined) {
-					pendingText = makeInlineNode("text", node.start, node.end, node.value);
-				} else {
-					pendingText.value += node.value;
-					pendingText.end = node.end;
-				}
-				continue;
-			}
-
-			flushText();
-			const built = this.materializeNode(node, depth);
-			if (built !== undefined) {
-				children.push(built);
-			}
-		}
-
-		flushText();
-		return children;
-	}
-
-	private materializeNode(node: InlineNode, depth: number): PhrasingContent | undefined {
-		const position = this.position(node.start, node.end);
-		const { url, title, identifier, label, referenceType, markerChar, breakStyle } = node.data;
-
-		switch (node.type) {
-			case "inlineCode":
-				return InlineCode.make({ value: node.value, position });
-			case "html":
-				return Html.make({ value: node.value, position });
-			case "break":
-				return Break.make({ position, ...(breakStyle === undefined ? {} : { breakStyle }) });
-			case "emphasis":
-				return Emphasis.make({
-					children: this.materialize(node, depth + 1),
-					position,
-					...(markerChar === undefined ? {} : { markerChar }),
-				});
-			case "delete":
-				return Delete.make({ children: this.materialize(node, depth + 1), position });
-			case "strong":
-				return Strong.make({
-					children: this.materialize(node, depth + 1),
-					position,
-					...(markerChar === undefined ? {} : { markerChar }),
-				});
-			case "link":
-				return Link.make({
-					url: url ?? "",
-					children: this.materialize(node, depth + 1),
-					position,
-					...(title === undefined ? {} : { title }),
-				});
-			case "image":
-				return Image.make({
-					url: url ?? "",
-					position,
-					...(title === undefined ? {} : { title }),
-					...(node.value === "" ? {} : { alt: node.value }),
-				});
-			case "linkReference":
-				return LinkReference.make({
-					identifier: identifier ?? "",
-					referenceType: referenceType ?? "shortcut",
-					children: this.materialize(node, depth + 1),
-					position,
-					...(label === undefined ? {} : { label }),
-				});
-			case "footnoteReference":
-				// The GFM counterpart of `linkReference`, and unresolved for the
-				// same reason: which definition it points at is the consumer's
-				// business, not the parser's.
-				return FootnoteReference.make({
-					identifier: identifier ?? "",
-					position,
-					...(label === undefined ? {} : { label }),
-				});
-			case "imageReference":
-				return ImageReference.make({
-					identifier: identifier ?? "",
-					referenceType: referenceType ?? "shortcut",
-					position,
-					...(label === undefined ? {} : { label }),
-					...(node.value === "" ? {} : { alt: node.value }),
-				});
-			default:
-				// A bare text node never reaches here — `materialize` coalesces
-				// those before dispatching.
-				return undefined;
-		}
-	}
-
-	// --- the loop -----------------------------------------------------------
-
-	/**
-	 * One construct at the cursor. Upstream's `parseInline`: try the
-	 * constructs this character triggers, then ordinary text, and failing both
-	 * take the character literally.
-	 */
 	private parseOne(): boolean {
 		const code = this.peek();
 		if (code === -1) {
@@ -667,7 +715,7 @@ class InlineParser implements InlineScanner {
 		for (const pass of this.dialect.postprocess) {
 			pass(this.root);
 		}
-		return this.materialize(this.root, 0);
+		return this.materializer.materialize(this.root, 0);
 	}
 }
 

@@ -941,6 +941,9 @@ importers:
       '@effect/vitest':
         specifier: 4.1.7
         version: 4.1.7(effect@4.1.7)(vitest@5.1.2)
+      '@effected/testing':
+        specifier: workspace:*
+        version: link:../testing
       '@octokit/openapi-types':
         specifier: ^29.0.1
         version: 29.0.1
@@ -2135,6 +2138,9 @@ importers:
       '@effect/vitest':
         specifier: 4.1.7
         version: 4.1.7(effect@4.1.7)(vitest@5.1.2)
+      '@effected/testing':
+        specifier: workspace:*
+        version: link:../testing
       '@types/node':
         specifier: catalog:effected:build
         version: 26.6.11

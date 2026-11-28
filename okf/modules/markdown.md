@@ -51,10 +51,10 @@ sources:
     resource: ../../packages/markdown/__test__/visitor-traverse.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-25T13:41:08Z
+  at: 2026-11-28T03:46:15Z
 x-okfit-integrity:
   generated:
-    body: 58b91a51ff08ff49
+    body: af1e5d45539dd83f
 ---
 
 # `@effected/markdown`
@@ -164,6 +164,20 @@ concrete-syntax markers mdast drops. Reference *formation* still follows the
 CommonMark spec exactly: a link or image label with no matching definition
 stays literal text, never a reference node — the delta is only the emitted
 node shape, not the formation rule.
+
+An image keeps mdast's shape: no children, its bracket content flattened to
+the `alt` string. The inline pass still builds that content as nodes, and
+keeps it off the tree as the image's *description*, which
+`MarkdownDocument.imageDescription(image)` returns as positioned phrasing
+nodes (`Option.none()` for a node the parse did not produce). It is a side
+table keyed by node identity (`src/internal/imageDescriptions.ts`), like the
+document's line index, so a node rebuilt by `make`, a transform or a decode
+has none. It materializes on the first lookup and from a nesting depth of its
+own: parse-time cost and the set of inputs the parse accepts are unchanged,
+and a description nesting past the hardening cap reads as none. A nested
+image is a leaf of its holder's description, so a chain of nested images
+reads one level at a time. `@effected/markdown-lint` reads it so each level
+of a nested chain re-parses only its own characters (#1416).
 
 ## Dialects: a closed set, no public extension API
 
@@ -686,7 +700,9 @@ code in the blockquote, while micromark keeps it inside the definition.
 The parser does not drop a leading byte order mark (U+FEFF), as micromark's
 preprocessing does: the mark is text at offset 0, so the mark followed by `# Title` parses
 as a paragraph, not a heading. A caller that wants micromark's reading
-strips one mark first, as [`markdown-lint`](markdown-lint.md)'s hosts do;
+strips one mark first, as [`markdown-lint`](markdown-lint.md)'s hosts do
+(`FrontmatterSource.split(source, { bom: "skip" })` does the same for the
+string-level fence, offsets kept relative to the unstripped source);
 `markdown-lint` records the divergence this leaves for a source opening with
 two or more marks. No test pins the parser's behaviour here.
 

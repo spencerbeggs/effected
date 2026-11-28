@@ -7,9 +7,9 @@
 // descriptions and of re-read HTML blocks, which the kit tree does not carry.
 // Every rule that reads inline content reads it here.
 
-import type { Code, MarkdownNode } from "@effected/markdown";
+import type { Code, Image, ImageReference, MarkdownNode } from "@effected/markdown";
 import { MarkdownDocument, MarkdownParseOptions } from "@effected/markdown";
-import { Result } from "effect";
+import { Option, Result } from "effect";
 import type { LintContext } from "../LintContext.js";
 import { codeFlowValues, codeNodes } from "./code-blocks.js";
 import { contentInContainers, flowNodes } from "./containers.js";
@@ -481,40 +481,233 @@ const labelView = (document: MarkdownDocument, source: string): TokenView => ({
 	contentStart: (offset) => offset,
 });
 
-// An image label to read: `text` from `open` (its `[`) to `close` (its `]`), whose character at `index` sits at
-// `offsets[shift + index]` in the reading's source.
-interface PendingLabel {
-	readonly text: string;
-	readonly shift: number;
+/**
+ * An image nested directly in another's label, as the kit's parse formed it:
+ * the source offsets of its own label's `[` and `]`, the node (whose own
+ * description names the images nested in it), and whether a label holding it
+ * is read with its label's text left out (see {@link labelSource}).
+ * @internal
+ */
+export interface NestedImage {
 	readonly open: number;
 	readonly close: number;
+	readonly node: MarkdownNode;
+	readonly masked: boolean;
+	// A link forms in its label, at any depth: one left out leaves a stand-in link (see `labelSource`).
+	readonly linked: boolean;
+}
+
+const noNested: ReadonlyMap<number, NestedImage> = new Map();
+
+const isImage = (node: MarkdownNode): node is Image | ImageReference =>
+	node.type === "image" || node.type === "imageReference";
+
+// The source offsets of the reading's `$` characters, ascending. Built once per reading.
+const dollarOffsets: (context: LintContext) => ReadonlyArray<number> = perReading((context) => {
+	const found: Array<number> = [];
+	for (let at = context.source.indexOf("$"); at !== -1; at = context.source.indexOf("$", at + 1)) found.push(at);
+	return found;
+});
+
+// Whether the reading's source holds a `$` in `[from, to)`: a binary search.
+const holdsDollar = (context: LintContext, from: number, to: number): boolean => {
+	const offsets = dollarOffsets(context);
+	let low = 0;
+	let high = offsets.length;
+	while (low < high) {
+		const middle = (low + high) >> 1;
+		if ((offsets[middle] as number) < from) low = middle + 1;
+		else high = middle;
+	}
+	return low < offsets.length && (offsets[low] as number) < to;
+};
+
+/**
+ * Where the kit's `image`'s label ends, from its description: the first `]`
+ * past its last node (only line endings, container prefixes and whitespace
+ * lie between), so a label is not scanned again for each image holding it,
+ * and a `]` in a code span in it does not end it, as counting brackets would.
+ * An image holding a `$` is read by counting brackets: the kit's parse reads
+ * no math, which micromark reads over a label's brackets.
+ * @internal
+ */
+export const imageLabelEnd = (context: LintContext, image: Image | ImageReference): number => {
+	const { source } = context;
+	const open = image.position.start.offset + 1;
+	const end = image.position.end.offset;
+	if (holdsDollar(context, open, end)) return labelEnd(source, open, end);
+	const description = Option.getOrUndefined(context.document.imageDescription(image)) ?? [];
+	const last = description[description.length - 1];
+	const close = labelEnd(source, (last?.position.end.offset ?? open + 1) - 1, end);
+	return source.charAt(close) === "]" ? close : labelEnd(source, open, end);
+};
+
+const nestedCache: (context: LintContext) => Map<MarkdownNode, ReadonlyMap<number, NestedImage>> = perReading(
+	() => new Map(),
+);
+
+const linkCache: (context: LintContext) => Map<MarkdownNode, boolean> = perReading(() => new Map());
+
+// A link formed from brackets: an autolink (`<…>` or a bare URL) is none.
+const isBracketLink = (context: LintContext, node: MarkdownNode): boolean =>
+	node.type === "linkReference" || (node.type === "link" && context.source.charAt(node.position.start.offset) === "[");
+
+// Whether a link forms in `image`'s label, at any depth of images nested in it: micromark's label end makes every
+// link start before a formed link inactive, so the link counts in each label holding it. Each image is walked once
+// per reading: its nested images are settled first (a worklist, not recursion: images nest as deep as the input).
+const holdsLink = (context: LintContext, image: Image | ImageReference): boolean => {
+	const cache = linkCache(context);
+	const settled = cache.get(image);
+	if (settled !== undefined) return settled;
+	const description = (node: MarkdownNode): ReadonlyArray<MarkdownNode> =>
+		Option.getOrUndefined(context.document.imageDescription(node as Image | ImageReference)) ?? [];
+	// Images in pre-order, each before the images nested in it.
+	const order: Array<MarkdownNode> = [];
+	const images: Array<MarkdownNode> = [image];
+	for (let next = images.pop(); next !== undefined; next = images.pop()) {
+		order.push(next);
+		const pending: Array<MarkdownNode> = [...description(next)];
+		for (let node = pending.pop(); node !== undefined; node = pending.pop()) {
+			if (isImage(node)) {
+				if (!cache.has(node)) images.push(node);
+			} else pending.push(...childrenOf(node));
+		}
+	}
+	for (let index = order.length - 1; index >= 0; index--) {
+		const next = order[index] as MarkdownNode;
+		let found = false;
+		const pending: Array<MarkdownNode> = [...description(next)];
+		for (let node = pending.pop(); node !== undefined && !found; node = pending.pop()) {
+			if (isImage(node)) found = cache.get(node) === true;
+			else if (isBracketLink(context, node)) found = true;
+			else pending.push(...childrenOf(node));
+		}
+		cache.set(next, found);
+	}
+	return cache.get(image) === true;
+};
+
+/**
+ * The images nested directly in `image`'s label (none inside another image
+ * there), keyed by the source offset of their label's `[`, read from the
+ * kit's description of the image (`MarkdownDocument.imageDescription`). An
+ * inline image or a full reference is `masked`: its label's text plays no
+ * part in how the label holding it parses (its brackets bound every
+ * construct inside), so that label is re-parsed with it left out. A collapsed
+ * or shortcut reference's label is its reference too, so it is kept, and so is
+ * a label holding a `$`, which can pair with a `$` past the label and open
+ * inline math there (micromark reads math over a label's brackets): a chain
+ * with a `$` at every level is re-read whole at each. Built once per image per
+ * reading.
+ * @internal
+ */
+export const nestedImages = (
+	context: LintContext,
+	image: MarkdownNode | undefined,
+): ReadonlyMap<number, NestedImage> => {
+	if (image === undefined || !isImage(image)) return noNested;
+	const cache = nestedCache(context);
+	const cached = cache.get(image);
+	if (cached !== undefined) return cached;
+	const nested = new Map<number, NestedImage>();
+	const pending: Array<MarkdownNode> = [
+		...(Option.getOrUndefined(context.document.imageDescription(image)) ?? []),
+	].reverse();
+	for (let node = pending.pop(); node !== undefined; node = pending.pop()) {
+		if (isImage(node)) {
+			const open = node.position.start.offset + 1;
+			const close = imageLabelEnd(context, node);
+			// A `$` in the label can pair with one past it and open math there (the math scan reads labels inline), so
+			// a label holding one is kept whole for the label holding it to read its math as micromark does.
+			const masked = (node.type === "image" || node.referenceType === "full") && !holdsDollar(context, open, close);
+			nested.set(open, { open, close, node, masked, linked: masked && holdsLink(context, node) });
+			continue;
+		}
+		const children = childrenOf(node);
+		for (let index = children.length - 1; index >= 0; index--) pending.push(children[index] as MarkdownNode);
+	}
+	cache.set(image, nested);
+	return nested;
+};
+
+/**
+ * An image label's text as micromark reads it, from its `[` at `open` to its
+ * `]` at `close` (source offsets), brackets included, and each character's
+ * source offset: its continuation lines' container prefixes left out, and
+ * each `masked` image of `nested` reduced to an empty label (`![](…)`), its
+ * `[` and `]` kept at their own offsets, or to a stand-in link (`![[](x)](…)`)
+ * when a link forms in it, which makes the link starts before it inactive. So the text of one level of a chain
+ * of nested images holds that level's own characters only, and a chain reads
+ * in linear time.
+ * @internal
+ */
+export const labelSource = (
+	context: LintContext,
+	open: number,
+	close: number,
+	nested: ReadonlyMap<number, NestedImage>,
+): { readonly text: string; readonly offsets: ReadonlyArray<number> } => {
+	const { source } = context;
+	let text = "[";
+	const offsets: Array<number> = [open];
+	for (let at = open + 1; at < close; at++) {
+		const char = source.charAt(at);
+		text += char;
+		offsets.push(at);
+		const inner = char === "[" ? nested.get(at) : undefined;
+		if (inner?.masked === true) {
+			// A link formed in the label left out makes the link starts before it inactive: a stand-in link keeps that.
+			// Its characters are the `[`'s, and inside an image they are no node the readers visit.
+			if (inner.linked) {
+				text += "[](x)";
+				offsets.push(at, at, at, at, at);
+			}
+			// The `]` is pushed next, at its own offset.
+			at = inner.close - 1;
+			continue;
+		}
+		if (char === "\n" || (char === "\r" && source.charAt(at + 1) !== "\n")) {
+			const lineNumber = context.mapping.lineNumber(at + 1);
+			const line = context.lines[lineNumber - 1] ?? "";
+			const content = contentInContainers(context, lineNumber) ?? line;
+			at = Math.max(at, context.mapping.lineStart(lineNumber) + line.length - content.length - 1);
+		}
+	}
+	text += "]";
+	offsets.push(close);
+	return { text, offsets };
+};
+
+// An image label to read: its `[` at `open` and `]` at `close` in source offsets, and the kit's node when the parse
+// formed it (whose description names the images nested in it).
+interface PendingLabel {
+	readonly open: number;
+	readonly close: number;
+	readonly node: MarkdownNode | undefined;
 }
 
 // The inline content of `pending`'s image label, pushed in source offsets: its emphasis and strong, its `data` tokens
 // and its code spans' data runs. An image nested in it is handed to `nest`, to be read the same way.
 const readLabel = (
+	context: LintContext,
 	pending: PendingLabel,
-	offsets: ReadonlyArray<number>,
 	inMath: (offset: number) => boolean,
-	definitions: ReadonlyMap<string, unknown>,
 	push: (span: InlineSpan) => void,
 	nest: (label: PendingLabel) => void,
 ): void => {
-	const { text, shift, open, close } = pending;
+	const nested = nestedImages(context, pending.node);
+	const { text, offsets } = labelSource(context, pending.open, pending.close, nested);
 	// The label is re-parsed after its own `[`, as a paragraph: links cannot nest, so a label holding a link would not
 	// re-parse as a link's label, and the unmatched `[` keeps the label's start as micromark reads it.
 	// A stand-in for each definition the label's own brackets name follows (see `labelDefinitions`), so its references
 	// resolve as they do in the reading and many images and definitions stay linear.
-	const label = text.slice(open + 1, close);
-	const source = `[${label}${labelDefinitions(label, definitions)}`;
+	const label = text.slice(1, -1);
+	const source = `[${label}${labelDefinitions(label, context.document.definitions)}`;
 	const parsed = MarkdownDocument.parseResult(source, labelOptions);
 	if (!Result.isSuccess(parsed)) return;
 	const document = parsed.success;
-	// A re-parsed offset to the reading's: the `[` is the label's own, the rest the label's characters. A shift into
-	// the reading's one offsets array, not a copy or a chain, so an image nested in the label costs its own label's
-	// length, not this one's, at any depth.
-	const base = shift + open;
-	const toSource = (offset: number): number | undefined => offsets[base + offset];
+	// A re-parsed offset to the reading's: the `[` is the label's own, the rest the label's characters.
+	const toSource = (offset: number): number | undefined => offsets[offset];
 	const mapped = (type: string, start: number, end: number) => {
 		const first = toSource(start);
 		const last = toSource(end - 1);
@@ -534,10 +727,16 @@ const readLabel = (
 			if (node.type === "inlineCode") {
 				if (view.inMath(node.position.start.offset)) return;
 				for (const data of codeSpanPartsIn(view, node).datas) mapped("codeData", data.start, data.end);
-			} else if (node.type === "image" || node.type === "imageReference") {
+			} else if (isImage(node)) {
 				const start = node.position.start.offset;
-				const end = labelEnd(source, start + 1, node.position.end.offset);
-				nest({ text: source, shift: base, open: start + 1, close: end });
+				const open = toSource(start + 1);
+				const inner = open === undefined ? undefined : nested.get(open);
+				if (inner !== undefined) {
+					nest({ open: inner.open, close: inner.close, node: inner.node });
+					return;
+				}
+				const close = toSource(labelEnd(source, start + 1, node.position.end.offset));
+				if (open !== undefined && close !== undefined) nest({ open, close, node: undefined });
 			}
 		},
 	);
@@ -570,14 +769,14 @@ const readLabel = (
  * label holding a link would not re-parse as a link's label): its emphasis and
  * strong, its `data` tokens (see {@link splitData}), its code spans' data runs
  * and its links (`link`) and their labels (`linkLabel`, brackets included), mapped back to their
- * source offsets. References in a label resolve against no definitions there. An image nested in a
- * label is read the same way, so an outer label's text is re-parsed once with
- * each image it holds. Those micromark reads as math are dropped. Computed
- * once per reading.
+ * source offsets. An image nested in a label is read the same way, and the
+ * label holding it is re-parsed with the nested label's text left out (see
+ * {@link labelSource}), so each character is re-parsed once whatever the
+ * nesting. Those micromark reads as math are dropped. Computed once per
+ * reading.
  * @internal
  */
 export const imageLabelNodes: (context: LintContext) => ReadonlyArray<InlineSpan> = perReading((context) => {
-	const { source } = context;
 	const keep = outsideMath(context);
 	const inMath = inMathText(context);
 	const found: Array<InlineSpan> = [];
@@ -585,34 +784,16 @@ export const imageLabelNodes: (context: LintContext) => ReadonlyArray<InlineSpan
 		(node) => node.type === "image" || node.type === "imageReference",
 	) as ReadonlyArray<MarkdownNode>;
 	if (images.length === 0) return found;
-	// The document's definitions, by the parser's key, for a label's references to resolve against.
-	const definitions = context.document.definitions;
+	const add = (span: InlineSpan) => found.push(span);
 	for (const image of images) {
 		if (!keep(image)) continue;
 		const open = image.position.start.offset + 1;
-		const close = labelEnd(source, open, image.position.end.offset);
-		// The label's text from its `[`, and each character's source offset, continuation lines' prefixes left out.
-		let text = "[";
-		const offsets: Array<number> = [open];
-		for (let at = open + 1; at < close; at++) {
-			const char = source.charAt(at);
-			text += char;
-			offsets.push(at);
-			if (char === "\n" || (char === "\r" && source.charAt(at + 1) !== "\n")) {
-				const lineNumber = context.mapping.lineNumber(at + 1);
-				const line = context.lines[lineNumber - 1] ?? "";
-				const content = contentInContainers(context, lineNumber) ?? line;
-				at = Math.max(at, context.mapping.lineStart(lineNumber) + line.length - content.length - 1);
-			}
-		}
-		text += "]";
-		offsets.push(close);
+		const close = imageLabelEnd(context, image as Image | ImageReference);
 		// A worklist, not recursion: images nest as deep as the input, past the call stack.
-		const pending: Array<PendingLabel> = [{ text, shift: 0, open: 0, close: text.length - 1 }];
+		const pending: Array<PendingLabel> = [{ open, close, node: image }];
 		const nest = (label: PendingLabel) => pending.push(label);
-		const add = (span: InlineSpan) => found.push(span);
 		for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
-			readLabel(next, offsets, inMath, definitions, add, nest);
+			readLabel(context, next, inMath, add, nest);
 		}
 	}
 	return found.sort((a, b) => a.start - b.start);

@@ -252,7 +252,15 @@ there when you are actually building an action.
   package-json, tsconfig-json, workspaces), `NodeServices.layer` when
   `ChildProcessSpawner` is also needed (git, `Workspaces.layerWithGit`,
   `Workspaces.layerWithConfigDependenciesSubprocess`), or
-  the `@effect/platform-bun` equivalents. `runtimes` needs only
+  the `@effect/platform-bun` equivalents. **`NodeServices.layer` carries no
+  crypto service**, `Digest.Digest` included: a package that requires it
+  (`@effected/crypto`'s `Hash`, `SigV4` and `Fingerprint`, `@effected/s3`,
+  `@effected/images/cache`, `JsoncFingerprint.hash`, `@effected/npm`'s
+  `PackageTarball` and `PackagePublish`, `@effected/github-actions`'
+  `S3BlobStore.layer`, which also needs `Mac.Mac`) also needs `NodeCrypto.layerDigest`
+  from `@effect/platform-node` or core's `Digest.layerWebCrypto`, and a `Mac`,
+  `Signature` or `SecureRandom` requirement needs its own family layer the
+  same way. `runtimes` needs only
   `FetchHttpClient.layer`; `store`'s sqlite layers bundle their own Node
   driver. Pure packages and every `layerTest`/`testLayer` need nothing.
 - Parameterized layer factories (`ConfigFile.layer(...)`,

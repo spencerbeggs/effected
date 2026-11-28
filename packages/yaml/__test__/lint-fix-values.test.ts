@@ -10,14 +10,16 @@
 // re-parented the lines below a moved collection, `trailing-spaces` and
 // `empty-lines` deleted blank lines of a multi-line plain scalar, and
 // `comments-spacing` edited a `#` the composer folds into one.
+//
+// The same rule over generated documents is in
+// `lint-fix-values.property.test.ts`.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Arbitrary, Result, Schema } from "effect";
+import { Result } from "effect";
 import { Yaml, YamlLint, YamlLintConfig } from "../src/index.js";
 
 const CR = String.fromCodePoint(13);
 const LF = String.fromCodePoint(10);
-const CRLF = `${CR}${LF}`;
 
 const parsedValue = (text: string): string => {
 	const result = Yaml.parseAllResult(text);
@@ -85,37 +87,4 @@ describe("YamlLint.fix keeps the parsed value", () => {
 	it("document-start keeps a root block scalar's explicit indentation", () => {
 		assertKeepsValue(">1\n #:a\n");
 	});
-});
-
-// The value must survive EVERY fix, with every rule on, over documents from a
-// YAML-shaped alphabet that holds all three line breaks.
-const BASE = ["a", "b", "1", ":", "-", " ", "  ", "#", LF, CR, CRLF] as const;
-const RICH = [...BASE, "? ", '"', "'", "[", "]", "{", "}", ",", "&x", "*x", "!t", "...", "---", ">", "|"] as const;
-
-const documentOf = (alphabet: ReadonlyArray<string>, maxLength: number) =>
-	Arbitrary.array(Arbitrary.schema(Schema.Literals(alphabet as [string, ...Array<string>])), { maxLength }).pipe(
-		Arbitrary.map((pieces) => pieces.join("")),
-	);
-
-const keepsValue = ([input]: readonly [string]): void => {
-	const result = YamlLint.fix(input, YamlLint.builtins, config);
-	if (Result.isFailure(result)) return;
-	assert.strictEqual(
-		parsedValue(result.success),
-		parsedValue(input),
-		`${JSON.stringify(input)} -> ${JSON.stringify(result.success)}`,
-	);
-};
-
-describe("YamlLint.fix — property", () => {
-	it.prop("applying every fix never changes the parsed value", [documentOf(BASE, 16)], keepsValue, {
-		arbitrary: { runs: 4000, size: 16 },
-	});
-
-	it.prop(
-		"applying every fix never changes the parsed value, flow and block indicators included",
-		[documentOf(RICH, 16)],
-		keepsValue,
-		{ arbitrary: { runs: 4000, size: 16 } },
-	);
 });

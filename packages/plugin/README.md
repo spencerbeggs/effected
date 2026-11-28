@@ -8,6 +8,13 @@ pnpm exec effected --version
 # effected <version> via @effected/plugin <version>
 ```
 
+npm and pnpm install the `typescript` peer for you. bun does not: it puts the `typescript@6` that `@microsoft/api-extractor` depends on at the top of `node_modules`, warns that the peer is incorrect, and the bins then fail to start with `ERR_MODULE_NOT_FOUND` for `typescript/ast`. Under bun, declare `typescript` yourself beside the carrier:
+
+```sh
+bun add -d @effected/plugin typescript@"7.1.0-beta || 7.1.1-rc || >=7.1.0 <8"
+bunx effected --version
+```
+
 The `effected` catalog in `@effected/pnpm-plugin-effected` lists this package, so a consumer writes `"@effected/plugin": "catalog:effected"`. That plugin also hoists this package publicly, so its bins reach every package of a pnpm workspace, even when only one leaf package declares it.
 
 The package also exports `defineSchemastore`, the typed helper for a `schemastore.config.ts` that `effected schema build|check|validate` loads.

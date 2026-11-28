@@ -245,6 +245,25 @@ describe("hostile input", () => {
 				}),
 			SCALE_TIMEOUT_MS,
 		);
+
+		// The shapes toml.hostile.test.ts measures for growth: a path at the cap resolves all the way down.
+		it.effect("a 256-segment dotted key, the cap, resolves and its value is replaced", () =>
+			Effect.gen(function* () {
+				const path = Array.from({ length: 256 }, (_, i) => `k${i}`);
+				const out = yield* TomlFormat.modifyToString(`${path.join(".")} = 1\n`, path, 2);
+				assert.strictEqual(out, `${path.join(".")} = 2\n`);
+			}),
+		);
+
+		it.effect("a 256-segment path through nested inline tables, the cap, resolves and its value is replaced", () =>
+			Effect.gen(function* () {
+				const path = Array.from({ length: 256 }, (_, i) => `k${i}`);
+				const nest = (leaf: string) =>
+					`${path[0]} = ${path.slice(1).reduceRight((inner, key) => `{ ${key} = ${inner} }`, leaf)}\n`;
+				const out = yield* TomlFormat.modifyToString(nest("1"), path, 2);
+				assert.strictEqual(out, nest("2"));
+			}),
+		);
 	});
 
 	describe("scale", () => {

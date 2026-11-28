@@ -1,7 +1,8 @@
 // The `Markdown` facade: the pure `parseResult` primitive, the `Effect`
 // `parse` defined in terms of it, the options default, the `MarkdownFromString`
 // codec, and the two invariants that hold for EVERY input — parse never
-// throws, and every position is inside the source.
+// throws, and every position is inside the source — on fixed inputs. The same
+// invariants over generated hostile text are in `markdown.property.test.ts`.
 //
 // The guard tests here assert MATERIALIZATION, not detection: that the
 // engine's `GuardExceeded` carrier becomes a typed `MarkdownParseError`
@@ -9,7 +10,7 @@
 // `hardening.test.ts` at the carrier layer.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Arbitrary, Effect, Result, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { MAX_NESTING_DEPTH } from "../src/internal/limits.js";
 import { Markdown, MarkdownParseError, MarkdownParseOptions } from "../src/Markdown.js";
 import type { MarkdownNode } from "../src/MarkdownNode.js";
@@ -265,45 +266,6 @@ describe("Markdown.MarkdownFromString", () => {
 });
 
 describe("Markdown parse invariants", () => {
-	/**
-	 * Unicode-hostile text: lone surrogates (unpaired halves that break naive
-	 * code-point scanning), U+0000 (preprocessed to U+FFFD), every line
-	 * terminator form, the markdown punctuation set, and full-plane unicode
-	 * as runs of scalar values (the whole plane minus the surrogate block),
-	 * which reach the astral code points the ASCII string generator never
-	 * emits. `size` lifts the length scale to the 40-part cap.
-	 */
-	const ScalarValue = Schema.Union([
-		Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 0xd7ff })),
-		Schema.Int.check(Schema.isBetween({ minimum: 0xe000, maximum: 0x10ffff })),
-	]);
-	const HostilePart = Schema.Union([
-		Schema.Literals(["\u0000", "\uD800", "\uDFFF", "\uFFFD", "\r\n", "\r", "\n", "\t", " "]),
-		Schema.Literals(["#", "*", "_", "`", ">", "-", "[", "]", "(", ")", "!", "\\", "~", "<", "&", "|"]),
-		Schema.String.check(Schema.isMaxLength(8)),
-		Schema.Array(ScalarValue).check(Schema.isMaxLength(8)),
-	]);
-	const hostileText = Arbitrary.schema(Schema.Array(HostilePart).check(Schema.isMaxLength(40))).pipe(
-		Arbitrary.map((parts) =>
-			parts
-				.map((part) =>
-					typeof part === "string" ? part : part.map((codePoint) => String.fromCodePoint(codePoint)).join(""),
-				)
-				.join(""),
-		),
-	);
-
-	it.prop(
-		"never throws, whatever the input",
-		[hostileText],
-		([text]) => {
-			const result = Markdown.parseResult(text);
-			// Failure is legal (a guard trip); a throw is not.
-			return Result.isSuccess(result) || Result.isFailure(result);
-		},
-		{ arbitrary: { runs: 250, size: 40 } },
-	);
-
 	// Invariant, not a performance budget: parsing ~500KB under coverage in a
 	// whole-workspace run shares cores with 18 other suites, so the default 5s
 	// timeout flakes on contention. The calibrated pathological suite owns
@@ -314,24 +276,6 @@ describe("Markdown parse invariants", () => {
 		const result = Markdown.parseResult(large);
 		assert.isTrue(Result.isSuccess(result));
 	});
-
-	it.prop(
-		"keeps every node position inside the source",
-		[hostileText],
-		([text]) => {
-			const result = Markdown.parseResult(text);
-			if (Result.isFailure(result)) return true;
-			let ok = true;
-			walk(result.success, (node) => {
-				const { start, end } = node.position;
-				if (!(start.offset >= 0 && start.offset <= end.offset && end.offset <= text.length)) {
-					ok = false;
-				}
-			});
-			return ok;
-		},
-		{ arbitrary: { runs: 250, size: 40 } },
-	);
 
 	it("keeps every node position inside the source for a realistic document", () => {
 		const source = [

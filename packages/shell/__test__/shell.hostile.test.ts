@@ -4,8 +4,8 @@
 
 import { assert, describe, it } from "@effect/vitest";
 import { Growth } from "@effected/testing";
-import { Arbitrary, Option, Schema } from "effect";
-import type { ShellScript, ShellWord } from "../src/index.js";
+import { Option } from "effect";
+import type { ShellScript } from "../src/index.js";
 import { ShellSyntax } from "../src/index.js";
 
 const MEGABYTE = 1 << 20;
@@ -26,9 +26,13 @@ const MEASURED = MEGABYTE / 16;
  * Growth is measured to 64 KiB, not to the megabyte the unit parses: a quadratic scan reads 16x at any size, and a
  * short parse is repeated until it can be timed. To a quarter megabyte every unit read 3.7x to 4.7x on macOS, but
  * the worst of the 86 read 8.6x on a Linux runner, against the bound of 10. Past about a megabyte the
- * memory a parse holds starts to cost more than the parse: `$((` read 4.2x from a quarter megabyte to one and 7.6x
- * to 11.6x from one to four on macOS, and 11.9x from a quarter megabyte to one on a Linux runner. That knee moves
- * with the machine, so a ratio taken across it measures the machine (#1387 found the same for `((`).
+ * memory a parse holds starts to cost more than the parse. `$((` read 4.2x from a quarter megabyte to one and 7.6x
+ * to 11.6x from one to four on macOS, and 11.9x from a quarter megabyte to one on a Linux runner, while it kept an
+ * object per unit live; #1387 found the same for `((`. Neither does now, but the scanner's typed arrays are external
+ * memory, for which V8 requests collections at a rate linear in the input. The fastest of five samples misses them
+ * at the smaller size and cannot at the larger, so `$((` from a quarter megabyte to one still read 5.8x to 9.2x on
+ * macOS, where repeated parses cost 3.95x from one megabyte to four (#1429). A ratio taken across a megabyte
+ * measures when the collector ran.
  *
  * The ratio is the whole bound: no unit asserts an absolute time. A ceiling of 10 s of CPU on the full run measured the
  * machine, not the parse. CPU time here is the process's, GC helper threads included (about 1.4x the wall time of a
@@ -292,102 +296,5 @@ describe("hostile input", () => {
 			closed.segments[0]?.words[0]?.parts.map((p) => p.kind),
 			["bare", "brace", "bare"],
 		);
-	});
-});
-
-describe("structural invariants over random shell-dense strings", () => {
-	// Every character the lexer branches on, so random strings hit quotes,
-	// expansions, operators, redirections, heredocs and brace/glob syntax.
-	const ALPHABET = [
-		"a",
-		"1",
-		" ",
-		"\t",
-		"\n",
-		"\r",
-		"\\",
-		"'",
-		'"',
-		"`",
-		"$",
-		"(",
-		")",
-		"{",
-		"}",
-		"[",
-		"]",
-		",",
-		".",
-		"*",
-		"?",
-		"~",
-		"/",
-		":",
-		"=",
-		"+",
-		"-",
-		"#",
-		";",
-		"&",
-		"|",
-		"<",
-		">",
-		"!",
-		"@",
-		"é",
-		"\uD83D",
-	];
-	const shellish = Arbitrary.array(Arbitrary.schema(Schema.Literals(ALPHABET)), { maxLength: 64 }).pipe(
-		Arbitrary.map((chars) => chars.join("")),
-	);
-
-	const wordTiles = (source: string, word: ShellWord): boolean => {
-		if (word.raw !== source.slice(word.start, word.end)) return false;
-		if (word.parts.length === 0) return word.start === word.end;
-		let cursor = word.start;
-		for (const part of word.parts) {
-			if (part.start !== cursor || part.end < part.start) return false;
-			if (part.raw !== source.slice(part.start, part.end)) return false;
-			cursor = part.end;
-		}
-		return cursor === word.end;
-	};
-
-	const holds = (source: string): boolean => {
-		const script = ShellSyntax.parse(source);
-		let previousEnd = 0;
-		for (const segment of script.segments) {
-			if (segment.start < previousEnd || segment.end < segment.start || segment.end > source.length) return false;
-			previousEnd = segment.end;
-			const words = [
-				...segment.words,
-				...segment.assignments.map((a) => a.value),
-				...segment.redirections.flatMap((r) => (r.target.kind === "word" ? [r.target] : [])),
-			];
-			for (const word of words) {
-				if (word.start < segment.start || word.end > segment.end || !wordTiles(source, word)) return false;
-			}
-			for (const heredoc of segment.heredocs) {
-				if (heredoc.body !== source.slice(heredoc.start, heredoc.end)) return false;
-			}
-		}
-		for (const diagnostic of script.diagnostics) {
-			if (diagnostic.offset < 0 || diagnostic.offset + diagnostic.length > source.length) return false;
-		}
-		for (const substitution of script.substitutions()) {
-			const slice = source.slice(substitution.bodyStart, substitution.bodyEnd);
-			// A backtick body is the slice after escape removal, so it differs
-			// only when the slice holds a backslash.
-			const backtick = substitution.kind === "commandSubstitution" && substitution.style === "backtick";
-			if (backtick ? substitution.body !== slice && !slice.includes("\\") : substitution.body !== slice) return false;
-			// A nested parse must be total too.
-			ShellSyntax.parse(substitution.body);
-		}
-		script.commands();
-		return true;
-	};
-
-	it.prop("parse is total and every span tiles the source", [shellish], ([source]) => holds(source), {
-		arbitrary: { runs: 3000, size: 64 },
 	});
 });

@@ -92,9 +92,11 @@
 | `DocView` | Function | The kit's document IR (`Doc`) drawn as Ink rows, laid out by the kit's own renderers, so a live view and a static report show a document the same way. | from `@effected/cli-kit/ui` — draw a document inside an ink tree, byte for byte like the static output |
 | `DocViewProps` | Interface | Props of `DocView`. | from `@effected/cli-kit/ui` |
 | `Document` | TypeAlias | A whole document: its blocks, in order. | |
+| `DurationWordsOptions` | Interface | Options for `Fmt.durationWords`. | |
+| `DurationWordsUnit` | TypeAlias | A unit `Fmt.durationWords` can write, largest first. | |
 | `EditorLinks` | TypeAlias | Whether file links open in an editor. | |
 | `FailureDetails` | Interface | What `render` is told about a failure beyond the squashed error. | |
-| `Fmt` | Class | Small, pure formatting primitives for terminal output. | sanitize escapes, display width, truncate, durations, plural, did-you-mean suggestions, error text |
+| `Fmt` | Class | Small, pure formatting primitives for terminal output. | sanitize escapes, display width, truncate, durations (compact or in words, "2 hours 30 minutes"), plural, did-you-mean suggestions, error text |
 | `GithubAnnotation` | Class | GitHub Actions annotations, as workflow commands. | format a GitHub Actions error or warning annotation for a file and line |
 | `GithubAnnotationProperties` | Interface | What an annotation says about where it points and what it is called. | |
 | `GlyphSelectOptions` | Interface | Options for `Glyphs.select`. | |

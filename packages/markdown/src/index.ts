@@ -71,6 +71,7 @@ export {
 	FrontmatterSource,
 	FrontmatterSourceBlock,
 	FrontmatterSourceSplit,
+	type FrontmatterSourceSplitOptions,
 } from "./FrontmatterSource.js";
 export { JsonFrontmatter } from "./JsonFrontmatter.js";
 export { Markdown, MarkdownDialect, MarkdownParseError, MarkdownParseOptions } from "./Markdown.js";

@@ -13,6 +13,7 @@ import { InstalledConsumer, PackedInstall } from "@effected/workspaces/testing";
 import { Context, Duration, Effect, FileSystem, Layer, Redacted } from "effect";
 import effectPackage from "effect/package.json" with { type: "json" };
 import { ChildProcess } from "effect/process";
+import pluginPackage from "../../package.json" with { type: "json" };
 
 const ROOT = resolve(import.meta.dirname, "..", "..", "..", "..");
 const CARRIER = "@effected/plugin";
@@ -32,9 +33,9 @@ const RUN: PackedInstallOptions = {
 	closure: [],
 	// While a dogfood loop links an unreleased sibling build, the consumers get it too; otherwise inert.
 	workspaceOverrides: true,
-	// CI provisions only node (which ships npm) and pnpm, from the root devEngines, so those two are required there;
-	// bun runs wherever a developer has it installed.
-	managers: process.env.CI ? ["npm", "pnpm"] : ["npm", "pnpm", "bun"],
+	// CI provisions only node (which ships npm) and pnpm, from the root devEngines, so those two are required there.
+	// These two install the `typescript` peer on their own; bun does not, so it has its own case (BUN_RUN).
+	managers: ["npm", "pnpm"],
 	bins: ["effected", "effected-mcp"],
 	allowSharedBins: true,
 	// A runner exporting FORCE_COLOR would colour the output asserted below.
@@ -43,6 +44,20 @@ const RUN: PackedInstallOptions = {
 	require: process.env.CI ? "all" : "any",
 	installTimeout: "3 minutes",
 	packTimeout: "30 seconds",
+};
+
+/**
+ * The carrier under bun, installed the way a bun user has to: with `typescript` declared beside it. The carrier's
+ * `@microsoft/api-extractor` depends on `typescript@6.0.3`, and bun hoists that copy to the consumer's root and
+ * reports the carrier's peer as incorrect rather than installing a 7.x copy; the bins then fail to import
+ * `typescript/ast`. npm and pnpm nest api-extractor's copy and install the peer. Run wherever a developer has bun:
+ * CI provisions none.
+ */
+const BUN_RUN: PackedInstallOptions = {
+	...RUN,
+	managers: ["bun"],
+	require: "any",
+	consumerDependencies: { typescript: pluginPackage.peerDependencies.typescript },
 };
 
 /**
@@ -81,6 +96,13 @@ const BUDGET = PackedInstall.timeoutBudget({
 	packTimeout: RUN.packTimeout,
 	packages: PACKED,
 	// Per consumer: two --version runs, an MCP handshake and an MCP session; plus the two pnpm workspaces.
+	perConsumer: "4 minutes",
+});
+const BUN_BUDGET = PackedInstall.timeoutBudget({
+	managers: BUN_RUN.managers,
+	installTimeout: BUN_RUN.installTimeout,
+	packTimeout: BUN_RUN.packTimeout,
+	packages: PACKED,
 	perConsumer: "4 minutes",
 });
 
@@ -160,6 +182,57 @@ const mcpSession = (consumer: InstalledConsumer, env: Record<string, string>) =>
 		yield* child.closeStdin;
 		return { listed, called, exitCode: yield* child.exitCode, stderr: yield* child.stderrFinal };
 	}).pipe(Effect.scoped, Effect.timeout("30 seconds"));
+
+/** One installed consumer of the carrier: its bins answer, its MCP server boots and names the carrier. */
+const carrierWorks = (consumer: InstalledConsumer, env: Record<string, string>, carrierVersion: string) =>
+	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
+		const label = consumer.manager;
+		// Nothing of the kit or effect is installed: the carrier's files hold it. effect is an optional peer, for the
+		// root's types, so a consumer that declares none gets none.
+		for (const absent of ["@effected/cli", "@effected/engine", "@effected/schemastore", "effect"]) {
+			assert.isFalse(yield* fs.exists(`${consumer.directory}/node_modules/${absent}`), `${label}: ${absent}`);
+		}
+		// What a user typing the bin name gets: SOME package's bin runs.
+		const typed = yield* consumer.runBin("effected", ["--version"], { env });
+		assert.strictEqual(typed.exitCode, 0, `${label}: ${typed.stderr}`);
+
+		// The carrier's own shim, whichever package took the .bin slot.
+		const own = yield* consumer.runCarrierBin("effected", ["--version"], { env });
+		assert.strictEqual(own.exitCode, 0, `${label}: ${own.stderr}`);
+		const version = VERSION.exec(own.stdout.trim());
+		assert.isNotNull(version, `${label}: ${own.stdout}`);
+		assert.strictEqual(version?.[1], carrierVersion, label);
+
+		// MCP: a clean boot (no JSON-RPC error, clean stderr, exit 0).
+		const probe = yield* McpProbe.initialize(yield* consumer.carrierCommand("effected-mcp", [], { env })).pipe(
+			Effect.timeout("30 seconds"),
+		);
+		assert.isUndefined(probe.response.error, label);
+		assert.strictEqual(probe.stderr, "", label);
+		assert.strictEqual(probe.exitCode, 0, label);
+
+		// MCP: the identity tool, answered from the published artifact. A real
+		// effect version proves the bundled `effect/package.json` import resolves.
+		const session = yield* mcpSession(consumer, env);
+		assert.deepStrictEqual(
+			session.listed.result?.tools?.map((tool) => tool.name),
+			["identity", "schema_check", "schema_build", "schema_validate", "package_build", "action_build", "action_init"],
+			label,
+		);
+		assert.strictEqual(session.called.result?.isError ?? false, false, label);
+		const report = session.called.result?.structuredContent;
+		assert.strictEqual(report?.tool, "effected", label);
+		assert.deepStrictEqual(report?.distribution, { name: CARRIER, version: carrierVersion }, label);
+		assert.match(String(report?.effect), /^\d+\.\d+\.\d+/, label);
+		assert.strictEqual(session.exitCode, 0, `${label}: ${session.stderr}`);
+
+		// Which package owns each .bin slot under shared bins (undefined: pnpm's shims).
+		for (const bin of RUN.bins ?? []) {
+			const provenance = yield* consumer.binProvenance(bin);
+			yield* Effect.log(`${label} .bin/${bin} -> ${provenance?.package ?? "a shim"}`);
+		}
+	});
 
 /**
  * A pnpm workspace consumer: the carrier is a dependency of the leaf
@@ -422,59 +495,7 @@ describe.skipIf(!RUNNABLE)("packed install (@effected/plugin)", () => {
 					yield* Effect.log(`packed ${PACKED.length} packages; unavailable: [${result.unavailable.join(", ")}]`);
 					const env = { XDG_DATA_HOME: `${result.scratch}/xdg`, XDG_STATE_HOME: `${result.scratch}/xdg-state` };
 					for (const consumer of result.consumers) {
-						const label = consumer.manager;
-						// Nothing of the kit or effect is installed: the carrier's files hold it. effect is an optional peer, for the
-						// root's types, so a consumer that declares none gets none.
-						for (const absent of ["@effected/cli", "@effected/engine", "@effected/schemastore", "effect"]) {
-							assert.isFalse(yield* fs.exists(`${consumer.directory}/node_modules/${absent}`), `${label}: ${absent}`);
-						}
-						// What a user typing the bin name gets: SOME package's bin runs.
-						const typed = yield* consumer.runBin("effected", ["--version"], { env });
-						assert.strictEqual(typed.exitCode, 0, `${label}: ${typed.stderr}`);
-
-						// The carrier's own shim, whichever package took the .bin slot.
-						const own = yield* consumer.runCarrierBin("effected", ["--version"], { env });
-						assert.strictEqual(own.exitCode, 0, `${label}: ${own.stderr}`);
-						const version = VERSION.exec(own.stdout.trim());
-						assert.isNotNull(version, `${label}: ${own.stdout}`);
-						assert.strictEqual(version?.[1], manifest.version, label);
-
-						// MCP: a clean boot (no JSON-RPC error, clean stderr, exit 0).
-						const probe = yield* McpProbe.initialize(yield* consumer.carrierCommand("effected-mcp", [], { env })).pipe(
-							Effect.timeout("30 seconds"),
-						);
-						assert.isUndefined(probe.response.error, label);
-						assert.strictEqual(probe.stderr, "", label);
-						assert.strictEqual(probe.exitCode, 0, label);
-
-						// MCP: the identity tool, answered from the published artifact. A real
-						// effect version proves the bundled `effect/package.json` import resolves.
-						const session = yield* mcpSession(consumer, env);
-						assert.deepStrictEqual(
-							session.listed.result?.tools?.map((tool) => tool.name),
-							[
-								"identity",
-								"schema_check",
-								"schema_build",
-								"schema_validate",
-								"package_build",
-								"action_build",
-								"action_init",
-							],
-							label,
-						);
-						assert.strictEqual(session.called.result?.isError ?? false, false, label);
-						const report = session.called.result?.structuredContent;
-						assert.strictEqual(report?.tool, "effected", label);
-						assert.deepStrictEqual(report?.distribution, { name: CARRIER, version: manifest.version }, label);
-						assert.match(String(report?.effect), /^\d+\.\d+\.\d+/, label);
-						assert.strictEqual(session.exitCode, 0, `${label}: ${session.stderr}`);
-
-						// Which package owns each .bin slot under shared bins (undefined: pnpm's shims).
-						for (const bin of RUN.bins) {
-							const provenance = yield* consumer.binProvenance(bin);
-							yield* Effect.log(`${label} .bin/${bin} -> ${provenance?.package ?? "a shim"}`);
-						}
+						yield* carrierWorks(consumer, env, manifest.version);
 					}
 
 					// The hoist, as a consumer gets it from the catalog plugin's hook: a pnpm workspace whose
@@ -494,6 +515,34 @@ describe.skipIf(!RUNNABLE)("packed install (@effected/plugin)", () => {
 				}).pipe(Effect.scoped, Effect.timeout(BUDGET)),
 			// vitest's own guard a minute above the Effect's, so a named PackedInstallError fires first.
 			Duration.toMillis(BUDGET) + 60_000,
+		);
+
+		it.effect.skipIf(process.env.CI)(
+			"the carrier's bins work under bun once the consumer declares typescript",
+			() =>
+				Effect.gen(function* () {
+					const fs = yield* FileSystem.FileSystem;
+					const result = yield* PackedInstall.run(BUN_RUN).pipe(
+						Effect.catchIf(
+							(error) => error.reason === "NoManagerAvailable",
+							() => Effect.succeed(undefined),
+						),
+					);
+					if (result === undefined) {
+						yield* Effect.log("bun unavailable: the bun install was not proven");
+						return;
+					}
+					const env = { XDG_DATA_HOME: `${result.scratch}/xdg`, XDG_STATE_HOME: `${result.scratch}/xdg-state` };
+					for (const consumer of result.consumers) {
+						// The declared copy took the root, not api-extractor's 6.x one.
+						const installed = JSON.parse(
+							yield* fs.readFileString(`${consumer.directory}/node_modules/typescript/package.json`),
+						) as { readonly version: string };
+						assert.match(installed.version, /^7\./, "bun: typescript at the consumer root");
+						yield* carrierWorks(consumer, env, pluginPackage.version);
+					}
+				}).pipe(Effect.scoped, Effect.timeout(BUN_BUDGET)),
+			Duration.toMillis(BUN_BUDGET) + 60_000,
 		);
 	});
 

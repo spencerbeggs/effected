@@ -39,6 +39,7 @@
 | `FrontmatterSource` | Class | The string-level frontmatter facade: split raw source at the fence boundaries and join it back, without parsing anything. | split and join frontmatter at string level without parsing, gray-matter style extraction |
 | `FrontmatterSourceBlock` | Class | A frontmatter block at string level: the format its fence declared, the exact bytes between the fence lines, and the fence lines' terminator. | string-level frontmatter block with format, raw bytes and newline |
 | `FrontmatterSourceSplit` | Class | The result of `FrontmatterSource.split`: the frontmatter block when one exists, the exact body remainder, and the body's byte offset. | result of splitting source into frontmatter block and body remainder |
+| `FrontmatterSourceSplitOptions` | Interface | Options for `FrontmatterSource.split`. | |
 | `FrontmatterValidationError` | Class | Indicates that decoded frontmatter data did not satisfy the consumer's schema. | handle decoded frontmatter that fails a consumer schema, typed frontmatter validation failure |
 | `FrontmatterWriteError` | TypeAlias | The union of everything the frontmatter write seam can fail with. | |
 | `Heading` | Class | Heading — an ATX or setext heading of depth 1 to 6. | build an atx or setext heading node, construct a heading for stringify |

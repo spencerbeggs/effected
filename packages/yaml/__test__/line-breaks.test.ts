@@ -1,22 +1,17 @@
 // YAML 1.2 §5.4: a line break (`b-break`) is `\r\n`, `\r` or `\n`, and every
 // one of them breaks a line the same way. The engine once read a bare `\r` as
 // ordinary content, so `"- x\r- y"` composed to one plain scalar
-// (`[["x - x\r- y"]]`-shaped) and `"a: 1\r..."` to `{ a: "1 ..." }`.
+// (`[["x - x\r- y"]]`-shaped) and `"a: 1\r..."` to `{ a: "1 ..." }`. The
+// LF, CR and CRLF twins of generated documents are compared in
+// `line-breaks.property.test.ts`.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Arbitrary, Result, Schema } from "effect";
+import { Result } from "effect";
 import { Yaml, YamlDocument } from "../src/index.js";
 
 const CR = String.fromCodePoint(13);
 const LF = String.fromCodePoint(10);
 const CRLF = `${CR}${LF}`;
-
-const parsedValue = (text: string): string => {
-	const result = Yaml.parseAllResult(text);
-	return Result.isSuccess(result) ? JSON.stringify(result.success) : "ERR";
-};
-
-const withBreaks = (lf: string, lineBreak: string): string => lf.split(LF).join(lineBreak);
 
 describe("a bare CR is a line break", () => {
 	it("separates block sequence entries", () => {
@@ -77,50 +72,4 @@ describe("CRLF folds inside a single-quoted scalar like `\\n`", () => {
 		assert.deepStrictEqual(Yaml.parseResult(`'a${CRLF}'`), Result.succeed("a "));
 		assert.deepStrictEqual(Yaml.parseResult(`'a${CRLF}${CRLF}b'`), Result.succeed("a\nb"));
 	});
-});
-
-// A YAML-shaped alphabet without line breaks of its own; LF is the one break,
-// and each document is compared with its CR and CRLF twins.
-const ALPHABET = [
-	"a",
-	"b",
-	"1",
-	":",
-	"-",
-	" ",
-	"  ",
-	LF,
-	"#",
-	"? ",
-	"...",
-	"---",
-	'"',
-	"'",
-	"[",
-	"]",
-	"{",
-	"}",
-	",",
-	"&x",
-	"*x",
-	"!t",
-	"|",
-	">",
-	"\\",
-] as const;
-const document = Arbitrary.array(Arbitrary.schema(Schema.Literals(ALPHABET)), { maxLength: 16 }).pipe(
-	Arbitrary.map((pieces) => pieces.join("")),
-);
-
-describe("line breaks — property", () => {
-	it.prop(
-		"a document parses to the same value under LF, bare CR and CRLF",
-		[document],
-		([lf]) => {
-			const expected = parsedValue(lf);
-			assert.strictEqual(parsedValue(withBreaks(lf, CR)), expected, `CR twin of ${JSON.stringify(lf)}`);
-			assert.strictEqual(parsedValue(withBreaks(lf, CRLF)), expected, `CRLF twin of ${JSON.stringify(lf)}`);
-		},
-		{ arbitrary: { runs: 4000, size: 16 } },
-	);
 });

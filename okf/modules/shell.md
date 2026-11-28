@@ -27,10 +27,10 @@ sources:
     title: "GNU Bash Reference Manual: shell syntax, quoting, expansions, redirections"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-25T13:41:08Z
+  at: 2026-11-28T03:46:42Z
 x-okfit-integrity:
   generated:
-    body: 0502d0046699760e
+    body: a833a98c494992f5
 ---
 
 # @effected/shell
@@ -393,6 +393,29 @@ so neither imports the other. Nothing recurses on input depth: the nested scanne
 frame stack, the bracket-glob scan caches its last failure, and brace
 expansion is matched with a stack over the word's events, so every input is
 lexed in linear time.
+
+The nested scanner holds what a megabyte of openers keeps live in typed
+arrays, not on the JS heap: its frame stack (#1387) and the substitutions it
+records at the top level (#1429). An arithmetic frame is not a substitution,
+so every `$((` records one, and a run of `$((` that never closes is
+hundreds of thousands of records, all live until the scan ends. As objects
+they cost about 64 bytes of heap per input character, grew the collector's
+work faster than the input, and made `$((` read 7.6x from one megabyte to
+four; held in an `Int32Array` they cost no heap, and a 4 MiB parse fell from
+about 148 ms of CPU to 96 ms.
+
+What remains past a megabyte is the collector, and it is a measurement
+effect, not super-linear work. The typed arrays are external memory, about
+37 MB per megabyte of `$((` once doubling is counted, and V8 requests an
+old-space collection for each step of external growth. Those collections
+come at a rate linear in the input, and parsing repeatedly, `$((` costs
+3.95x the CPU from one megabyte to four. But `Growth` keeps the fastest of
+five samples: at the smaller size some samples miss every collection, and
+at the larger none do, so its ratio from a quarter megabyte to one read
+5.8x to 9.2x across three runs on macOS against a bound of 10. With the
+buffers reused between parses, as an experiment, the same measurement read
+3.9x to 4.5x at both spans. That is why the hostile suite measures growth
+below a megabyte: across it the ratio measures when the collector ran.
 
 ## Testing
 

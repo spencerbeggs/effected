@@ -10,10 +10,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-08T12:10:34Z
+  at: 2026-11-28T04:02:07Z
 x-okfit-integrity:
   generated:
-    body: 01835a12bee8e85a
+    body: 356fa9a94475d36d
 ---
 
 # `@effected/files`
@@ -28,7 +28,8 @@ Boundary tier: it does IO through core `FileSystem` and `Path`, both in `R`. `ef
 
 ```ts
 interface AtomicFileOptions {
-  readonly links?: "follow" | "replace"; // default "follow"
+  readonly links?: "follow" | "replace"; // default "follow"; unset under confineTo refuses a link
+  readonly confineTo?: string; // a root the write must stay inside
 }
 
 AtomicFile.write(target: string, content: string | Uint8Array, options?: AtomicFileOptions):
@@ -41,7 +42,8 @@ AtomicFile.write(target: string, content: string | Uint8Array, options?: AtomicF
 - **It does not create parent directories.** Adopters already do. An absent parent fails `NotFound`.
 - **A failure never falls back to a non-atomic write.** A directory without write permission fails loudly.
 - **`links` defaults to `"follow"`.** Keeping a link is right for a dotfile a user links in on purpose. `"replace"` is opt-in, and any other value is a defect, because it is a wiring mistake, not input.
-- **`links` governs only the last path component.** Symlinked parent directories are traversed in both modes. Containment of the whole path is `@effected/walker`'s `confineReal`, not this package's job.
+- **`links` governs only the last path component.** Symlinked parent directories are traversed in both modes. A check before the write is `@effected/walker`'s `confineReal`; closing the window between that check and the write is `confineTo`'s job.
+- **`confineTo` refuses, never follows.** A confined write keeps its error channel plain `PlatformError`: a refusal is a `SystemError` tagged `PermissionDenied` with `module: "AtomicFile"` and `method: "write"`, told apart from the filesystem's own by `module`. `links: "follow"` with `confineTo` is a defect.
 - **The kit's writers forward `links`, and follow by default.** `PackageJsonFile`, `ConfigFile`, `ManagedSection` and `SchemaFile` each accept `links` and pass it to `AtomicFile.write`; unset, they follow. The `effected schema build` runner still calls it with two arguments.
 
 ## The choreography
@@ -57,6 +59,27 @@ Under `links: "follow"`:
 5. When a mode exists, `chmod` the temp, because the mode given to `open` is subject to umask.
 6. Rename the temp over the final path.
 7. Once `open` has succeeded, any failure or interruption in steps 4 to 6 removes the temp and keeps the original cause. A failed `open` removes nothing, so a name collision fails `AlreadyExists` and leaves the other writer's file alone. The open and the arming of this cleanup are one uninterruptible step, so an interrupt cannot leak the temp between them.
+
+## Confined writes
+
+`{ confineTo: root }` (#1452) lets a tool that writes inside a root rely on one guard instead of a check before the write. Planning:
+
+1. Resolve `root` once with `realPath`. The root is trusted, so a root that is a link, or sits under one, is fine.
+2. Resolve the target against the working directory. It must lie strictly below the root as given or below its real path, judged with `Path.relative`, so `..`, an absolute path outside and a sibling sharing the root's name prefix are all refused, and so is the root itself.
+3. Rebuild the target under the root's real path. `lstat` every directory from the root down to the target's directory, and refuse a symbolic link. An absent directory fails `NotFound`, as everywhere in this package.
+4. Require `realPath(directory)` to equal that rebuilt directory, which also catches a link above the root.
+5. `lstat` the target. A link is refused unless `links: "replace"`, which replaces the link entry as it does unconfined.
+
+The mode, the `access` check and the temp then follow the `"replace"` choreography (`lstat`, temp in the real directory). Steps 3 to 5 run again before each path call on the temp: immediately before the temp's `open`, before the `chmod` that restores an existing mode, and immediately before the `rename`. A refusal after the `open` removes the temp by the path it was created by. Its random name was created exclusively (`wx`), so that path reaches our temp or nothing.
+
+What stays open: core `FileSystem` names everything by path and has no directory handle (`openat`/`renameat`), so each path call resolves its parents afresh. Two windows of a few system calls each remain:
+
+- A parent swapped for a link between the pre-open check and the `open` makes the `open` create the temp, with the full content, at the link's destination, outside the root. The next check refuses, and the removal by the same path reaches that temp, so the content does not stay there.
+- A link swapped in between the last check and the `rename` call still redirects the rename.
+
+When a parent is moved aside after the `open`, the removal path leads through the new link and finds nothing, so a `.effected-*.tmp` remains in the moved directory, still inside the root. A hard link at the target is not a symbolic link and is replaced as usual.
+
+The tests stage each swap from a fault: after the temp's `open` (a parent directory moved aside and replaced by a link, a link put at the target, a directory above the root replaced by a link), after the `chmod`, after the `access` check (caught by the pre-open check, no temp opened), and inside the temp's `open` before it runs (the temp lands outside and is removed).
 
 ## Limits
 

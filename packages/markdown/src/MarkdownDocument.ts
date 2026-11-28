@@ -11,6 +11,7 @@ import { LineIndex } from "@effected/source";
 import { Effect, Option, Result, Schema } from "effect";
 import type { FrontmatterFenceState } from "./FrontmatterSource.js";
 import { scanFrontmatter, scanRawFence } from "./internal/blocks/frontmatter.js";
+import { imageDescriptionOf } from "./internal/imageDescriptions.js";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
 import { preprocessLines } from "./internal/preprocess.js";
 import { normalizeLabelText } from "./internal/references.js";
@@ -533,6 +534,49 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 		const markers = pass.success.unresolvedFootnotes;
 		unresolvedFootnotes.set(this, markers);
 		return markers;
+	}
+
+	/**
+	 * An image's description: the inline content between its brackets, as
+	 * phrasing nodes, or `Option.none()` when the node is not one a parse
+	 * produced.
+	 *
+	 * @remarks
+	 * An mdast image has no children — its bracket content flattens to the
+	 * `alt` string, and {@link Image} and {@link ImageReference} keep that
+	 * shape. The parse still reads the content as inline nodes (emphasis, code
+	 * spans, links, nested images), and this lookup returns them, positioned
+	 * in this document's source like every other node. A nested image is an
+	 * {@link Image} leaf here too, whose own description the same lookup
+	 * returns, so a chain of nested images reads one level at a time.
+	 *
+	 * The description is materialized on the first lookup and kept, from a
+	 * nesting depth of its own: an input the parse accepts never fails here,
+	 * but a description nesting past the hardening cap reads as
+	 * `Option.none()`. It is a side table keyed by node identity, no part of
+	 * the tree's schema, equality or encoded form, so a node rebuilt by `make`,
+	 * a transform or a decode has none. The lookup reads the node alone, not
+	 * this document: an image another document's parse produced returns its
+	 * own description, positioned in that document's source.
+	 *
+	 * @example
+	 * ```ts
+	 * import { MarkdownDocument } from "@effected/markdown";
+	 * import { Option, Result } from "effect";
+	 *
+	 * const result = MarkdownDocument.parseResult("![a *b*](c.png)\n");
+	 * if (Result.isSuccess(result)) {
+	 *   const [image] = result.success.findAll("image");
+	 *   const description = image === undefined ? Option.none() : result.success.imageDescription(image);
+	 *   console.log(Option.map(description, (nodes) => nodes.map((node) => node.type))); // => Some(["text", "emphasis"])
+	 * }
+	 * ```
+	 *
+	 * @param image - An image or image reference node, from this document's tree to read its positions here.
+	 * @returns The description's phrasing content, or `Option.none()`.
+	 */
+	imageDescription(image: Image | ImageReference): Option.Option<ReadonlyArray<PhrasingContent>> {
+		return Option.fromUndefinedOr(imageDescriptionOf(image));
 	}
 
 	/**

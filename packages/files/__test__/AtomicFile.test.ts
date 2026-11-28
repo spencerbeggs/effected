@@ -920,3 +920,295 @@ describe("AtomicFile.write links option", () => {
 		}).pipe(Effect.provide(MemoryFileSystem.layerWithPath({ [TARGET]: "old" }))),
 	);
 });
+
+describe("AtomicFile.write confineTo option", () => {
+	const ROOT = "/root";
+	const NESTED = "/root/sub/config.json";
+	const ESCAPE = "/outside/secret.json";
+
+	/** The `.effected-*` entries left in `dir`. */
+	const tempsIn = (dir: string) =>
+		Effect.gen(function* () {
+			const volume = yield* MemoryFileSystem.Volume;
+			return (volume.readDirectory(dir) ?? []).filter((name) => name.startsWith(".effected-"));
+		});
+
+	/** Asserts a confinement refusal: PermissionDenied from AtomicFile itself. */
+	const assertRefused = (error: PlatformError.PlatformError) => {
+		assert.strictEqual(error.reason._tag, "PermissionDenied");
+		if (error.reason._tag === "BadArgument") return assert.fail("expected a SystemError");
+		assert.strictEqual(error.reason.module, "AtomicFile");
+		assert.strictEqual(error.reason.method, "write");
+	};
+
+	/** Once the temp has been opened (after planning), runs `swap` against the unfaulted filesystem. */
+	const swapAfterTempOpen =
+		(
+			swap: (fs: FileSystem.FileSystem) => Effect.Effect<void, PlatformError.PlatformError>,
+		): MemoryFileSystemFaultsFactory =>
+		(base) => ({
+			open: (path, options) =>
+				path.includes(".effected-") ? Effect.tap(base.open(path, options), () => swap(base)) : undefined,
+		});
+
+	it.effect("creates and replaces files inside the root", () =>
+		Effect.gen(function* () {
+			yield* AtomicFile.write(NESTED, "new", { confineTo: ROOT });
+			yield* AtomicFile.write("/root/top.json", "top", { confineTo: ROOT });
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.text(NESTED), "new");
+			assert.strictEqual(volume.text("/root/top.json"), "top");
+			assert.deepStrictEqual(yield* tempsIn("/root/sub"), []);
+		}).pipe(Effect.provide(MemoryFileSystem.layerWithPath({ [NESTED]: "old" }))),
+	);
+
+	it.effect("a target given through a symlinked root is written at the root's real path", () =>
+		Effect.gen(function* () {
+			yield* AtomicFile.write("/alias/sub/config.json", "new", { confineTo: "/alias" });
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.text(NESTED), "new");
+			assert.strictEqual(volume.readLink("/alias"), ROOT);
+		}).pipe(
+			Effect.provide(MemoryFileSystem.layerWithPath({ [NESTED]: "old", "/alias": MemoryFileSystem.symlink(ROOT) })),
+		),
+	);
+
+	it.effect("a link at the target is refused and neither it nor its destination changes", () =>
+		Effect.gen(function* () {
+			assertRefused(yield* Effect.flip(AtomicFile.write(NESTED, "new", { confineTo: ROOT })));
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.readLink(NESTED), ESCAPE);
+			assert.strictEqual(volume.text(ESCAPE), "secret");
+			assert.deepStrictEqual(yield* tempsIn("/root/sub"), []);
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath({ [ESCAPE]: "secret", [NESTED]: MemoryFileSystem.symlink(ESCAPE) }),
+			),
+		),
+	);
+
+	it.effect('with links: "replace", a link at the target is replaced and its destination is untouched', () =>
+		Effect.gen(function* () {
+			yield* AtomicFile.write(NESTED, "new", { confineTo: ROOT, links: "replace" });
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.isUndefined(volume.readLink(NESTED));
+			assert.strictEqual(volume.text(NESTED), "new");
+			assert.strictEqual(volume.text(ESCAPE), "secret");
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath({ [ESCAPE]: "secret", [NESTED]: MemoryFileSystem.symlink(ESCAPE) }),
+			),
+		),
+	);
+
+	it.effect("a symlinked directory below the root is refused before any temp", () =>
+		Effect.gen(function* () {
+			assertRefused(yield* Effect.flip(AtomicFile.write(NESTED, "new", { confineTo: ROOT })));
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.text("/outside/config.json"), "secret");
+			assert.deepStrictEqual(yield* tempsIn("/outside"), []);
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath({
+					"/outside/config.json": "secret",
+					[ROOT]: MemoryFileSystem.directory(),
+					"/root/sub": MemoryFileSystem.symlink("/outside"),
+				}),
+			),
+		),
+	);
+
+	it.effect("a link swapped in at a parent after planning is caught before the rename", () =>
+		Effect.gen(function* () {
+			assertRefused(yield* Effect.flip(AtomicFile.write(NESTED, "new", { confineTo: ROOT })));
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.readLink("/root/sub"), "/outside");
+			assert.strictEqual(volume.text("/outside/config.json"), "secret");
+			assert.deepStrictEqual(yield* tempsIn("/outside"), []);
+			assert.strictEqual(volume.text("/root/moved/config.json"), "old");
+			// The removal by path leads through the new link and finds nothing, so the temp stays in the moved directory.
+			assert.strictEqual((yield* tempsIn("/root/moved")).length, 1);
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath(
+					{ [NESTED]: "old", "/outside/config.json": "secret" },
+					{
+						faults: swapAfterTempOpen((fs) =>
+							Effect.andThen(fs.rename("/root/sub", "/root/moved"), fs.symlink("/outside", "/root/sub")),
+						),
+					},
+				),
+			),
+		),
+	);
+
+	it.effect("a link swapped in at a parent before the temp's open is caught by the check ahead of it", () => {
+		let tempOpens = 0;
+		return Effect.gen(function* () {
+			assertRefused(yield* Effect.flip(AtomicFile.write(NESTED, "new", { confineTo: ROOT })));
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(tempOpens, 0);
+			assert.strictEqual(volume.text("/outside/config.json"), "secret");
+			assert.deepStrictEqual(yield* tempsIn("/outside"), []);
+			assert.strictEqual(volume.text("/root/moved/config.json"), "old");
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath(
+					{ [NESTED]: "old", "/outside/config.json": "secret" },
+					{
+						// The access check is the last path call before the pre-open check.
+						faults: (base) => ({
+							access: (path, options) =>
+								Effect.andThen(
+									base.access(path, options),
+									Effect.andThen(base.rename("/root/sub", "/root/moved"), base.symlink("/outside", "/root/sub")),
+								),
+							open: (path, options) =>
+								path.includes(".effected-")
+									? Effect.andThen(
+											Effect.sync(() => {
+												tempOpens++;
+											}),
+											base.open(path, options),
+										)
+									: undefined,
+						}),
+					},
+				),
+			),
+		);
+	});
+
+	it.effect("a temp the open creates through a parent swapped in after the last check is removed on refusal", () =>
+		Effect.gen(function* () {
+			assertRefused(yield* Effect.flip(AtomicFile.write(NESTED, "new", { confineTo: ROOT })));
+			const volume = yield* MemoryFileSystem.Volume;
+			// The open followed the new link, so the temp landed outside the root; the refusal removes it there.
+			assert.deepStrictEqual(yield* tempsIn("/outside"), []);
+			assert.strictEqual(volume.text("/outside/config.json"), "secret");
+			assert.deepStrictEqual(yield* tempsIn("/root/moved"), []);
+			assert.strictEqual(volume.text("/root/moved/config.json"), "old");
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath(
+					{ [NESTED]: "old", "/outside/config.json": "secret" },
+					{
+						faults: (base) => ({
+							open: (path, options) =>
+								path.includes(".effected-")
+									? Effect.andThen(
+											Effect.andThen(base.rename("/root/sub", "/root/moved"), base.symlink("/outside", "/root/sub")),
+											base.open(path, options),
+										)
+									: undefined,
+						}),
+					},
+				),
+			),
+		),
+	);
+
+	it.effect("a link swapped in at the target after planning is caught before the rename", () =>
+		Effect.gen(function* () {
+			assertRefused(yield* Effect.flip(AtomicFile.write(NESTED, "new", { confineTo: ROOT })));
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.readLink(NESTED), ESCAPE);
+			assert.strictEqual(volume.text(ESCAPE), "secret");
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath(
+					{ [NESTED]: "old", [ESCAPE]: "secret" },
+					{ faults: swapAfterTempOpen((fs) => Effect.andThen(fs.remove(NESTED), fs.symlink(ESCAPE, NESTED))) },
+				),
+			),
+		),
+	);
+
+	it.effect("a link swapped in at the target between the chmod and the rename is caught", () =>
+		Effect.gen(function* () {
+			assertRefused(yield* Effect.flip(AtomicFile.write(NESTED, "new", { confineTo: ROOT })));
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.readLink(NESTED), ESCAPE);
+			assert.strictEqual(volume.text(ESCAPE), "secret");
+			// The directory did not move, so the refusal removes the temp.
+			assert.deepStrictEqual(yield* tempsIn("/root/sub"), []);
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath(
+					{ [NESTED]: "old", [ESCAPE]: "secret" },
+					{
+						faults: (base) => ({
+							chmod: (path, mode) =>
+								Effect.andThen(
+									base.chmod(path, mode),
+									Effect.andThen(base.remove(NESTED), base.symlink(ESCAPE, NESTED)),
+								),
+						}),
+					},
+				),
+			),
+		),
+	);
+
+	it.effect("a link swapped in above the root after planning is caught before the rename", () =>
+		Effect.gen(function* () {
+			assertRefused(yield* Effect.flip(AtomicFile.write("/top/root/config.json", "new", { confineTo: "/top/root" })));
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.text("/outside/root/config.json"), "secret");
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath(
+					{ "/top/root/config.json": "old", "/outside/root/config.json": "secret" },
+					{
+						faults: swapAfterTempOpen((fs) =>
+							Effect.andThen(fs.rename("/top", "/moved"), fs.symlink("/outside", "/top")),
+						),
+					},
+				),
+			),
+		),
+	);
+
+	for (const [label, target] of [
+		["a .. escape", "/root/../outside/secret.json"],
+		["an absolute path outside", ESCAPE],
+		["a sibling sharing the root's prefix", "/rootling/secret.json"],
+		["the root itself", ROOT],
+	] as const) {
+		it.effect(`${label} is refused and nothing is written`, () =>
+			Effect.gen(function* () {
+				assertRefused(yield* Effect.flip(AtomicFile.write(target, "new", { confineTo: ROOT })));
+				const volume = yield* MemoryFileSystem.Volume;
+				assert.strictEqual(volume.text(ESCAPE), "secret");
+				assert.deepStrictEqual(yield* tempsIn("/outside"), []);
+				assert.deepStrictEqual(yield* tempsIn("/rootling"), []);
+			}).pipe(
+				Effect.provide(
+					MemoryFileSystem.layerWithPath({
+						[ESCAPE]: "secret",
+						[ROOT]: MemoryFileSystem.directory(),
+						"/rootling": MemoryFileSystem.directory(),
+					}),
+				),
+			),
+		);
+	}
+
+	it.effect("an absent parent below the root fails NotFound and is not created", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(AtomicFile.write("/root/missing/config.json", "new", { confineTo: ROOT }));
+			assert.strictEqual(error.reason._tag, "NotFound");
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.isFalse(volume.has("/root/missing"));
+		}).pipe(Effect.provide(MemoryFileSystem.layerWithPath({ [ROOT]: MemoryFileSystem.directory() }))),
+	);
+
+	it.effect('links: "follow" with confineTo is a defect, and nothing is written', () =>
+		Effect.gen(function* () {
+			const exit = yield* Effect.exit(AtomicFile.write(NESTED, "new", { confineTo: ROOT, links: "follow" }));
+			assert.isTrue(Exit.isFailure(exit) && Exit.hasDies(exit) && !Exit.hasFails(exit));
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.text(NESTED), "old");
+		}).pipe(Effect.provide(MemoryFileSystem.layerWithPath({ [NESTED]: "old" }))),
+	);
+});

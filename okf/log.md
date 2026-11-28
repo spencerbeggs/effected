@@ -11,6 +11,15 @@
 * Updated A root workspace:* devDependency puts its whole closure into turbo's global hash
 * Updated CI's Run Tests step took 21 minutes, half of the file time in five files
 * Updated @effected/mcp-kit
+* Updated @effected/files
+* Updated @effected/markdown
+* Updated @effected/markdown frontmatter
+* Updated Error handling standards
+* Updated @effected/cli-kit
+* Updated @effected/shell
+* Updated @effected/plugin
+* Updated @effected/markdown
+* Updated @effected/markdown-lint
 
 ## 2026-11-27
 

@@ -3,11 +3,12 @@
 // new content and never a truncated file. A target the caller may not write is
 // refused first, as a plain write would. A symlinked target is followed by
 // default or replaced on request; a link realPath cannot follow is written
-// through directly when following. FileSystem and Path arrive through R; this
+// through directly when following. A confined write (confineTo) refuses a link
+// at the target or at any directory between the root and the target, and checks
+// again immediately before the rename. FileSystem and Path arrive through R; this
 // package owns no filesystem backend.
 
-import type { PlatformError } from "effect";
-import { Effect, FileSystem, Path, Random, Result } from "effect";
+import { Effect, FileSystem, Path, PlatformError, Random, Result } from "effect";
 
 /**
  * Options for {@link AtomicFile.write}.
@@ -39,6 +40,56 @@ export interface AtomicFileOptions {
 	 * Any other value is a defect.
 	 */
 	readonly links?: "follow" | "replace";
+	/**
+	 * A directory the write must stay inside. Unset, the write is not confined.
+	 *
+	 * @remarks
+	 * The root is trusted: it is resolved once with `realPath`, so a root that is
+	 * itself a link (or sits under one) is fine. The target, resolved against
+	 * the working directory, must lie strictly below the root as given or below
+	 * its real path, and the root itself is refused. Then every directory from
+	 * the root down to the target's directory must be a real directory, not a
+	 * symbolic link, and the target must not be a link either: under a confined
+	 * write a link at the target is refused unless `links` is `"replace"`, in
+	 * which case the link entry is replaced as {@link AtomicFileOptions.links}
+	 * describes. Passing `links: "follow"` with `confineTo` is a defect, since
+	 * following the link is what confinement refuses.
+	 *
+	 * The temp file is written in the target's real directory. The same checks
+	 * run again immediately before the temp is opened, before the `chmod` that
+	 * restores an existing mode (itself a path call), and once more immediately
+	 * before the rename: every directory below the root is still not a link, the
+	 * directory's `realPath` still equals the planned real path (so it is still
+	 * inside the root's real path), and the target has not become a link. Any
+	 * refusal fails a `PlatformError` whose reason is a `SystemError` tagged
+	 * `PermissionDenied`, with `module: "AtomicFile"` and `method: "write"`, so
+	 * an adopter's existing `mapError` keeps working and a confinement refusal
+	 * is told apart from the filesystem's own by its `module`.
+	 *
+	 * What it closes: a link at the target or at any parent below the root that
+	 * exists when the write starts, or is swapped in before the last check ahead
+	 * of the temp's `open`; and a rename through a link swapped in while the temp
+	 * is written. What it does not close: core `FileSystem` names files by path,
+	 * with no directory handle (`openat`/`renameat`), so each path call resolves
+	 * its parents afresh. A parent swapped for a link in the instant between the
+	 * check and the temp's `open` makes the open create the temp, with the full
+	 * content, at the link's destination, outside the root; the next check then
+	 * refuses. A swap in the instant between the last check and the `rename`
+	 * still lands the rename through the new link. Each window is a few system
+	 * calls wide, instead of the whole write.
+	 *
+	 * After a refusal the temp is removed by the same path it was created by.
+	 * When a parent was swapped before the `open`, that path still reaches the
+	 * temp at the link's destination, so the content does not stay outside the
+	 * root. When a parent was moved after the `open`, the path now leads through
+	 * the link instead, the removal finds nothing there (the name is random and
+	 * was created exclusively), and a `.effected-*.tmp` file remains in the
+	 * directory that was moved, still inside the root. A hard link at the target
+	 * is not a symbolic link and is replaced as usual. The root itself is not
+	 * re-resolved: a link swapped in above the root is caught only because the
+	 * directory's `realPath` stops matching.
+	 */
+	readonly confineTo?: string;
 }
 
 /**
@@ -91,11 +142,19 @@ export class AtomicFile {
 	 *   without atomicity.
 	 * - Windows can refuse the rename while a reader holds the file.
 	 *
+	 * Pass `{ confineTo: root }` to keep the write inside `root`: a symbolic link
+	 * at the target, or at any directory between `root` and the target, is
+	 * refused, and the check runs again before the temp is opened and immediately
+	 * before the rename. See {@link AtomicFileOptions.confineTo} for what that
+	 * does and does not close.
+	 *
 	 * @param target - The file to replace or create.
 	 * @param content - The complete new content.
-	 * @param options - How a symbolic link at `target` is treated.
+	 * @param options - How a symbolic link at `target` is treated, and the root a
+	 * confined write must stay inside.
 	 * @returns An `Effect` that completes once `target` holds `content`, or fails
-	 * with the `PlatformError` of the step that failed.
+	 * with the `PlatformError` of the step that failed, or of the confinement
+	 * check that refused it.
 	 */
 	static readonly write: (
 		target: string,
@@ -104,19 +163,36 @@ export class AtomicFile {
 	) => Effect.Effect<void, PlatformError.PlatformError, FileSystem.FileSystem | Path.Path> = Effect.fn(
 		"AtomicFile.write",
 	)(function* (target: string, content: string | Uint8Array, options?: AtomicFileOptions) {
-		const links = options?.links ?? "follow";
-		if (links !== "follow" && links !== "replace") {
+		const confineTo = options?.confineTo;
+		const given = options?.links;
+		if (given !== undefined && given !== "follow" && given !== "replace") {
 			return yield* Effect.die(
-				new Error(`AtomicFile.write: links must be "follow" or "replace", received ${JSON.stringify(links)}`),
+				new Error(`AtomicFile.write: links must be "follow" or "replace", received ${JSON.stringify(given)}`),
 			);
 		}
+		if (confineTo !== undefined && given === "follow") {
+			return yield* Effect.die(new Error('AtomicFile.write: links "follow" cannot be combined with confineTo'));
+		}
+		if (confineTo !== undefined && typeof confineTo !== "string") {
+			return yield* Effect.die(
+				new Error(`AtomicFile.write: confineTo must be a string, received ${JSON.stringify(confineTo)}`),
+			);
+		}
+		// Unset under confineTo, a link at the target is refused rather than followed or replaced.
+		const links = given ?? (confineTo === undefined ? "follow" : "refuse");
 		const fs = yield* FileSystem.FileSystem;
 		const path = yield* Path.Path;
 
 		const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content;
 
 		let final = target;
-		if (links === "follow") {
+		// Under confineTo, the check to repeat before each path call on the temp.
+		let verify: Effect.Effect<void, PlatformError.PlatformError> | undefined;
+		if (confineTo !== undefined) {
+			const plan = yield* planConfined(fs, path, target, confineTo, links === "replace");
+			final = plan.final;
+			verify = plan.verify;
+		} else if (links === "follow") {
 			// The rename must land on the file behind any symlinks, so the link survives. A link realPath cannot follow is
 			// written through, which leaves its resolution to the filesystem: Node's realpath applies link text lexically.
 			const real = yield* Effect.result(fs.realPath(target));
@@ -130,9 +206,9 @@ export class AtomicFile {
 		}
 
 		// The mode comes from the inode the rename replaces: the resolved file under "follow" (stat), the entry at the target
-		// itself under "replace" (lstat). A link being replaced is not a file whose mode or writability matters, so it
+		// itself otherwise (lstat). A link being replaced is not a file whose mode or writability matters, so it
 		// contributes neither, and the file it points to is never consulted.
-		const mode = yield* (links === "replace" ? fs.lstat(final) : fs.stat(final)).pipe(
+		const mode = yield* (links === "follow" ? fs.stat(final) : fs.lstat(final)).pipe(
 			Effect.map((info): number | undefined => (info.type === "SymbolicLink" ? undefined : info.mode & 0o7777)),
 			Effect.catch((error) => (error.reason._tag === "NotFound" ? Effect.succeed(undefined) : Effect.fail(error))),
 		);
@@ -143,9 +219,13 @@ export class AtomicFile {
 		const temp = path.join(path.dirname(final), `.effected-${suffix.toString(36)}.tmp`);
 
 		// The temp is ours to remove only once our open made it: `wx` failing means it is another writer's. Uninterruptible
-		// so an interrupt cannot land between the open and arming the cleanup, which would leak the temp.
+		// so an interrupt cannot land between the open and arming the cleanup, which would leak the temp. Under confineTo the
+		// checks run again before every path call that follows planning: the open, the chmod and the rename. A refusal after
+		// the open still removes the temp: its random name was created exclusively, so the path reaches our temp or nothing.
+		const confined = verify ?? Effect.void;
 		let opened = false;
 		yield* Effect.gen(function* () {
+			yield* confined;
 			yield* Effect.scoped(
 				Effect.gen(function* () {
 					const file = yield* fs.open(temp, mode === undefined ? { flag: "wx" } : { flag: "wx", mode }).pipe(
@@ -161,8 +241,78 @@ export class AtomicFile {
 				}),
 			);
 			// open's mode is subject to umask, so it can land narrower than the original.
-			if (mode !== undefined) yield* fs.chmod(temp, mode);
+			if (mode !== undefined) {
+				yield* confined;
+				yield* fs.chmod(temp, mode);
+			}
+			yield* confined;
 			yield* fs.rename(temp, final);
 		}).pipe(Effect.onError(() => (opened ? fs.remove(temp, { force: true }).pipe(Effect.ignore) : Effect.void)));
 	});
 }
+
+/** A confinement refusal: a `PermissionDenied` `PlatformError` from `AtomicFile.write` itself. */
+const refuse = (target: string, description: string): PlatformError.PlatformError =>
+	PlatformError.systemError({
+		_tag: "PermissionDenied",
+		module: "AtomicFile",
+		method: "write",
+		pathOrDescriptor: target,
+		description,
+	});
+
+/**
+ * Plans a confined write: the real final path and the check to repeat before each path call on the temp. The root is resolved once;
+ * every directory below it is walked with `lstat` (never followed), and the directory's `realPath` must equal the path
+ * built from the root's real path, which also catches a link swapped in above the root.
+ */
+const planConfined = Effect.fnUntraced(function* (
+	fs: FileSystem.FileSystem,
+	path: Path.Path,
+	target: string,
+	confineTo: string,
+	replaceLink: boolean,
+) {
+	const root = path.resolve(confineTo);
+	const realRoot = yield* fs.realPath(root);
+	const absolute = path.resolve(target);
+	const inside = (base: string): string | undefined => {
+		const relative = path.relative(base, absolute);
+		return relative === "" || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)
+			? undefined
+			: relative;
+	};
+	const relative = inside(root) ?? inside(realRoot);
+	if (relative === undefined) {
+		return yield* Effect.fail(refuse(target, `the target is not inside confineTo (${confineTo})`));
+	}
+	const segments = relative.split(path.sep);
+	const directories = segments.slice(0, -1).map((_, index) => path.join(realRoot, ...segments.slice(0, index + 1)));
+	const directory = path.join(realRoot, ...segments.slice(0, -1));
+	const final = path.join(realRoot, relative);
+
+	const check = Effect.gen(function* () {
+		for (const entry of directories) {
+			const info = yield* fs.lstat(entry);
+			if (info.type === "SymbolicLink") {
+				return yield* Effect.fail(refuse(target, `a directory below confineTo is a symbolic link (${entry})`));
+			}
+		}
+		const real = yield* fs.realPath(directory);
+		if (real !== directory) {
+			return yield* Effect.fail(
+				refuse(target, `the target's directory resolves to ${real}, not ${directory} inside confineTo`),
+			);
+		}
+		if (!replaceLink) {
+			const info = yield* Effect.result(fs.lstat(final));
+			if (Result.isFailure(info)) {
+				if (info.failure.reason._tag !== "NotFound") return yield* Effect.fail(info.failure);
+			} else if (info.success.type === "SymbolicLink") {
+				return yield* Effect.fail(refuse(target, "the target is a symbolic link"));
+			}
+		}
+	});
+	yield* check;
+	return { final, verify: check } as const;
+});

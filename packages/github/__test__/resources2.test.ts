@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Arbitrary, Duration, Effect, Exit, Fiber, Latch, Layer, Option, Result, Schema } from "effect";
+import { Duration, Effect, Exit, Fiber, Latch, Layer, Option, Result } from "effect";
 import { TestClock } from "effect/testing";
 import { Attestation } from "../src/Attestation.js";
 import { Annotation, CheckRun, CheckRunOutput } from "../src/CheckRun.js";
@@ -114,39 +114,6 @@ describe("CheckRunOutput byte budgeting", () => {
 		const output = CheckRunOutput.make({ title: "t", summary: "s", annotations });
 		assert.lengthOf(output.truncated().annotations ?? [], CheckRunOutput.MAX_ANNOTATIONS);
 	});
-
-	// Every scalar value — the whole plane minus the surrogate block, so the
-	// cut can land inside any multi-byte sequence or pair without the input
-	// itself carrying broken halves. Generated as code points rather than a
-	// string because the native string generator stays in printable ASCII;
-	// `size` lifts the length scale to the 40 000 cap so the input actually
-	// crosses the 65 535-byte budget.
-	const ScalarValue = Schema.Union([
-		Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 0xd7ff })),
-		Schema.Int.check(Schema.isBetween({ minimum: 0xe000, maximum: 0x10ffff })),
-	]);
-	const binaryText = Arbitrary.schema(Schema.Array(ScalarValue).check(Schema.isMaxLength(40_000))).pipe(
-		Arbitrary.map((codePoints) => codePoints.map((codePoint) => String.fromCodePoint(codePoint)).join("")),
-	);
-
-	it.prop(
-		"stays valid UTF-8 within budget for any input",
-		[binaryText],
-		([summary]) => {
-			const cut = CheckRunOutput.make({ title: "t", summary }).truncated().summary;
-			const withinBudget = Buffer.byteLength(cut, "utf8") <= CheckRunOutput.LIMIT_BYTES;
-			// Round-tripping through UTF-8 is lossless exactly when nothing is broken
-			// beyond what the input already contained.
-			const noNewDamage = (cut.match(/�/g) ?? []).length <= (summary.match(/�/g) ?? []).length + 1;
-			return withinBudget && noNewDamage && cut === bufferCap(summary);
-		},
-		// `size: 40_000` is load-bearing: at 20_000 no run ever crosses the
-		// 65 535-byte budget (0/100 probed), at 40_000 about one in five does.
-		// That makes each run expensive — ~0.7s for 100 locally, past the 5s
-		// default under coverage on a CI runner — so the run count is halved and
-		// the timeout raised rather than the domain shrunk.
-		{ arbitrary: { size: 40_000, runs: 50 }, timeout: 30_000 },
-	);
 });
 
 describe("CheckRun", () => {

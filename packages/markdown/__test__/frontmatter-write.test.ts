@@ -8,12 +8,8 @@
 // pinned per codec: yaml encodes `{}` to the flow mapping body `{}\n`
 // (deliberately not an empty body, which would round-trip as `null`), toml
 // encodes `{}` to the empty body (the mirror of its empty-capture decode
-// ruling), json encodes `{}` to `{}`.
-//
-// Property strings are newline-free for the same reason the decode-side
-// round-trip constrains them: a multi-line string could legally place a bare
-// fence-closer at column zero inside the block, which the capture scanner
-// rightly treats as the closing fence — fence semantics, not a codec defect.
+// ruling), json encodes `{}` to `{}`. The write round-trip properties are in
+// `frontmatter-write.property.test.ts`.
 
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Option, Schema } from "effect";
@@ -198,72 +194,5 @@ describe("MarkdownFrontmatter.setToString", () => {
 			});
 			assert.strictEqual(updated, '---json\n{\n  "title": "Hi",\n  "count": 1\n}\n---\n\nbody\n');
 		}),
-	);
-});
-
-describe("frontmatter write round-trip property", () => {
-	// Newline-free strings only — see the file header for why. The count stays
-	// in the 32-bit range every frontmatter codec represents exactly.
-	const Scalar = Schema.String.check(Schema.makeFilter((s) => !s.includes("\n") && !s.includes("\r")));
-	const MetaArb = Schema.Struct({
-		title: Scalar,
-		count: Schema.Int.check(Schema.isBetween({ minimum: -(2 ** 31), maximum: 2 ** 31 - 1 })),
-	});
-	const bodyDoc = "# Title\n\nsome *emphasis* text\n";
-
-	const insertRoundTrip = (codec: typeof YamlFrontmatter, data: { readonly title: string; readonly count: number }) =>
-		Effect.gen(function* () {
-			const document = yield* parseDoc(bodyDoc);
-			const updated = yield* MarkdownFrontmatter.setToString(Meta, codec)(document, data);
-			// The pre-existing content survives byte-identical.
-			assert.isTrue(updated.endsWith(`\n\n${bodyDoc}`));
-			const reparsed = yield* parseDoc(updated);
-			return yield* MarkdownFrontmatter.schema(Meta, codec)(reparsed);
-		});
-
-	it.effect.prop(
-		"yaml: set then re-parse then decode recovers the data",
-		[MetaArb],
-		([data]) =>
-			Effect.gen(function* () {
-				assert.deepStrictEqual(yield* insertRoundTrip(YamlFrontmatter, data), data);
-			}),
-		{ arbitrary: { runs: 60 } },
-	);
-
-	it.effect.prop(
-		"toml: set then re-parse then decode recovers the data",
-		[MetaArb],
-		([data]) =>
-			Effect.gen(function* () {
-				assert.deepStrictEqual(yield* insertRoundTrip(TomlFrontmatter, data), data);
-			}),
-		{ arbitrary: { runs: 60 } },
-	);
-
-	it.effect.prop(
-		"json: set then re-parse then decode recovers the data",
-		[MetaArb],
-		([data]) =>
-			Effect.gen(function* () {
-				assert.deepStrictEqual(yield* insertRoundTrip(JsonFrontmatter, data), data);
-			}),
-		{ arbitrary: { runs: 60 } },
-	);
-
-	const fenced = `---\ntitle: Old\ncount: 0\n---\n\n${bodyDoc}`;
-	it.effect.prop(
-		"yaml: replacing an existing block preserves the suffix byte-for-byte and recovers the data",
-		[MetaArb],
-		([data]) =>
-			Effect.gen(function* () {
-				const document = yield* parseDoc(fenced);
-				const updated = yield* MarkdownFrontmatter.setToString(Meta, YamlFrontmatter)(document, data);
-				assert.isTrue(updated.endsWith(`\n\n${bodyDoc}`));
-				const reparsed = yield* parseDoc(updated);
-				const result = yield* MarkdownFrontmatter.schema(Meta, YamlFrontmatter)(reparsed);
-				assert.deepStrictEqual(result, data);
-			}),
-		{ arbitrary: { runs: 60 } },
 	);
 });

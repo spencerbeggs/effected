@@ -203,6 +203,9 @@ const scalingShapes: ReadonlyArray<
 	["reads image labels naming one long definition", imagesNamingOneLongDefinition, MD052, { shortcut_syntax: true }],
 	["re-parses images nested in one label", imagesNestedInOneLabel, MD049, {}],
 	["reads images nested in one label", imagesNestedInOneLabel, MD052, { shortcut_syntax: true }],
+	// Each level is re-parsed with the label nested in it left out, read from the kit's image description (#1416).
+	["re-parses images nested in one another's labels", deeplyNestedImages, MD049, {}],
+	["reads images nested in one another's labels", deeplyNestedImages, MD052, { shortcut_syntax: true }],
 	["reads label starts closed in reverse", openersThenClosers, MD052, { shortcut_syntax: true }],
 	["checks fragments against repeated headings", repeatedHeadings, MD051, {}],
 	["reads a tall table's rows", tallTable, MD055, {}],
@@ -270,7 +273,7 @@ describe("hostile inputs", () => {
 		});
 	}
 
-	// Every level is still re-parsed in turn, so the cost grows with depth times the label (see the module concept).
+	// Past the stack: the readers walk the levels on worklists, not recursion.
 	for (const rule of [MD049, MD052]) {
 		it(`lints 4,000 images nested in one another's labels under ${rule.name} without throwing`, {
 			timeout: 60_000,

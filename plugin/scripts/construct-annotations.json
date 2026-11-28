@@ -278,7 +278,7 @@
 		"Confirm": "yes or no question screen with extra toggles",
 		"Doc": "build a report once as a document: tables, trees, lists, counts, diffs, callouts",
 		"DocView": "draw a document inside an ink tree, byte for byte like the static output",
-		"Fmt": "sanitize escapes, display width, truncate, durations, plural, did-you-mean suggestions, error text",
+		"Fmt": "sanitize escapes, display width, truncate, durations (compact or in words, \"2 hours 30 minutes\"), plural, did-you-mean suggestions, error text",
 		"GithubAnnotation": "format a GitHub Actions error or warning annotation for a file and line",
 		"Glyphs": "unicode or ascii status glyphs, spinner frames, tree segments, ascii under TERM=dumb",
 		"KeyHelp": "one-line key help footer from key tables, cut to the terminal width",

@@ -6,7 +6,9 @@
  * rename, so a crash leaves the old content or the new content and never a
  * truncated file. A symlinked target is followed by default or replaced on
  * request; when following, a link `realPath` cannot follow is the one
- * exception: it is written through directly. {@link AtomicDirectory.write}
+ * exception: it is written through directly. With `confineTo`, a link at the
+ * target or at any directory below the root is refused, checked again just
+ * before the rename. {@link AtomicDirectory.write}
  * replaces a whole on-disk directory by staging it in a sibling and renaming
  * it into place.
  *

@@ -17,13 +17,23 @@
 // labelled by the second. A failed `]` is data, so any later shim back to an
 // earlier start holds it and records nothing.
 
-import type { MarkdownNode } from "@effected/markdown";
+import type { Image, ImageReference, MarkdownNode } from "@effected/markdown";
 import { MarkdownDocument, MarkdownParseOptions } from "@effected/markdown";
 import { Result } from "effect";
 import type { LintContext } from "../LintContext.js";
 import { contentInContainers } from "./containers.js";
 import { paragraphBreaks } from "./directives.js";
-import { characterReference, inMathText, isReference, labelDefinitions, mathCheck } from "./inline.js";
+import type { NestedImage } from "./inline.js";
+import {
+	characterReference,
+	imageLabelEnd,
+	inMathText,
+	isReference,
+	labelDefinitions,
+	labelSource,
+	mathCheck,
+	nestedImages,
+} from "./inline.js";
 import { mathFlowLines } from "./math-flow.js";
 import { labelEnd } from "./math-text.js";
 import { perReading } from "./memo.js";
@@ -162,6 +172,8 @@ interface View {
 	readonly inMath: (offset: number) => boolean;
 	// Where a line's inline content starts, past its container prefix, for the line holding `offset`.
 	readonly contentStart: (offset: number) => number;
+	// For an image label's view, the images nested in the label, by the source offset of their label's `[`.
+	readonly nested?: ReadonlyMap<number, NestedImage>;
 }
 
 type ShimType = "shortcut" | "collapsed" | "full";
@@ -463,10 +475,19 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 			case "image":
 			case "imageReference": {
 				const label = events.open(view.toSource(start), true);
-				const close = labelEnd(text, start + 1, end);
+				// The kit's node: this one in the reading, or the one the label holding it names. A nested label's text
+				// is its own when the label holding it was read with it left out (see `labelSource`). The reading's own
+				// image ends its label where the kit's parse did, past any `]` in a code span in it.
+				const reading = view === documentView;
+				const close = reading ? imageLabelEnd(context, node as Image | ImageReference) : labelEnd(text, start + 1, end);
+				const open = view.toSource(start + 1);
+				const inner = view.nested?.get(open);
+				const original = reading ? node : inner?.node;
+				const nested = nestedImages(context, original);
+				const own = labelSource(context, open, inner?.close ?? view.toSource(close), nested);
 				record(view, node, start, end, close);
-				medium(view, node, start, end, close);
-				readAlt(view, events, start + 1, close);
+				medium(view, node, start, end, close, inner?.masked === true ? writtenLabel(own) : undefined);
+				readAlt(own, nested, events);
 				later(() => events.formed(label));
 				return;
 			}
@@ -505,11 +526,11 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 
 	// A link or image as MD054 reads it: an inline one's resource parsed from its source, a reference's label and
 	// reference as written.
-	const medium = (view: View, node: MarkdownNode, start: number, end: number, close: number): void => {
+	const medium = (view: View, node: MarkdownNode, start: number, end: number, close: number, own?: string): void => {
 		const image = node.type === "image" || node.type === "imageReference";
 		const from = view.toSource(start);
 		const to = view.toSource(end - 1) + 1;
-		const label = written(view, start + (image ? 2 : 1), close);
+		const label = own ?? written(view, start + (image ? 2 : 1), close);
 		const referenceType = (node as { readonly referenceType?: string }).referenceType;
 		if (referenceType === "full") {
 			media.push({ kind: "full", image, start: from, end: to, label, reference: written(view, close + 2, end - 1) });
@@ -537,21 +558,22 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 		});
 	};
 
+	// A masked image's label as written: the source from its first character to its last, as its own label's text
+	// reads them (see `labelSource`).
+	const writtenLabel = (own: { readonly text: string; readonly offsets: ReadonlyArray<number> }): string =>
+		own.text.length > 2 ? source.slice(own.offsets[1] as number, (own.offsets[own.text.length - 2] as number) + 1) : "";
+
 	// An image's label, re-parsed after its own `[` as a paragraph (the kit's image carries its alt as a string), with
-	// a stand-in for each definition its own brackets name (see `labelDefinitions`), its continuation lines' container
-	// prefixes left out.
-	const readAlt = (view: View, events: BlockEvents, open: number, close: number): void => {
-		let label = "";
-		const offsets: Array<number> = [view.toSource(open)];
-		for (let at = open + 1; at < close; at++) {
-			const char = view.text.charAt(at);
-			label += char;
-			offsets.push(view.toSource(at));
-			if (char === "\n" || (char === "\r" && view.text.charAt(at + 1) !== "\n")) {
-				const next = view.contentStart(at + 1);
-				if (next > at + 1) at = next - 1;
-			}
-		}
+	// a stand-in for each definition its own brackets name (see `labelDefinitions`): `own` is its text and offsets,
+	// its continuation lines' container prefixes and the labels of the images `nested` masks left out (see
+	// `labelSource`), so each level of a chain of nested images re-parses its own characters only.
+	const readAlt = (
+		own: { readonly text: string; readonly offsets: ReadonlyArray<number> },
+		nested: ReadonlyMap<number, NestedImage>,
+		events: BlockEvents,
+	): void => {
+		const label = own.text.slice(1, -1);
+		const { offsets } = own;
 		const text = `[${label}${labelDefinitions(label, context.document.definitions)}`;
 		const parsed = MarkdownDocument.parseResult(text, options);
 		if (!Result.isSuccess(parsed)) return;
@@ -562,6 +584,7 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 			toSource: (offset) => offsets[offset] ?? -1,
 			inMath,
 			contentStart: (offset) => offset,
+			nested,
 		};
 		const paragraph = childrenOf(document.root as MarkdownNode)[0];
 		if (paragraph === undefined) return;

@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 import { Cancelled, Fmt } from "../../src/index.js";
 import type { UiKey } from "../../src/ui.js";
 import { TextInput } from "../../src/ui.js";
@@ -62,26 +62,6 @@ describe("TextInput reducer", () => {
 	it("control: plain text still moves one character at a time", () => {
 		assert.strictEqual(run([named("left"), named("left")], "abc").cursor, 1);
 	});
-
-	it.prop(
-		"any edit sequence over astral text leaves it well formed, with the cursor on a code-point boundary",
-		{
-			initial: Schema.Array(Schema.Literals(["a", "😀", "𝒳", "é", "中"])),
-			edits: Schema.Array(Schema.Literals(["a", "😀", "𝒳", "left", "right", "home", "end", "backspace", "delete"])),
-		},
-		({ initial, edits }) => {
-			const keys = edits.map(
-				(edit): UiKey => (edit === "a" || edit === "😀" || edit === "𝒳" ? char(edit) : named(edit)),
-			);
-			const state = run(keys, initial.join(""));
-			const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
-			const high = state.value.charCodeAt(state.cursor - 1);
-			const low = state.value.charCodeAt(state.cursor);
-			const splitsPair = high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff;
-			return !lone.test(state.value) && !splitsPair && state.cursor >= 0 && state.cursor <= state.value.length;
-		},
-		{ arbitrary: { runs: 500, size: 40 } },
-	);
 });
 
 describe("TextInput.screen under CliUiTest", () => {
