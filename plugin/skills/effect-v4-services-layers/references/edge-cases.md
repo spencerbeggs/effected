@@ -21,8 +21,8 @@ package twice IS the diagnosis.
 
 **At runtime, identity is the id string, not the class** — `Context` is a map
 keyed by `key.key`, and `Context.Service` stores the id you passed verbatim
-(`self.key = key`, `Context.ts:261`; lookups go through `lookup(self,
-key.key)`, `Context.ts:962`). Two copies therefore carry the *same* runtime id
+(`self.key = key`, `Context.ts:262`; lookups go through `lookup(self,
+key.key)`, `Context.ts:1001`). Two copies therefore carry the *same* runtime id
 and do interoperate if a value ever crosses between them. That is why the split
 graph is a compile-time failure and a duplicated bundle can be silently
 benign — and it is what makes the bundle probe below work.

@@ -2,7 +2,7 @@
 	"repos": {
 		"effect": {
 			"url": "https://github.com/Effect-TS/effect.git",
-			"ref": "effect@4.1.6",
+			"ref": "effect@4.1.7",
 			"purpose": "Read-only Effect v4 source pinned to the tag matching the effect catalog — the authority on what v4 actually exports, plus the v3→v4 migration notes and the @effect/vitest reference implementation. Tracks the main Effect-TS/effect monorepo (v4 development moved back there on 2026-07-19 when the effect-smol repo was archived); vendored at .repos/effect since the 2026-07-24 rename, matching the path a consuming repo would use.",
 			"sparse": [
 				"packages/effect",
@@ -22,12 +22,6 @@
 				"startHere": "packages/effect/src settles what v4 actually exports (evidence-ladder rung 2); migration/*.md settles v3→v4 renames (rung 1). Before trusting an answer, check the pin matches the installed effect version — node_modules wins on disagreement."
 			},
 			"notes": [
-				{
-					"id": "n-c0e4",
-					"date": "2026-10-11",
-					"ref": "effect@4.0.3",
-					"note": "4.0.2→4.0.3 advance (2026-10-11): zero kit TYPE breaks (forced workspace typecheck clean), but core published a day after its satellites (Effect-TS/effect#8994) and the kit now guards that permanently: pnpm-plugin-effect derives graph-wide `\"<name>@^4.0.0\": \"<catalog version>\"` overrides from the catalog via rolldown-pnpm-config's overridesFromCatalogs, so a missing core fails every consumer install loudly instead of pairing at import time. Kit changes the release forced or enabled: FileSystem File.read/readAlloc take { position?: bigint } and FileSystem.open takes noFollow (memfs implements both; the ReadOptions interface is tagged @since 4.1.0 in the 4.0.3 source yet already present); Stdio.stderrIsTerminal exists on the interface but the real TTY detection lives in @effect/platform-node-shared's NodeStdio.layer, Stdio.make defaults it to false (env TerminalEnv now reads it; the process.stderr.isTTY option is an override only); Prompt.Theme carries colors: boolean read by the wizard, filled by Ansi.detectColors() = stdout.isTTY && !NO_COLOR, which ignores FORCE_COLOR/TERM=dumb/agent audience, so cli's promptTheme sets it from the kit's own decision; Esc-cancels-a-prompt is NOT in 4.0.3 despite release notes suggesting it (zero escape handling in cli/Prompt.ts); Crypto.randomUUIDv4/v7 are now calls with optional { format: \"hex\" | \"bytes\" }; Schema.Int emits safe-integer min/max in JSON Schema (composed bounds via allOf, consumers with published schemas will see DRIFT); SchemaError toJSON/inspect is compact { _tag, message }; TestCrypto.layer(seed) requires a base Crypto and keeps its digest; CliOutput.displayWidth disagrees with the kit's oracle on OSC-8 links and 8k astral code points, so cli keeps its own table. The Node FileSystem/Stdio implementations are still not vendored (sparse tree) — read @effect/platform-node-shared under node_modules."
-				},
 				{
 					"id": "n-092b",
 					"date": "2026-10-19",
@@ -81,6 +75,12 @@
 					"date": "2026-11-26",
 					"ref": "effect@4.1.6",
 					"note": "4.1.5→4.1.6 advance (2026-11-26, feat/effect-4.1.6): patch, one kit TYPE break, one kit test break, no src workaround dropped. (1) TYPE, @effected/jwt: JoseError gained CryptoFailed (a non-InvalidKey CryptoError from a backend: core's jose/internal/compact.ts cryptoFailure used to map every backend failure to InvalidKey), so toJwtError's exhaustive switch hit TS2366; mapped to JwtError reason \"key\" (unchanged routing; message now carries \"(module.method: reason)\"), pinned by a fault-injected Signature.verify in Jws.test.ts with a mutation control. (2) UNANNOUNCED in the changelog headline: platform-node-shared NodeStdio now pauses process.stdin when its last Stdio.stdin consumer stops (nextTick after the readable listener is removed), so a runMain program that only read NodeStdio's stdin drains with stdin open (probed 4.1.5 sits until EOF, 4.1.6 exits at once). LspStdio.teardown's explicit host exit STAYS: any handle the server does not own (vscode-languageserver's --clientProcessId interval, a raw process.stdin listener) still holds the loop; the lsp control now holds an interval (--hold-handle) and a new test pins the drain. (3) Stream.merge / Channel.merge start both sides at once (#10857): a merged fromPubSub is subscribed when CliUi.live returns; buffer and a concurrent flatMap still subscribe late (probed all four shapes both versions); cli-kit test repointed at buffer plus a merge test. (4) effect/sql Migrator runs id 0 on a fresh DB (latest is now Option, not 0); Store keeps its positive-integer rule, docs reworded; adoption's gap rule (Migrator never runs an id ≤ its latest) still holds. (5) Built-in schemas/checks lost annotations.toCode (moved into internal/schema/schemaCodegenBuiltIns.ts); Codegen output byte-identical (probed). Not bugs: packed-install bun leg failing with ERR_MODULE_NOT_FOUND typescript predates this advance (failing since 2026-11-24, local-only, CI skips bun)."
+				},
+				{
+					"id": "n-8851",
+					"date": "2026-11-28",
+					"ref": "effect@4.1.7",
+					"note": "4.1.6→4.1.7 advance (2026-11-28, feat/effect-4.1.7): patch, zero kit source or type breaks (build 55/55 clean), one kit TEST break, no workaround dropped (the kit cites no open upstream issue). (1) BEHAVIOURAL, @effected/mcp-kit: McpServer.registerToolkit now passes a HANDLER's own McpSchema.InvalidParams through as invalid input (#10942), so on 2025-06-18 it answers JSON-RPC -32602 instead of an isError result; later revisions unchanged; probed on both versions via core McpServer.toolkit and McpToolkit.layer; McpToolkitUnion test + TSDoc + CLAUDE.md + mcp-kit concept + effect-v4-mcp skill updated, ledger 0025. (2) NOT A BREAK: registerToolkit no longer decodes the generated input schema up front; a zero-key Schema.Struct or a top-level Union still dies at registration with the same 'cannot register tool' message, now raised after McpTool construction fails (McpServer.ts:3490-3492); skill citation re-pointed. LOOKED LIKE BUGS BUT ARE NOT: ConfigLoader.reload 'leaves it absent when no effect resolves' fails only under the vitest-agent MCP server (its process carries NODE_PATH into another repo's node_modules, which jiti honours); packed-install e2e's bun consumer missing typescript fails identically on 4.1.6 (local bun 1.4.2). Tracer.ParentSpan/Tracer dropped fiberCached but the option stays public."
 				}
 			]
 		},

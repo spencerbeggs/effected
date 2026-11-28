@@ -85,7 +85,7 @@ details from `McpSchema.McpRequestContext` instead. Four consequences:
   which writes through `console.log` whatever `LogToStderr` says (`effect`'s
   `src/Logger.ts:286-292` is `withConsoleLog`; `consoleLogFmt` is `:968`,
   `consoleStructured` `:994` and `consoleJson` `:1018`; the default logger reads
-  the reference at `src/internal/effect.ts:6946`). Never install them in an MCP server: every log
+  the reference at `src/internal/effect.ts:6975`). Never install them in an MCP server: every log
   line lands on stdout, the wire. For JSON logs on stderr, install
   `Logger.layer([Logger.withConsoleError(Logger.formatJson)])`.
 - A malformed `protocols` list — more than one stateless adapter — is the

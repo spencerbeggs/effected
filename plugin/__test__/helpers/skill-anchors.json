@@ -644,10 +644,10 @@
 		},
 		{
 			"file": "effect-v4-testing/references/false-greens.md",
-			"anchor": "internal/effect.ts:3470",
+			"anchor": "internal/effect.ts:3485",
 			"source": "effect:internal/effect.ts",
 			"symbols": {
-				"3470": "const level = fiber.getRef(UnhandledLogLevel)"
+				"3485": "const level = fiber.getRef(UnhandledLogLevel)"
 			}
 		},
 		{
@@ -715,11 +715,11 @@
 		},
 		{
 			"file": "effect-v4-mcp/references/resources.md",
-			"anchor": "ai/McpServer.ts:4367-4382",
+			"anchor": "ai/McpServer.ts:4437-4452",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"4367": "const resolveResourceContent = (",
-				"4382": "^}$"
+				"4437": "const resolveResourceContent = (",
+				"4452": "^}$"
 			}
 		},
 		{
@@ -774,20 +774,20 @@
 		},
 		{
 			"file": "effect-v4-mcp/references/server-wiring.md",
-			"anchor": "src/internal/effect.ts:6946",
+			"anchor": "src/internal/effect.ts:6975",
 			"source": "effect:internal/effect.ts",
 			"symbols": {
-				"6946": "const log = fiber.getRef(LogToStderr) ? console.error : console.log"
+				"6975": "const log = fiber.getRef(LogToStderr) ? console.error : console.log"
 			},
 			"after": "export const defaultLogger = loggerMake"
 		},
 		{
 			"file": "effect-v4-mcp/references/tools.md",
-			"anchor": "ai/McpServer.ts:3437-3451",
+			"anchor": "ai/McpServer.ts:3490-3492",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"3437": "const inputSchema = yield* Schema.decodeUnknownEffect(ToolJson)(",
-				"3451": "const mcpTool = new McpTool({"
+				"3490": "yield* Effect.catch(Schema.decodeUnknownEffect(ToolJson)(inputSchema), (cause) =>",
+				"3492": "`McpServer cannot register tool '${tool.name}': its parameters must encode to a JSON Schema with an ` +"
 			},
 			"occurrences": 2
 		},
@@ -833,37 +833,37 @@
 		},
 		{
 			"file": "effect-v4-mcp/references/tools.md",
-			"anchor": "ai/McpServer.ts:3384-3387",
+			"anchor": "ai/McpServer.ts:3404-3407",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"3384": "const decodeOptions: SchemaAST.ParseOptions = {",
-				"3385": "onExcessProperty: strict ? \"error\" : \"ignore\"",
-				"3387": "^    }$"
+				"3404": "const decodeOptions: SchemaAST.ParseOptions = {",
+				"3405": "onExcessProperty: strict ? \"error\" : \"ignore\"",
+				"3407": "^    }$"
 			}
 		},
 		{
 			"file": "effect-v4-mcp/references/tools.md",
-			"anchor": "ai/McpServer.ts:3472",
+			"anchor": "ai/McpServer.ts:3503",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"3472": "built.handle(tool.name as keyof Tools, payload ?? {}, undefined, decodeOptions)"
+				"3503": "built.handle(tool.name as keyof Tools, payload ?? {}, undefined, decodeOptions)"
 			}
 		},
 		{
 			"file": "effect-v4-mcp/references/tools.md",
-			"anchor": "ai/McpServer.ts:3408-3411",
+			"anchor": "ai/McpServer.ts:3428-3431",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"3408": "const declaredFailureResult = (error: unknown) =>",
-				"3411": ": Effect.map(encodeFailure(error), failureResult)"
+				"3428": "const declaredFailureResult = (error: unknown) =>",
+				"3431": ": Effect.map(encodeFailure(error), failureResult)"
 			}
 		},
 		{
 			"file": "effected-packages/references/mcp-kit.md",
-			"anchor": "McpServer.ts:3472",
+			"anchor": "McpServer.ts:3503",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"3472": "built.handle(tool.name as keyof Tools, payload ?? {}, undefined, decodeOptions)"
+				"3503": "built.handle(tool.name as keyof Tools, payload ?? {}, undefined, decodeOptions)"
 			}
 		},
 		{
@@ -1086,35 +1086,35 @@
 		},
 		{
 			"file": "effect-v4-source-lookup/references/when-rungs-lie.md",
-			"anchor": "Config.ts:1178",
+			"anchor": "Config.ts:1181",
 			"source": "effect:Config.ts",
 			"symbols": {
-				"1178": "export function Array<"
+				"1181": "export function Array<"
 			},
 			"after": "const config = Config.Array(Schema.String, \"EXPORTERS\")"
 		},
 		{
 			"file": "effect-v4-source-lookup/references/when-rungs-lie.md",
-			"anchor": "Context.ts:68",
+			"anchor": "Context.ts:69",
 			"source": "effect:Context.ts",
 			"symbols": {
-				"68": "export interface Key<out Identifier, out Shape> extends Effect<Shape, never, Identifier>"
+				"69": "export interface Key<out Identifier, out Shape> extends Effect<Shape, never, Identifier>"
 			}
 		},
 		{
 			"file": "effect-v4-source-lookup/references/when-rungs-lie.md",
-			"anchor": "$SRC/packages/effect/src/Context.ts:68",
+			"anchor": "$SRC/packages/effect/src/Context.ts:69",
 			"source": "effect:Context.ts",
 			"symbols": {
-				"68": "export interface Key<out Identifier, out Shape> extends Effect<Shape, never, Identifier>"
+				"69": "export interface Key<out Identifier, out Shape> extends Effect<Shape, never, Identifier>"
 			}
 		},
 		{
 			"file": "effect-v4-source-lookup/references/when-rungs-lie.md",
-			"anchor": "$EFFECT_SRC/Context.ts:68",
+			"anchor": "$EFFECT_SRC/Context.ts:69",
 			"source": "effect:Context.ts",
 			"symbols": {
-				"68": "export interface Key<out Identifier, out Shape> extends Effect<Shape, never, Identifier>"
+				"69": "export interface Key<out Identifier, out Shape> extends Effect<Shape, never, Identifier>"
 			}
 		},
 		{
@@ -1487,10 +1487,10 @@
 		},
 		{
 			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "Config.ts:867",
+			"anchor": "Config.ts:870",
 			"source": "effect:Config.ts",
 			"symbols": {
-				"867": "export function schema<T>("
+				"870": "export function schema<T>("
 			}
 		},
 		{
@@ -1930,26 +1930,26 @@
 		},
 		{
 			"file": "effect-v4-services-layers/SKILL.md",
-			"anchor": "Context.ts:68",
+			"anchor": "Context.ts:69",
 			"source": "effect:Context.ts",
 			"symbols": {
-				"68": "export interface Key<out Identifier, out Shape> extends Effect<Shape, never, Identifier>"
+				"69": "export interface Key<out Identifier, out Shape> extends Effect<Shape, never, Identifier>"
 			}
 		},
 		{
 			"file": "effect-v4-services-layers/references/edge-cases.md",
-			"anchor": "Context.ts:261",
+			"anchor": "Context.ts:262",
 			"source": "effect:Context.ts",
 			"symbols": {
-				"261": "self.key = key"
+				"262": "self.key = key"
 			}
 		},
 		{
 			"file": "effect-v4-services-layers/references/edge-cases.md",
-			"anchor": "Context.ts:962",
+			"anchor": "Context.ts:1001",
 			"source": "effect:Context.ts",
 			"symbols": {
-				"962": "const value = lookup(self, key.key)"
+				"1001": "const value = lookup(self, key.key)"
 			}
 		},
 		{
@@ -2089,18 +2089,18 @@
 		},
 		{
 			"file": "effect-v4-idioms/references/config-inputs.md",
-			"anchor": "Config.ts:867",
+			"anchor": "Config.ts:870",
 			"source": "effect:Config.ts",
 			"symbols": {
-				"867": "export function schema<T>("
+				"870": "export function schema<T>("
 			}
 		},
 		{
 			"file": "effect-v4-idioms/references/config-inputs.md",
-			"anchor": "Config.ts:506",
+			"anchor": "Config.ts:509",
 			"source": "effect:Config.ts",
 			"symbols": {
-				"506": "Result.isFailure(resolution) ? Result.succeed(defaultValue) : resolution"
+				"509": "Result.isFailure(resolution) ? Result.succeed(defaultValue) : resolution"
 			}
 		},
 		{
@@ -2207,19 +2207,19 @@
 		},
 		{
 			"file": "effect-v4-idioms/references/yieldable-and-bridges.md",
-			"anchor": "Config.ts:113",
+			"anchor": "Config.ts:116",
 			"source": "effect:Config.ts",
 			"symbols": {
-				"113": "export interface Config<out T> extends Effect.Effect<T, ConfigError>"
+				"116": "export interface Config<out T> extends Effect.Effect<T, ConfigError>"
 			},
 			"occurrences": 2
 		},
 		{
 			"file": "effect-v4-idioms/references/yieldable-and-bridges.md",
-			"anchor": "internal/effect.ts:727",
+			"anchor": "internal/effect.ts:739",
 			"source": "effect:internal/effect.ts",
 			"symbols": {
-				"727": "if (!hasProperty(current, evaluate))"
+				"739": "if (!hasProperty(current, evaluate))"
 			}
 		},
 		{
@@ -2378,26 +2378,26 @@
 		},
 		{
 			"file": "effect-v4-services-layers/references/service-shape-types.md",
-			"anchor": "Context.ts:420",
+			"anchor": "Context.ts:423",
 			"source": "effect:Context.ts",
 			"symbols": {
-				"420": "export type Shape<T> = T extends Key<infer _I, infer S> ? S : never"
+				"423": "export type Shape<T> = T extends Key<infer _I, infer S> ? S : never"
 			}
 		},
 		{
 			"file": "effect-v4-services-layers/references/service-shape-types.md",
-			"anchor": "Context.ts:70",
+			"anchor": "Context.ts:71",
 			"source": "effect:Context.ts",
 			"symbols": {
-				"70": "readonly Service: Shape"
+				"71": "readonly Service: Shape"
 			}
 		},
 		{
 			"file": "effect-v4-services-layers/references/service-shape-types.md",
-			"anchor": "Context.ts:151",
+			"anchor": "Context.ts:152",
 			"source": "effect:Context.ts",
 			"symbols": {
-				"151": "export interface Shape<Identifier extends string, Service>"
+				"152": "export interface Shape<Identifier extends string, Service>"
 			}
 		},
 		{

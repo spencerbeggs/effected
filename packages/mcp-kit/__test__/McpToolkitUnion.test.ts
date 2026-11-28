@@ -208,21 +208,34 @@ describe("McpToolkit.unionTool", () => {
 			);
 		});
 
-		it.effect(`${version}, under core's McpServer.toolkit: still strict, but a declared isError`, () =>
+		// Core reports a handler's InvalidParams as invalid input, as it does a parameter failure: -32602 on
+		// 2025-06-18 and an isError result on the later revisions, the same answer McpToolkit.layer gives.
+		it.effect(`${version}, under core's McpServer.toolkit: still strict, answered as invalid params`, () =>
 			Effect.gen(function* () {
 				const harness = yield* McpHarness.make(coreServer, { protocol });
 				yield* harness.initialize;
-				const response = yield* harness.callTool("note", { action: "record", content: "hi", extra: 1 });
-				assert.isUndefined(response.error);
-				const result = response.result as ToolResult;
-				assert.isTrue(result.isError);
+				const report =
+					"Invalid parameters for tool 'note': Expected no excess property\n  at [\"extra\"]\nAccepted params at the root: action, content, citations.";
+				const textOf = (response: { readonly result?: unknown; readonly error?: unknown }): string => {
+					if (version === "2025-06-18") {
+						assert.isUndefined(response.result);
+						const error = response.error as { readonly code: number; readonly message: string };
+						assert.strictEqual(error.code, -32602);
+						return error.message;
+					}
+					assert.isUndefined(response.error);
+					const result = response.result as ToolResult;
+					assert.isTrue(result.isError);
+					return result.content[0]?.text ?? "";
+				};
 				assert.strictEqual(
-					result.content[0]?.text,
-					"Invalid parameters for tool 'note': Expected no excess property\n  at [\"extra\"]\nAccepted params at the root: action, content, citations.",
+					textOf(yield* harness.callTool("note", { action: "record", content: "hi", extra: 1 })),
+					report,
 				);
-				const badValue = (yield* harness.callTool("note", { action: "record", content: 42 })).result as ToolResult;
-				assert.isTrue(badValue.isError);
-				assert.include(badValue.content[0]?.text ?? "", "Invalid parameters for tool 'note':");
+				assert.include(
+					textOf(yield* harness.callTool("note", { action: "record", content: 42 })),
+					"Invalid parameters for tool 'note':",
+				);
 				assert.deepStrictEqual(
 					((yield* harness.callTool("note", { action: "list", limit: 3 })).result as ToolResult).structuredContent,
 					{ kind: "listed", limit: 3 },

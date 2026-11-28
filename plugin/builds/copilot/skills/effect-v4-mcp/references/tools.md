@@ -60,10 +60,11 @@ it dies the server layer at build time — before any client ever calls it —
 with `McpServer cannot register tool '…': its parameters must encode to a
 JSON Schema with an object root (type: "object"), such as a Schema.Struct.
 Use Tool.EmptyParams for a tool without parameters.`, followed by
-`Missing key at ["type"]`: `McpServer`'s own registration path decodes the
-JSON Schema it generates for a tool's parameters against a fixed shape
-(`ToolJson`) and dies on failure, and a zero-key struct produces a shape
-that decode rejects (`ai/McpServer.ts:3437-3451`, the same die that kills
+`Missing key at ["type"]`: `McpServer`'s own registration path builds the tool's descriptor from
+the JSON Schema it generates for its parameters, and when that schema has
+no object root it decodes it against a fixed shape (`ToolJson`) to name the
+tool, then dies; a zero-key struct produces such a shape
+(`ai/McpServer.ts:3490-3492`, the same die that kills
 the server on a top-level union parameter — see
 [Failures on the wire](#failures-on-the-wire)). This is a **registration-time defect**, not a
 runtime rejection by a client's own schema validator — the server never
@@ -91,7 +92,7 @@ own is the tool boundary blurring into the engine it should be calling.
 
 A tool annotated `Tool.Strict` true is served with `additionalProperties:
 false` on every object node and decoded with `onExcessProperty: "error"`
-and `errors: "all"` (`ai/McpServer.ts:3384-3387`). Core's report is
+and `errors: "all"` (`ai/McpServer.ts:3404-3407`). Core's report is
 complete: one `InvalidParams` names every excess key at every depth
 together with every missing or invalid field, so an agent fixes the whole
 call in one round trip.
@@ -182,7 +183,7 @@ default re-annotates it. If a test pins the served schema's
 
 `ToolInputSchema.unknownKeys`/`formatUnknownKeys` are for a **`Tool.dynamic`**
 tool's own handler only — core decodes a `Tool.make` tool's payload
-*before* the handler ever runs (`ai/McpServer.ts:3472`), so by the
+*before* the handler ever runs (`ai/McpServer.ts:3503`), so by the
 time a `Tool.make` handler executes, an excess key has already been dropped
 or rejected; there is nothing left for the handler to check. A `Tool.dynamic`
 tool's raw JSON Schema is never decoded that way, so its handler is the only
@@ -225,10 +226,13 @@ A **declared** failure is different, and this is the fact `ToolFailure`
 exists to work around: when the failure is an `Error` instance — every
 `Schema.TaggedError` is — core sends `isError: true` with `error.message` as
 the **only** text, and no `structuredContent` at all
-(`ai/McpServer.ts:3408-3411`). Only a failure whose `message` is empty, or
+(`ai/McpServer.ts:3428-3431`). Only a failure whose `message` is empty, or
 that is no `Error` instance, is sent as its JSON-encoded value instead.
-Whatever is not folded into `message` when the error is constructed never
-reaches the agent:
+A handler that fails with `McpSchema.InvalidParams` is the exception: core
+answers it as invalid input, not as a declared failure, so it is JSON-RPC
+`-32602` on `2025-06-18` and an `isError` result on the later revisions, the
+same answer a bad-parameter decode gets. Whatever is not folded into
+`message` when the error is constructed never reaches the agent:
 
 ~~~ts
 import { McpStdio, McpToolkit, ToolFailure } from "@effected/mcp-kit"
@@ -361,7 +365,7 @@ A top-level `Schema.Union` `parameters` schema dies the server at
 **registration**, the same way `Schema.Struct({})` does: `Tool.make`'s
 `parameters` has to resolve to an object schema for MCP's tool-JSON
 encoding, and the registration path's decode
-(`ai/McpServer.ts:3437-3451`) dies with a message naming the tool and
+(`ai/McpServer.ts:3490-3492`) dies with a message naming the tool and
 the object-root requirement, killing the server layer while it is still
 building — a stdio server never even starts reading stdin, and a
 server exposed some other way never finishes coming up either. Design the
@@ -378,7 +382,7 @@ excess, missing and invalid field of that member, followed by the same
 `Accepted params at <path>: …` lines. `unionHandler` runs the
 same decode itself, so a handler called directly from a test, or
 registered through core's `McpServer.toolkit`, fails with the identical
-message (a declared `isError` there). Its `unknownKeyMessage` option is
+message, answered as invalid params there too. Its `unknownKeyMessage` option is
 deprecated and ignored. For a hand-written `Tool.dynamic` whose raw
 JSON Schema is a union, rewrite it with `ToolInputSchema.objectRooted`
 before registering.

@@ -20,11 +20,11 @@ function makeOther(dir: string): (typeof RegistryResolver)["Service"] { ... }
 ```
 
 `Context.Service.Shape<T>` is `T extends Key<infer _I, infer S> ? S : never`
-(`Context.ts:420`), and it sits in a namespace whose own doc example is titled
+(`Context.ts:423`), and it sits in a namespace whose own doc example is titled
 "Extracting service types" — core states this as the way to name a service's
 shape, so **prefer it**. The indexed form works for the same reason it reads
 well: `Context.Key<Identifier, Shape>` carries `readonly Service: Shape` as a
-real property (`Context.ts:70`), so `(typeof Tag)["Service"]` is an ordinary
+real property (`Context.ts:71`), so `(typeof Tag)["Service"]` is an ordinary
 lookup rather than a trick. The sibling `Context.Service.Identifier<T>` extracts
 the `R`-channel identifier the same way.
 
@@ -39,7 +39,7 @@ function makeWorkspaceResolver(dir: string): RegistryResolver { ... }
 ```
 
 A class-form key's instance type is `ServiceClass.Shape<Identifier, Shape>`
-(`Context.ts:151`), a three-member wrapper — the `ServiceTypeId` brand, `key`,
+(`Context.ts:152`), a three-member wrapper — the `ServiceTypeId` brand, `key`,
 and a `Service` member holding the real shape. The interface you want is nested
 one level inside it, which is exactly what both spellings above unwrap.
 
