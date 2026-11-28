@@ -25,10 +25,10 @@ sources:
     resource: ../../packages/store/__test__/StoreLifecycle.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-28T03:28:28Z
+  at: 2026-11-28T03:36:18Z
 x-okfit-integrity:
   generated:
-    body: e1e3e2e5c76b96d9
+    body: b9fa917f9be1b04b
 ---
 
 # Error handling standards
@@ -263,9 +263,9 @@ function object as `Fmt.causeMessage` and carries no copy of its own (see
 [^effect-try]: `.repos/effect/packages/effect/src/Effect.ts` — `try_`,
     exported as `try`: the bare-thunk overload fails with
     `Cause.UnknownError`; the `{ try, catch }` overload gives `Effect<A, E>`.
-[^effect-catch-tag]: `.repos/effect/packages/effect/src/Effect.ts:2911` —
-    `catchTag`'s `const K extends Tags<E> | Arr.NonEmptyReadonlyArray<Tags<E>>`;
-    `Effect.ts:3020-3021` — `catchTags`' `Cases` maps each key outside
+[^effect-catch-tag]: `.repos/effect/packages/effect/src/Effect.ts` —
+    `catchTag`'s `const K extends Tags<E> | Arr.NonEmptyReadonlyArray<Tags<E>>`
+    constraint; `catchTags`' `Cases` maps each key outside
     `Extract<E, { _tag: string }>["_tag"]` to `never`.
 [^result-try]: `.repos/effect/packages/effect/src/Result.ts` — `try_`,
     exported as `try`, the synchronous `Result` equivalent.
