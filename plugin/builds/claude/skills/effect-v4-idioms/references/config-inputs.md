@@ -18,7 +18,7 @@ will "prove" that it is.
 
 ## A structured input is `Config.schema`
 
-A structured input is `Config.schema(codec, "NAME")` (`Config.ts:867`), and a
+A structured input is `Config.schema(codec, "NAME")` (`Config.ts:870`), and a
 JSON-string input is `Config.schema(Schema.fromJsonString(S), "NAME")` — not
 `Config.String` + `JSON.parse` + `decodeUnknown*`, which re-derives the codec by
 hand and puts a throwing host call in the seam.
@@ -26,7 +26,7 @@ hand and puts a throwing host call in the seam.
 ## `withDefault` covers absent data only
 
 `withDefault` replaces an `Absent` resolution and leaves every other error in
-the channel (`Config.ts:506`). Probed under `ConfigProvider.fromEnv` with:
+the channel (`Config.ts:509`). Probed under `ConfigProvider.fromEnv` with:
 
 ```ts
 Config.schema(Schema.fromJsonString(Struct({ a: Number })), "INPUT_PAYLOAD")

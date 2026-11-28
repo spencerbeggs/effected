@@ -24,7 +24,7 @@ that died, proving the harness could observe a failure to yield at all:
 | Value | `yield*` inside `Effect.gen` |
 | --- | --- |
 | `Effect` | works |
-| `Config` | works — it **is** an `Effect` (`Config<T> extends Effect<T, ConfigError>`, `Config.ts:113`) |
+| `Config` | works — it **is** an `Effect` (`Config<T> extends Effect<T, ConfigError>`, `Config.ts:116`) |
 | any `Context.Service` | works |
 | `Option` | **dies as a defect** |
 | `Result` | **dies as a defect** |
@@ -38,7 +38,7 @@ Result.succeed(42)` dies
 `Effect.succeed` control that returned normally. Note the **success**
 cases die too: this is not "errors need a bridge", it is "these are not Effects
 at all". Their `[Symbol.iterator]` yields the value itself, and the fiber loop
-rejects anything carrying no `evaluate` (`internal/effect.ts:727`).
+rejects anything carrying no `evaluate` (`internal/effect.ts:739`).
 
 ## The bridges
 
@@ -86,7 +86,7 @@ const r = yield* Fiber.join(fiber)     // NOT yield* fiber  (Fiber is not an Eff
 
 ## `Config` needs no bridge
 
-`Config<T>` extends `Effect<T, ConfigError>` (`Config.ts:113`), so it pipes
+`Config<T>` extends `Effect<T, ConfigError>` (`Config.ts:116`), so it pipes
 straight into the combinators, and there is no `Effect.fromConfig` to reach
 for:
 

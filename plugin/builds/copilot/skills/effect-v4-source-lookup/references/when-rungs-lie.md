@@ -66,7 +66,7 @@ nothing. The confirmed occurrences of this pattern (vendored-tree lines) —
 `Array`, `Record`, `Map`, `Set`, `Error`, `Date`, `Number`, `String`, `Object`,
 `Symbol`, `Function`, `Boolean`. (Some of them do grep normally —
 `Schema.Record` is a plain `export function Record` at `Schema.ts:4044`, and
-`Config.Array` a plain `export function Array` at `Config.ts:1178` — which
+`Config.Array` a plain `export function Array` at `Config.ts:1181` — which
 is exactly why the inconsistency catches people.)
 
 **When a built-in-colliding name greps as absent, do not conclude it was
@@ -86,11 +86,11 @@ real call site, which all read `Fn.dual`.
 
 ## Worked example: the three rungs disagree
 
-`Context.Key` (`Context.ts:68`):
+`Context.Key` (`Context.ts:69`):
 
 - **Rung 1** — `migration/services.md` never mentions it. Reading harder produces nothing.
 - **A runtime check** says it does not exist: `typeof Context.Key` is `undefined` and `"Key" in Context` is `false`, because it is type-only.
-- **Rung 2** — `$SRC/packages/effect/src/Context.ts:68` settles it:
+- **Rung 2** — `$SRC/packages/effect/src/Context.ts:69` settles it:
 
   ```text
   export interface Key<out Identifier, out Shape> extends Effect<Shape, never, Identifier>
@@ -98,7 +98,7 @@ real call site, which all read `Fn.dual`.
 
   It exists, it is type-only, and `Shape` is **covariant** — so a `Context.Key` parameter accepts a wider shape than declared, and a design that expected a compile error there will not get one.
 
-  `$EFFECT_SRC/Context.ts:68` is the same declaration, and — for this one
+  `$EFFECT_SRC/Context.ts:69` is the same declaration, and — for this one
   anchor — the same line: `Context.ts` overall carries far more publish-time
   TSDoc in the installed copy than the vendored tag, but the extra lines land
   after this declaration, not before it. Do not generalize that coincidence:

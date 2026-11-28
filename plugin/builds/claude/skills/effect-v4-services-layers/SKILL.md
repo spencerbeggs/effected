@@ -63,7 +63,7 @@ class UserRepo extends Context.Service<UserRepo>()("UserRepo", {
 - **There is no `dependencies` option** — wire a service's needs with
   `Layer.provide`.
 - **Tags are Effects.** `Context.Key<Identifier, Shape> extends
-  Effect<Shape, never, Identifier>` (`Context.ts:68`), so `yield* Database` and
+  Effect<Shape, never, Identifier>` (`Context.ts:69`), so `yield* Database` and
   `Effect.flatMap(Database, (db) => …)` work, and there is no `.asEffect()` on a
   service — calling it is a type error.
 - **The class's instance type is not the shape.** Name the shape a factory
